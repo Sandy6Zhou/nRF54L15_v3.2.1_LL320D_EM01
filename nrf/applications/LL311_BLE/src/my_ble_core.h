@@ -1,0 +1,65 @@
+/********************************************************************
+**版权所有         深圳市几米物联有限公司
+**文件名称:        my_ble_core.h
+**文件描述:        蓝牙核心任务处理模块头文件
+**当前版本:        V1.0
+**作    者:        Harrison Wu (wuyujiao@jimiiot.com)
+**完成日期:        2026.01.13
+*********************************************************************
+** 功能描述:        蓝牙核心任务处理模块接口
+**                 1. 提供BLE核心初始化接口
+**                 2. 提供BLE运行控制接口(启动/停止等)
+**                 3. 定义BLE与UART透传之间的FIFO接口
+**                 4. 为应用层提供BLE连接状态和数据通道抽象
+*********************************************************************/
+
+#ifndef _MY_BLE_CORE_H_
+#define _MY_BLE_CORE_H_
+
+#include <zephyr/kernel.h>
+#include <zephyr/types.h>
+
+/*
+ * BLE 核心初始化参数：
+ * - uart_rx_to_ble_fifo: UART RX 收到的数据，放入此 FIFO 等待 BLE 发送
+ * - ble_tx_to_uart_fifo: BLE 收到的数据，放入此 FIFO 等待 UART 发送
+ */
+struct my_ble_core_init_param
+{
+    /* UART -> BLE: UART RX 收到的数据，等待通过 BLE 发送 */
+    struct k_fifo *uart_rx_to_ble_fifo;
+    /* BLE -> UART: BLE 收到的数据，等待通过 UART 发送 */
+    struct k_fifo *ble_tx_to_uart_fifo;
+};
+
+/********************************************************************
+**函数名称:  my_ble_core_init
+**入口参数:  param    ---        BLE 核心初始化参数结构体（包含 UART-BLE 透传 FIFO ）
+**           tid      ---        指向线程 ID 变量的指针
+**出口参数:  tid      ---        存储启动后的线程 ID
+**函数功能:  保存 UART 与 BLE 透传 FIFO 句柄，初始化消息队列并启动 BLE 任务线程
+**返 回 值:  0 表示成功，负值表示失败（如参数非法等）
+*********************************************************************/
+int my_ble_core_init(const struct my_ble_core_init_param *param, k_tid_t *tid);
+
+/********************************************************************
+**函数名称:  my_ble_core_start
+**入口参数:  无
+**出口参数:  无
+**函数功能:  启动 BLE 协议栈、NUS 服务、相关广播与透传线程，建立完整 BLE 连接与数据通路
+**返 回 值:  0 表示成功，负值表示失败（如协议栈初始化失败等）
+*********************************************************************/
+int my_ble_core_start(void);
+
+#ifdef CONFIG_BT_NUS_SECURITY_ENABLED
+/********************************************************************
+**函数名称:  my_ble_button_changed
+**入口参数:  button_state ---    当前按键状态位图
+**            has_changed  ---    本次中断中发生变化的按键位图
+**出口参数:  无
+**函数功能:  处理 BLE 配对时的按键确认/拒绝事件（数值比较确认）
+*********************************************************************/
+void my_ble_button_changed(uint32_t button_state, uint32_t has_changed);
+#endif /* CONFIG_BT_NUS_SECURITY_ENABLED */
+
+#endif /* _MY_BLE_CORE_H_ */
