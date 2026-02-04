@@ -27,10 +27,6 @@ LOG_MODULE_REGISTER(my_ble_core, LOG_LEVEL_INF);
 #define DEVICE_NAME     CONFIG_BT_DEVICE_NAME
 #define DEVICE_NAME_LEN (sizeof(DEVICE_NAME) - 1)
 
-#define CON_STATUS_LED     DK_LED2
-#define KEY_PASSKEY_ACCEPT DK_BTN1_MSK
-#define KEY_PASSKEY_REJECT DK_BTN2_MSK
-
 /* BLE 初始化完成信号量，供写线程等待 */
 K_SEM_DEFINE(ble_init_ok, 0, 1);
 
@@ -316,7 +312,7 @@ static void advertising_start(void)
 **入口参数:  conn     ---        新建立连接的连接句柄
 **           err      ---        连接完成状态码（0 表示成功）
 **出口参数:  无
-**函数功能:  处理 BLE 连接建立事件，保存连接句柄并点亮连接状态 LED
+**函数功能:  处理 BLE 连接建立事件，保存连接句柄
 **返 回 值:  无
 *********************************************************************/
 static void connected(struct bt_conn *conn, uint8_t err)
@@ -333,8 +329,6 @@ static void connected(struct bt_conn *conn, uint8_t err)
     LOG_INF("Connected %s", addr);
 
     current_conn = bt_conn_ref(conn);
-
-    dk_set_led_on(CON_STATUS_LED);
 }
 
 /********************************************************************
@@ -342,7 +336,7 @@ static void connected(struct bt_conn *conn, uint8_t err)
 **入口参数:  conn     ---        断开的连接句柄
 **           reason   ---        断开原因码
 **出口参数:  无
-**函数功能:  处理 BLE 断开事件，释放连接和认证句柄并熄灭连接状态 LED
+**函数功能:  处理 BLE 断开事件，释放连接和认证句柄
 **返 回 值:  无
 *********************************************************************/
 static void disconnected(struct bt_conn *conn, uint8_t reason)
@@ -363,7 +357,6 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
     {
         bt_conn_unref(current_conn);
         current_conn = NULL;
-        dk_set_led_off(CON_STATUS_LED);
     }
 }
 
@@ -567,6 +560,7 @@ void my_ble_button_changed(uint32_t button_state, uint32_t has_changed)
 
     if (auth_conn)
     {
+#if 0
         if (buttons & KEY_PASSKEY_ACCEPT)
         {
             num_comp_reply(true);
@@ -576,6 +570,7 @@ void my_ble_button_changed(uint32_t button_state, uint32_t has_changed)
         {
             num_comp_reply(false);
         }
+#endif
     }
 }
 #endif /* CONFIG_BT_NUS_SECURITY_ENABLED */

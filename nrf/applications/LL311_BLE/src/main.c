@@ -29,10 +29,6 @@ struct k_msgq *g_my_msg_info[MAX_MY_MOD_TYPE] = {NULL};
 struct k_timer g_my_timer_info[MY_TIMER_MAX_ID];
 bool g_my_timer_init_status[MY_TIMER_MAX_ID] = {false};
 
-/* 运行状态 LED 定义 */
-#define RUN_STATUS_LED         DK_LED1
-#define RUN_LED_BLINK_INTERVAL 1000
-
 /********************************************************************
 **函数名称:  error
 **入口参数:  无
@@ -43,39 +39,12 @@ bool g_my_timer_init_status[MY_TIMER_MAX_ID] = {false};
 void error(void)
 {
     /* 所有 LED 亮，表示系统错误状态 */
-    dk_set_leds_state(DK_ALL_LEDS_MSK, DK_NO_LEDS_MSK);
+    // TODO
 
     while (true)
     {
         /* Spin for ever */
         k_sleep(K_MSEC(1000));
-    }
-}
-
-/********************************************************************
-**函数名称:  configure_gpio
-**入口参数:  无
-**出口参数:  无
-**函数功能:  初始化按键与 LED 相关的 GPIO 资源，并注册 BLE 配对按键回调
-**返 回 值:  无
-*********************************************************************/
-static void configure_gpio(void)
-{
-    int err;
-
-#ifdef CONFIG_BT_NUS_SECURITY_ENABLED
-    /* 按键事件交给 BLE 模块处理，用于配对确认/拒绝 */
-    err = dk_buttons_init(my_ble_button_changed);
-    if (err)
-    {
-        LOG_ERR("Cannot init buttons (err: %d)", err);
-    }
-#endif /* CONFIG_BT_NUS_SECURITY_ENABLED */
-
-    err = dk_leds_init();
-    if (err)
-    {
-        LOG_ERR("Cannot init LEDs (err: %d)", err);
     }
 }
 
@@ -314,8 +283,6 @@ bool my_time_is_run(int timerId)
 int main(void)
 {
     int err = 0;
-
-    configure_gpio();
 
     /* 获取当前线程 ID 并保存 */
     my_main_task_id = k_current_get();

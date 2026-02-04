@@ -22,31 +22,6 @@ struct my_buzzer_note
     uint32_t duration_ms; /* 持续时间 (ms) */
 };
 
-/* --- 控制消息定义 --- */
-enum my_ctrl_msg_type
-{
-    MY_CTRL_MSG_TYPE_LED,    /* LED 控制消息 */
-    MY_CTRL_MSG_TYPE_BUZZER, /* 蜂鸣器控制消息 */
-};
-
-struct my_ctrl_msg
-{
-    enum my_ctrl_msg_type type;
-    union
-    {
-        struct
-        {
-            uint32_t led_idx;
-            uint32_t val;
-        } led;
-        struct
-        {
-            uint32_t freq_hz;
-            uint32_t duration_ms;
-        } buzzer;
-    } data;
-};
-
 /* --- 接口函数 --- */
 
 /********************************************************************
@@ -79,22 +54,12 @@ int my_ctrl_buzzer_play_tone(uint32_t freq_hz, uint32_t duration_ms);
 int my_ctrl_buzzer_play_sequence(const struct my_buzzer_note *notes, uint32_t num_notes);
 
 /********************************************************************
-**函数名称:  my_ctrl_led_set
-**入口参数:  led_idx      ---        LED 索引 (对应 DK_LED1, DK_LED2 等)
-**           val          ---        1 亮，0 灭
-**出口参数:  无
-**函数功能:  设置 LED 状态
-**返 回 值:  无
-*********************************************************************/
-void my_ctrl_led_set(uint32_t led_idx, uint32_t val);
-
-/********************************************************************
 **函数名称:  my_ctrl_push_msg
 **入口参数:  msg        ---        消息结构体指针
 **出口参数:  无
 **函数功能:  向控制模块消息队列发送消息
 **返 回 值:  0 表示成功，负值表示失败
 *********************************************************************/
-int my_ctrl_push_msg(const struct my_ctrl_msg *msg);
+int my_ctrl_push_msg(const MSG_S *msg);
 
 #endif /* _MY_CTRL_H_ */

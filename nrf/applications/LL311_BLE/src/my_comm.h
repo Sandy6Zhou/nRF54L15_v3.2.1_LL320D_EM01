@@ -32,12 +32,14 @@
 #include <zephyr/drivers/i2c.h>
 #include <zephyr/drivers/pwm.h>
 #include <zephyr/drivers/uart.h>
+#include <zephyr/drivers/adc.h>
 
 /* Zephyr系统功能 */
 #include <zephyr/logging/log.h>
 #include <zephyr/settings/settings.h>
 #include <zephyr/sys/reboot.h>
 #include <zephyr/sys/util.h>
+#include <zephyr/sys/poweroff.h>
 
 /* Zephyr shell */
 #include <zephyr/shell/shell.h>
@@ -48,9 +50,10 @@
 #include <zephyr/bluetooth/hci.h>
 #include <zephyr/bluetooth/uuid.h>
 
-/* Nordic SDK */
+/* Nordic SDK/HAL */
+#include <hal/nrf_gpio.h>
+#include <hal/nrf_reset.h>
 #include <bluetooth/services/nus.h>
-#include <dk_buttons_and_leds.h>
 #include <soc.h>
 #include <uart_async_adapter.h>
 
@@ -105,6 +108,8 @@ typedef enum
     MY_MSG_POWER_OFF,
     MY_MSG_SYS_REBOOT, // 10
     MY_MSG_BLE_DATA_EVENT,
+    MY_MSG_CTRL_LED,    /* LED 控制消息 */
+    MY_MSG_CTRL_BUZZER, /* 蜂鸣器控制消息 */
 
 } MY_MAIN_TASK_MSG;
 
@@ -117,5 +122,7 @@ typedef enum
 #include "my_lte.h"
 #include "my_nfc.h"
 #include "my_gsensor.h"
+#include "my_motor.h"
+#include "my_battery.h"
 
 #endif /* _MY_COMMON_H_ */

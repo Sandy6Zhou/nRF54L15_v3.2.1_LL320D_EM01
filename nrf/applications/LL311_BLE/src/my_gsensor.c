@@ -23,6 +23,8 @@ static const struct device *i2c_dev = DEVICE_DT_GET(I2C_NODE);
 #define GSENSOR_PWR_NODE DT_ALIAS(gsensor_pwr_ctrl)
 static const struct gpio_dt_spec gsensor_pwr_gpio = GPIO_DT_SPEC_GET(GSENSOR_PWR_NODE, gpios);
 
+static const struct gpio_dt_spec gsen_int = GPIO_DT_SPEC_GET(DT_ALIAS(gsensor_int), gpios);
+static struct gpio_callback gsensor_gpio_cb;
 /* DA215S I2C 从机地址 (通常为 0x27) */
 #define DA215S_I2C_ADDR 0x27
 
@@ -141,12 +143,30 @@ int my_gsensor_read_data(struct gsensor_data *data)
     return -ENOTSUP;
 }
 
+static void gsensor_gpio_isr(const struct device *dev,
+                          struct gpio_callback *cb,
+                          uint32_t pins)
+{
+    ARG_UNUSED(dev);
+    ARG_UNUSED(cb);
+    int level;
+
+    if (pins & BIT(gsen_int.pin))
+    {
+        level = gpio_pin_get_dt(&gsen_int);
+        // LOG_INF("gsen_int:%d", level);
+        //TODO 发消息给ctrl去再次获取该引脚电平状态，以及消抖处理
+    }
+}
+
 int my_gsensor_init(k_tid_t *tid)
 {
     int err;
 
     /* 1. 检查硬件接口是否就绪 */
-    if (!device_is_ready(i2c_dev))
+    if (!device_is_ready(i2c_dev) ||
+        !device_is_ready(gsen_int.port) ||
+        !device_is_ready(gsensor_pwr_gpio.port))
     {
         LOG_ERR("I2C device not ready");
         return -ENODEV;
@@ -165,6 +185,23 @@ int my_gsensor_init(k_tid_t *tid)
         LOG_ERR("Failed to configure GSENSOR Power GPIO (err %d)", err);
         return err;
     }
+    
+    /* 2.1. 配置中断引脚 */
+    err = gpio_pin_configure_dt(&gsen_int, GPIO_INPUT);
+    if (err)
+    {
+        LOG_ERR("Failed to configure GSENSOR interrupt GPIO input mode (err %d)", err);
+        return err;
+    }
+    err = gpio_pin_interrupt_configure_dt(&gsen_int, GPIO_INT_EDGE_RISING);
+    if (err)
+    {
+        LOG_ERR("Failed to configure GSENSOR Interrupt GPIO (err %d)", err);
+        return err;
+    }
+
+    gpio_init_callback(&gsensor_gpio_cb, gsensor_gpio_isr, BIT(gsen_int.pin));
+    gpio_add_callback(gsen_int.port, &gsensor_gpio_cb);
 
     /* 等待芯片上电稳定 */
     k_sleep(K_MSEC(50));

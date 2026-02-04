@@ -14,6 +14,18 @@
 
 	/* 定义别名，方便代码调用 */
 	aliases {
+		/* 删除板级alias别名 */
+		/delete-property/ led0;
+		/delete-property/ led1;
+		/delete-property/ led2;
+		/delete-property/ led3;
+		/delete-property/ pwm-led0;
+		/delete-property/ sw0;
+		/delete-property/ sw1;
+		/delete-property/ sw2;
+		/delete-property/ sw3;
+		/delete-property/ mcuboot-button0;
+		/delete-property/ mcuboot-led0;
 		lte-uart = &uart30;
 		lte-pwr-ctrl = &lte_pwr_en;
 		gsensor-i2c = &i2c21;
@@ -22,49 +34,175 @@
 		nfc-pwr-ctrl = &nfc_pwr_en;
 		buzzer-pwm = &buzzer_pwm_0;
 		fun-key = &button_fun;
+		motor-ctrl-a = &motor_a;
+		motor-ctrl-b = &motor_b;
+		motor-pwr-ctrl = &motor_pwr_en;
+		motor-posdet-a = &motor_pos_a;
+		motor-posdet-b = &motor_pos_b;
+		batt-pwr-ctrl = &batt_pwr_en;
+		gsensor-int = &gsen_int;
+		batt-state = &charge_state;
+		charge-detect = &charge_det;
+		light-detect = &light_det;
+		cut-detect   = &cut_det;
+		battery-led0 = &batt_led0;
+		battery-led1 = &batt_led1;
+		battery-led2 = &batt_led2;
+		lock-led0  = &lock_led;
 	};
+	/* 删除板级节点 */
+	/delete-node/ leds;
+	/delete-node/ buttons;
+	/delete-node/ pwmleds;
 
 	/* 定义按键 */
-	buttons {
-		compatible = "gpio-keys";
-		button_fun: button_fun {
-			gpios = <&gpio1 9 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
-			label = "Function Key";
-		};
+	button_fun: button_fun {
+		compatible = "nordic,gpio-pins";
+		gpios = <&gpio1 9 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
 	};
 
 	/* 定义蜂鸣器 PWM 节点 */
 	buzzer_node {
 		compatible = "pwm-leds";
 		buzzer_pwm_0: buzzer_pwm_0 {
-			pwms = <&pwm20 0 PWM_HZ(1000) PWM_POLARITY_NORMAL>;
+			/* 蜂鸣器设置2.7KHz */
+			pwms = <&pwm20 0 PWM_HZ(2700) PWM_POLARITY_NORMAL>;
 		};
 	};
 
 	/* NFC 电源控制引脚配置 */
-	nfc_en_node {
-		compatible = "gpio-leds";
-		nfc_pwr_en: nfc_pwr_en {
-			gpios = <&gpio1 7 GPIO_ACTIVE_HIGH>;
-			label = "NFC Power Control";
-		};
+	nfc_pwr_en: nfc-pwr-en {
+		compatible = "nordic,gpio-pins";
+		gpios = <&gpio2 4 GPIO_ACTIVE_HIGH>;
+		status = "okay";
 	};
 
 	/* G-Sensor 电源控制引脚配置 */
-	gsensor_en_node {
-		compatible = "gpio-leds";
-		gsensor_pwr_en: gsensor_pwr_en {
-			gpios = <&gpio2 10 GPIO_ACTIVE_HIGH>;
-			label = "GSENSOR Power Control";
-		};
+	gsensor_pwr_en: gsensor-pwr-en {
+		compatible = "nordic,gpio-pins";
+		gpios = <&gpio2 6 GPIO_ACTIVE_HIGH>;
+		status = "okay";
 	};
 
 	/* LTE 电源控制引脚配置 */
-	lte_en_node {
+	lte_pwr_en: lte-pwr-en {
+		compatible = "nordic,gpio-pins";
+		gpios = <&gpio2 2 GPIO_ACTIVE_HIGH>;
+		status = "okay";
+	};
+
+	/* P2.0: 马达方向 A */
+	motor_a: motor-a {
+		compatible = "nordic,gpio-pins";
+		gpios = <&gpio2 0 GPIO_ACTIVE_HIGH>;
+		status = "okay";
+	};
+
+	/* P2.1: 马达方向 B */
+	motor_b: motor-b {
+		compatible = "nordic,gpio-pins";
+		gpios = <&gpio2 1 GPIO_ACTIVE_HIGH>;
+		status = "okay";
+	};
+
+	/* P2.5: 马达电源开关，高电平上电 */
+	 motor_pwr_en: motor-pwr-en {
+		compatible = "nordic,gpio-pins";
+		gpios = <&gpio2 5 GPIO_ACTIVE_HIGH>;
+		status = "okay";
+	};
+
+	/* P0.2: 位置检测 A，默认上拉 */
+	motor_pos_a: motor-pos-a {
+		compatible = "nordic,gpio-pins";
+		gpios = <&gpio0 2 (GPIO_ACTIVE_HIGH | GPIO_PULL_UP)>;
+		status = "okay";
+	};
+
+	/* P0.3: 位置检测 B，默认上拉 */
+	motor_pos_b: motor-pos-b {
+		compatible = "nordic,gpio-pins";
+		gpios = <&gpio0 3 (GPIO_ACTIVE_HIGH | GPIO_PULL_UP)>;
+		status = "okay";
+	};
+
+	/* P2.3: 电池使能，高电平使能 */
+	batt_pwr_en: batt-pwr-en {
+		compatible = "nordic,gpio-pins";
+		gpios = <&gpio2 3 GPIO_ACTIVE_HIGH>;
+		status = "okay";
+	};
+
+	/* gsensor中断，默认下拉 */
+	gsen_int: gsen-int {
+		compatible = "nordic,gpio-pins";
+		gpios = <&gpio1 2 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>;
+		status = "okay";
+	};
+
+	/* P1.7:电池状态监测； 充电中:低电平; 充满:高电平 */
+	charge_state: charge-state {
+		compatible = "nordic,gpio-pins";
+		gpios = <&gpio1 7 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+		status = "okay";
+	};
+
+	/* P1.8: 是否在充电的检测,默认上拉 */
+	charge_det: charge-det {
+		compatible = "nordic,gpio-pins";
+		gpios = <&gpio1 8 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+		status = "okay";
+	};
+
+	/* 把要用的 ADC 通道挂到 zephyr,user，方便 C 代码用 ADC_DT_SPEC_GET(DT_PATH(zephyr_user)) */
+	zephyr,user {
+		/* 通道 0：电池电压（P1.13 / AIN6）
+		 * 通道 1：NTC 温度（P1.14 / AIN7）
+		 */
+		io-channels = <&adc 0>, <&adc 1>;
+	};
+
+	/* 光感检测：P1.10，默认上拉，外部拉低触发 */
+	light_det: light-det {
+		compatible = "nordic,gpio-pins";
+		gpios = <&gpio1 10 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+		status = "okay";
+	};
+
+	/* 剪线检测：P1.11，默认上拉，外部拉低触发 */
+	cut_det: cut-det {
+		compatible = "nordic,gpio-pins";
+		gpios = <&gpio1 11 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+		status = "okay";
+	};
+
+	/* 电量指示灯组：P2.7 / P2.8 / P2.9 */
+	batt_leds: batt-leds {
 		compatible = "gpio-leds";
-		lte_pwr_en: lte_pwr_en {
-			gpios = <&gpio2 2 GPIO_ACTIVE_HIGH>;
-			label = "LTE Power Control";
+
+		batt_led0: batt_led_0 {
+			gpios = <&gpio2 7 GPIO_ACTIVE_HIGH>;
+			label = "Battery LED 0";  /* 最低电量格 */
+		};
+
+		batt_led1: batt_led_1 {
+			gpios = <&gpio2 8 GPIO_ACTIVE_HIGH>;
+			label = "Battery LED 1";
+		};
+
+		batt_led2: batt_led_2 {
+			gpios = <&gpio2 9 GPIO_ACTIVE_HIGH>;
+			label = "Battery LED 2";  /* 最高电量格 */
+		};
+	};
+
+	/* 锁状态指示灯：P2.10 */
+	lock_leds: lock-leds {
+		compatible = "gpio-leds";
+
+		lock_led: lock-led {
+			gpios = <&gpio2 10 GPIO_ACTIVE_HIGH>;
+			label = "Lock State LED";
 		};
 	};
 };
@@ -112,15 +250,15 @@
 
 	lte_uart30_default: lte_uart30_default {
 		group1 {
-			psels = <NRF_PSEL(UART_TX, 2, 0)>,
-				<NRF_PSEL(UART_RX, 2, 1)>;
+			psels = <NRF_PSEL(UART_TX, 0, 0)>,
+				<NRF_PSEL(UART_RX, 0, 1)>;
 		};
 	};
 
 	lte_uart30_sleep: lte_uart30_sleep {
 		group1 {
-			psels = <NRF_PSEL(UART_TX, 2, 0)>,
-				<NRF_PSEL(UART_RX, 2, 1)>;
+			psels = <NRF_PSEL(UART_TX, 0, 0)>,
+				<NRF_PSEL(UART_RX, 0, 1)>;
 			low-power-enable;
 		};
 	};
@@ -159,7 +297,7 @@
 
 /* 开启并配置 I2C22 用于 NFC */
 &i2c22 {
-	status = "disabled";
+	status = "okay";
 	pinctrl-0 = <&i2c22_default>;
 	pinctrl-1 = <&i2c22_sleep>;
 	pinctrl-names = "default", "sleep";
@@ -168,11 +306,46 @@
 
 
 &i2c21 {
-	status = "disabled";
+	status = "okay";
 	pinctrl-0 = <&i2c21_default>;
 	pinctrl-1 = <&i2c21_sleep>;
 	pinctrl-names = "default", "sleep";
 	clock-frequency = <I2C_BITRATE_STANDARD>;
 };
 
+/* ADC 配置：通道 0 = AIN6(P1.13)，通道 1 = AIN7(P1.14) */
+&adc {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "okay";
 
+	/* 通道 0：电池电压采集，AIN6 = P1.13 */
+	channel@0 {
+		reg = <0>;
+		zephyr,gain = "ADC_GAIN_1_4";          /* nRF54L15 推荐 1/4 增益 */
+		zephyr,reference = "ADC_REF_INTERNAL"; /* 内部参考 */
+		zephyr,acquisition-time = <ADC_ACQ_TIME_DEFAULT>;
+		zephyr,input-positive = <NRF_SAADC_AIN6>;  /* AIN6 = P1.13 */
+		zephyr,resolution = <14>;                  /* nRF54L15 为 14 bit */
+	};
+
+	/* 通道 1：NTC 温度采集，AIN7 = P1.14 */
+	channel@1 {
+		reg = <1>;
+		zephyr,gain = "ADC_GAIN_1_4";
+		zephyr,reference = "ADC_REF_INTERNAL";
+		zephyr,acquisition-time = <ADC_ACQ_TIME_DEFAULT>;
+		zephyr,input-positive = <NRF_SAADC_AIN7>;  /* AIN7 = P1.14 */
+		zephyr,resolution = <14>;
+	};
+};
+
+/* disable spi nor flash */
+&spi00 {
+	status = "disabled";
+};
+
+/* 用于P0.4唤醒 */
+&gpio0 {
+	wakeup-source;
+};
