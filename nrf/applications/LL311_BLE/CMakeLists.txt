@@ -20,6 +20,8 @@ target_sources(app PRIVATE
   src/my_motor.c
   src/my_battery.c
 #  src/my_wdt.c
+  src/my_tool.c
+  src/my_cmd_setting.c
 )
 
 # NORDIC SDK APP END

@@ -13,6 +13,9 @@
 
 #include "my_comm.h"
 
+/* LTE电源状态跟踪 */
+static bool g_lte_power_state = false;  // false=关闭, true=开启
+
 /* 注册 LTE 模块日志 */
 LOG_MODULE_REGISTER(my_lte, LOG_LEVEL_INF);
 
@@ -59,6 +62,18 @@ static void my_lte_task(void *p1, void *p2, void *p3)
         switch (msg.msgID)
         {
             /* TODO: 添加 LTE 相关的消息处理逻辑 */
+            case MY_MSG_LTE_PWRON:
+                my_lte_pwr_on(true);
+                break;
+
+            case MY_MSG_LTE_PWROFF:
+                my_lte_pwr_on(false);
+                break;
+
+            // 收到4G发送的消息,例如返回UTC时间,在里面进行数据解析
+            case MY_MSG_LTE_REV:
+                break;
+
             default:
                 break;
         }
@@ -137,12 +152,34 @@ int my_lte_send(const uint8_t *data, uint16_t len)
 **入口参数:  on      ---        是否开启
 **出口参数:  无
 **函数功能:  LTE 模块电源控制函数
-**返 回 值:  无
+**返 回 值:  0 表示成功
 *********************************************************************/
 int my_lte_pwr_on(bool on)
 {
-    LOG_INF("LTE Power Control: %s", on ? "Power ON" : "Power OFF");
-    return gpio_pin_set_dt(&lte_pwr_gpio, on ? 1 : 0);
+    int err;
+
+    /* 检查当前电源状态，避免重复操作 */
+    if (g_lte_power_state == on)
+    {
+        /* 状态相同，无需操作 */
+        LOG_INF("LTE Power: already %s", on ? "ON" : "OFF");
+        return 0;
+    }
+
+    /* 执行电源控制操作 */
+    err = gpio_pin_set_dt(&lte_pwr_gpio, on ? 1 : 0);
+    if (err == 0)
+    {
+        /* 操作成功，更新状态 */
+        g_lte_power_state = on;
+        LOG_INF("LTE Power Control: %s", on ? "Power ON" : "Power OFF");
+    }
+    else
+    {
+        LOG_ERR("LTE Power Control failed (err %d)", err);
+    }
+
+    return err;
 }
 
 /********************************************************************

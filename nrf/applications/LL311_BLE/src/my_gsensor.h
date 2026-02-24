@@ -13,6 +13,20 @@
 #ifndef _MY_GSENSOR_H_
 #define _MY_GSENSOR_H_
 
+/* 智能模式时间间隔定义（单位：秒） */
+#define STATIC_INTERVAL         (24 * 60 * 60)   // 静止状态：24小时
+#define LAND_TRANSPORT_INTERVAL (15)             // 陆运状态：15秒
+#define SEA_TRANSPORT_INTERVAL  (4 * 60 * 60)    // 海运状态：4小时
+
+/* 智能模式状态枚举 */
+typedef enum
+{
+    STATE_UNKNOWN = 0,      // 未知状态
+    STATE_STATIC,           // 静止状态
+    STATE_LAND_TRANSPORT,   // 陆运状态
+    STATE_SEA_TRANSPORT,    // 海运状态
+} gsensor_state_t;
+
 /* 三轴数据结构体 */
 struct gsensor_data
 {
@@ -47,5 +61,17 @@ int my_gsensor_pwr_on(bool on);
 **返 回 值:  0 表示成功，负值表示失败
 *********************************************************************/
 int my_gsensor_read_data(struct gsensor_data *data);
+
+/********************************************************************
+**函数名称:  my_lsm6dsv16x_init
+**入口参数:  无
+**出口参数:  无
+**函数功能:  初始化 LSM6DSV16X 传感器设备
+**返 回 值:  0 表示成功，负值表示失败
+*********************************************************************/
+int my_lsm6dsv16x_init(void);
+
+extern gsensor_state_t g_current_gsensor_state;
+extern struct k_mutex gsensor_mutex;
 
 #endif /* _MY_GSENSOR_H_ */

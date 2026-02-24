@@ -9,6 +9,8 @@
  */
 #include "my_comm.h"
 
+DeviceWorkModeConfig g_workmode_config = {0};
+
 #define LOG_MODULE_NAME my_main
 LOG_MODULE_REGISTER(LOG_MODULE_NAME);
 
@@ -273,6 +275,174 @@ bool my_time_is_run(int timerId)
     return (k_timer_remaining_get(&g_my_timer_info[timerId]) > 0);
 }
 
+/*********************************************************************
+**函数名称:  get_workmode_config_ptr
+**入口参数:  无
+**出口参数:  无
+**函数功能:  获取工作模式配置结构体的指针
+**返 回 值:  DeviceWorkModeConfig* - 指向g_workmode_config的指针（非NULL）
+**           该函数返回全局变量的指针，无需手动释放，且指针始终有效
+*********************************************************************/
+DeviceWorkModeConfig* get_workmode_config_ptr(void)
+{
+    return &g_workmode_config;
+}
+
+/*********************************************************************
+**函数名称:  switch_work_mode
+**入口参数:  mode     --  要切换到的工作模式
+**出口参数:  无
+**函数功能:  切换工作模式，通过消息机制通知主线程
+*********************************************************************/
+void switch_work_mode(MY_WORK_MODE mode)
+{
+    /* 切换工作模式 */
+    g_workmode_config.current_mode = mode;
+
+    my_send_msg(MOD_MAIN, MOD_MAIN, MY_MSG_WORK_MODE_SWITCH);
+
+    LOG_INF("Work mode switch request sent: %d", g_workmode_config.current_mode);
+}
+
+/*********************************************************************
+**函数名称:  awaken_lte_timer_callback
+**入口参数:  timer  --  定时器指针
+**出口参数:  无
+**函数功能:  LTE唤醒定时器超时回调函数
+**           1. 向LTE线程发送上电消息，开启4G电源
+**           2. 向主线程发送消息触发重置LTE定时器（用于长续航模式下,下次唤醒）
+**返 回 值:  无
+*********************************************************************/
+void awaken_lte_timer_callback(void *timer)
+{
+    /* 长续航模式下才需要去重置LTE定时器 */
+    if (g_workmode_config.current_mode == MY_MODE_LONG_LIFE)
+    {
+        my_send_msg(MOD_MAIN, MOD_MAIN, MY_MSG_RESET_LTE_TIMER);
+    }
+
+    /* 开启LTE */
+    my_send_msg(MOD_MAIN, MOD_LTE, MY_MSG_LTE_PWRON);
+}
+
+/*********************************************************************
+**函数名称:  handle_long_life_mode
+**入口参数:  无
+**出口参数:  无
+**函数功能:  处理长续航模式（省电模式）
+**           1. 关闭GSENSOR传感器以降低功耗
+**           2. 向LTE线程发送上电消息，开启4G电源
+**返 回 值:  无
+*********************************************************************/
+void handle_long_life_mode(void)
+{
+    /* 关闭GSENSOR */
+    my_send_msg(MOD_MAIN, MOD_GSENSOR, MY_MSG_GSENSOR_PWROFF);
+
+    /* 开启LTE */
+    my_send_msg(MOD_MAIN, MOD_LTE, MY_MSG_LTE_PWRON);
+}
+
+/*********************************************************************
+**函数名称:  handle_smart_mode
+**入口参数:  无
+**出口参数:  无
+**函数功能:  处理智能模式（自动根据状态切换）,发消息给GSENSOR线程处理以下步骤
+**           1. 开启GSENSOR模块
+**           2. GSENSOR模块负责初始化配置、检测设备状态（静止/陆地运输/海运）
+**           3. 根据GSENSOR状态智能开启LTE并设置间隔唤醒定时器
+**返 回 值:  无
+*********************************************************************/
+void handle_smart_mode(void)
+{
+    my_send_msg(MOD_MAIN, MOD_GSENSOR, MY_MSG_GSENSOR_PWRON);
+}
+
+/*********************************************************************
+**函数名称:  handle_continuous_mode
+**入口参数:  无
+**出口参数:  无
+**函数功能:  处理连续模式（实时监控模式）
+**           1. 停止LTE间隔唤醒定时器（保持LTE常开）
+**           2. 关闭GSENSOR传感器
+**           3. 开启LTE模块保持持续连接
+**返 回 值:  无
+*********************************************************************/
+void handle_continuous_mode(void)
+{
+    my_stop_timer(MY_TIMER_LTE_POWER);
+
+    /* 关闭GSENSOR */
+    my_send_msg(MOD_MAIN, MOD_GSENSOR, MY_MSG_GSENSOR_PWROFF);
+
+    /* 开启LTE */
+    my_send_msg(MOD_MAIN, MOD_LTE, MY_MSG_LTE_PWRON);
+}
+
+/*********************************************************************
+**函数名称:  set_reset_lte_timer
+**入口参数:  无
+**出口参数:  无
+**函数功能:  计算并重置LTE间隔唤醒定时器
+**           1. 根据配置的上传开始时间和间隔，计算距离下次唤醒的时间
+**           2. 增加0-120秒的随机偏移量（防止多设备同时上传造成服务器压力）
+**           3. 启动LTE电源定时器，到期后触发 awaken_lte_timer_callback
+**返 回 值:  无
+*********************************************************************/
+void set_reset_lte_timer(void)
+{
+    int timer_interval;
+    int timer_interval_random = 0;
+    int ret;
+    time_t current_time;
+
+    current_time = my_get_system_time_sec();
+
+    /* timer_interval不可能为0 */ 
+    timer_interval = calculate_remaining_seconds(g_workmode_config.long_battery.start_time,
+                        g_workmode_config.long_battery.reporting_interval_min, current_time);
+
+    LOG_INF("current_time:%llu,timer_interval:%d", current_time, timer_interval);
+
+    if (timer_interval == -1) return;
+
+    ret = rand_0_to_120_seconds(&timer_interval_random);
+    if (ret == PSA_SUCCESS)
+    {
+        timer_interval += timer_interval_random;
+    }
+
+    LOG_INF("timer_interval_random:%d", timer_interval_random);
+
+    my_start_timer(MY_TIMER_LTE_POWER, timer_interval * 1000, false, awaken_lte_timer_callback);
+}
+
+/********************************************************************
+**函数名称:  device_config_init
+**入口参数:  p_workmode - 设备工作模式配置结构体指针
+**出口参数:  无
+**函数功能:  初始化设备工作模式配置，设置各模式默认参数（智能模式和长续航模式）
+**          连续追踪模式的配置跟nordic无关,无需配置
+**返 回 值:  无
+*********************************************************************/
+void device_config_init(DeviceWorkModeConfig *p_workmode)
+{
+    if (p_workmode == NULL) return;
+
+    /* 默认设置为智能模式 */ 
+    p_workmode->current_mode = MY_MODE_SMART;
+
+    /* 长电池模式配置：设置上传时间间隔和起始时间 */ 
+    p_workmode->long_battery.reporting_interval_min = DEFAULT_LONG_LIFE_INTERVAL;   // 上传间隔（分钟）
+    strcpy(p_workmode->long_battery.start_time, DEFAULT_START_TIME);                // 每日上传起始时间
+
+    /* 智能模式配置：设置不同状态下的上传时间间隔 */ 
+    p_workmode->intelligent.stop_status_interval_sec = STATIC_INTERVAL;             // 静止状态上传间隔（秒）
+    p_workmode->intelligent.land_status_interval_sec = LAND_TRANSPORT_INTERVAL;     // 陆运状态上传间隔（秒）
+    p_workmode->intelligent.sea_status_interval_sec = SEA_TRANSPORT_INTERVAL;       // 海运状态上传间隔（秒）
+    p_workmode->intelligent.sleep_switch = 0;                                       // 休眠开关模式(0默认不休眠)
+}
+
 /********************************************************************
 **函数名称:  main
 **入口参数:  无
@@ -283,6 +453,9 @@ bool my_time_is_run(int timerId)
 int main(void)
 {
     int err = 0;
+
+    psa_crypto_init();  // PSA库初始化
+    device_config_init(&g_workmode_config);
 
     /* 获取当前线程 ID 并保存 */
     my_main_task_id = k_current_get();
@@ -369,6 +542,36 @@ int main(void)
                     MY_FREE_BUFFER(msg.pData);
                 }
                 break;
+
+            case MY_MSG_WORK_MODE_SWITCH:
+                /* 根据当前切换的模式处理对应的逻辑 */
+                switch (g_workmode_config.current_mode)
+                {
+                    case MY_MODE_LONG_LIFE:
+                        LOG_INF("Switched to LONG_LIFE mode");
+                        handle_long_life_mode();
+                        break;
+
+                    case MY_MODE_SMART:
+                        LOG_INF("Switched to SMART mode");
+                        handle_smart_mode();
+                        break;
+
+                    case MY_MODE_CONTINUOUS:
+                        LOG_INF("Switched to CONTINUOUS mode");
+                        handle_continuous_mode();
+                        break;
+
+                    default:
+                        LOG_INF("Switched to NORMAL mode");
+                        break;
+                }
+                break;
+
+            case MY_MSG_RESET_LTE_TIMER:
+                set_reset_lte_timer();
+                break;
+
             default:
                 break;
         }

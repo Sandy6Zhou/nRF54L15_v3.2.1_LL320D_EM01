@@ -105,6 +105,308 @@ static int cmd_gsensor_read(const struct shell *shell, size_t argc, char **argv)
     return 0;
 }
 
+/********************************************************************
+**函数名称:  cmd_switch_mode
+**入口参数:  sh      ---        Shell 实例指针
+**           argc    ---        参数数量
+**           argv    ---        参数数组
+**出口参数:  无
+**函数功能:  切换工作模式（longlife/smart/continuous）
+**返 回 值:  0 表示成功，负数表示失败
+*********************************************************************/
+static int cmd_switch_mode(const struct shell *sh, size_t argc, char **argv)
+{
+    gsensor_state_t gsensor_state;
+    DeviceWorkModeConfig* p_workmode;
+    const char *mode_str;
+    const char *state_str;
+
+    p_workmode = get_workmode_config_ptr();
+
+    if (argc < 2)
+    {
+        shell_error(sh, "Missing <mode> argument");
+        shell_print(sh, "Usage: app switchmode <mode> <state>");
+        shell_print(sh, "  mode  : longlife | smart | continuous");
+        shell_print(sh, "  state : still | land | sea (only for smart mode)");
+        return -EINVAL;
+    }
+
+    mode_str  = argv[1];
+    state_str = (argc >= 3) ? argv[2] : NULL;
+
+    /* 解析工作模式 */
+    if (strcmp(mode_str, "longlife") == 0)
+    {
+        p_workmode->current_mode   = MY_MODE_LONG_LIFE;
+        gsensor_state = STATE_UNKNOWN;
+    } 
+    else if (strcmp(mode_str, "smart") == 0)
+    {
+        p_workmode->current_mode = MY_MODE_SMART;
+
+        /* 智能模式下需要 state 参数 */
+        if (state_str == NULL)
+        {
+            shell_error(sh, "Smart mode requires <state> argument");
+            shell_print(sh, "Valid states: still | land | sea");
+            return -EINVAL;
+        }
+
+        if (strcmp(state_str, "static") == 0)
+        {
+            gsensor_state = STATE_STATIC;
+        } 
+        else if (strcmp(state_str, "land") == 0)
+        {
+            gsensor_state = STATE_LAND_TRANSPORT;
+        } 
+        else if (strcmp(state_str, "sea") == 0)
+        {
+            gsensor_state = STATE_SEA_TRANSPORT;
+        } 
+        else
+        {
+            shell_error(sh, "Invalid state '%s' for smart mode", state_str);
+            shell_print(sh, "Valid states: still | land | sea");
+            return -EINVAL;
+        }
+    } 
+    else if (strcmp(mode_str, "continuous") == 0)
+    {
+        p_workmode->current_mode   = MY_MODE_CONTINUOUS;
+        gsensor_state = STATE_UNKNOWN;
+    } 
+    else
+    {
+        shell_error(sh, "Invalid mode '%s'", mode_str);
+        shell_print(sh, "Valid modes: longlife | smart | continuous");
+        return -EINVAL;
+    }
+
+    /* 无限等待直到拿到互斥锁 */
+    k_mutex_lock(&gsensor_mutex, K_FOREVER);
+
+    g_current_gsensor_state = gsensor_state;
+
+    /* 退出临界区，释放互斥锁 */
+    k_mutex_unlock(&gsensor_mutex);
+
+    /* 调用实际的业务函数去切换模式/状态 */
+    switch_work_mode(p_workmode->current_mode);
+
+    shell_print(sh, "Switch mode OK:");
+    shell_print(sh, "  mode  = %s", mode_str);
+    if (p_workmode->current_mode == MY_MODE_SMART)
+    {
+        shell_print(sh, "  state = %s", state_str);
+    }
+
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  cmd_set_time
+**入口参数:  sh      ---        Shell 实例指针
+**           argc    ---        参数数量
+**           argv    ---        参数数组
+**出口参数:  无
+**函数功能:  设置系统时间（Unix 时间戳）
+**返 回 值:  0 表示成功，负数表示失败
+*********************************************************************/
+static int cmd_set_time(const struct shell *sh, size_t argc, char **argv)
+{
+    DeviceWorkModeConfig* p_workmode;
+    int ret;
+
+    p_workmode = get_workmode_config_ptr();
+
+    if (argc != 2)
+    {
+        shell_error(sh, "Usage: app settime <epoch_sec>");
+        shell_print(sh, "  <epoch_sec>: seconds since 1970-01-01 00:00:00 UTC");
+        return -EINVAL;
+    }
+
+    errno = 0;
+    unsigned long long epoch = strtoull(argv[1], NULL, 10);
+    if (errno != 0)
+    {
+        shell_error(sh, "Invalid number: %s", argv[1]);
+        return -EINVAL;
+    }
+
+    ret = my_set_system_time((time_t)epoch);
+    if (ret < 0)
+    {
+        shell_error(sh, "app_set_system_time failed, ret=%d", ret);
+        return ret;
+    }
+
+    if (p_workmode->current_mode == MY_MODE_LONG_LIFE)
+    {
+        my_send_msg(MOD_MAIN, MOD_MAIN, MY_MSG_RESET_LTE_TIMER);
+    }
+
+    shell_print(sh, "System time set to epoch: %llu", epoch);
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  cmd_get_time
+**入口参数:  sh      ---        Shell 实例指针
+**           argc    ---        参数数量
+**           argv    ---        参数数组
+**出口参数:  无
+**函数功能:  获取当前系统时间（Unix 时间戳）
+**返 回 值:  0 表示成功
+*********************************************************************/
+static int cmd_get_time(const struct shell *sh, size_t argc, char **argv)
+{
+    time_t second = my_get_system_time_sec();
+    shell_print(sh, "System time set to epoch: %llu", second);
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  cmd_modeset
+**入口参数:  sh      ---        Shell 实例指针
+**           argc    ---        参数数量
+**           argv    ---        参数数组
+**出口参数:  无
+**函数功能:  配置长续航或智能模式的各项参数
+**返 回 值:  0 表示成功，-1 表示失败
+*********************************************************************/
+static int cmd_modeset(const struct shell *sh, size_t argc, char **argv)
+{
+    DeviceWorkModeConfig* p_workmode;
+    char *endptr;
+    uint32_t mode_flag;
+    uint32_t report_interval, static_int, land_int, land_distance, sea_int;
+    uint8_t sleep_sw;
+
+    p_workmode = get_workmode_config_ptr();
+
+    /* 第一步：解析模式标识（mode_flag），校验是否为有效数字 */ 
+    mode_flag = strtoul(argv[1], &endptr, 10);
+    if (*endptr != '\0')
+    {
+        shell_print(sh, "Error: mode_flag must be a number (1 or 2)!");
+        return -1;
+    }
+
+    /* 第二步：根据模式标识校验参数个数，并处理对应逻辑 */ 
+    switch (mode_flag)
+    {
+        case 1: // 长续航模式
+        {
+            // 校验参数个数（app modeset 1 10 0001 → argc=4）
+            if (argc != 4)
+            {
+                shell_print(sh, "Invalid argument count for mode 1!");
+                shell_print(sh, "Usage: app modeset 1 <report_interval> <start_time>");
+                shell_print(sh, "  report_interval: 5-1440 minutes (range limit)");
+                shell_print(sh, "  start_time    : HHMM (24h format, 0000-2359)");
+                return -1;
+            }
+
+            // 解析并校验上报间隔（5-1440分钟）
+            report_interval = strtoul(argv[2], &endptr, 10);
+            if (*endptr != '\0' || report_interval < 5 || report_interval > 1440)
+            {
+                shell_print(sh, "Error: report_interval must be 5-1440 minutes!");
+                return -1;
+            }
+
+            // 校验启动时间格式（HHMM，4位数字）
+            if (strlen(argv[3]) != 4)
+            {
+                shell_print(sh, "Error: start_time must be 4 digits (HHMM)!");
+                return -1;
+            }
+            for (int i = 0; i < 4; i++)
+            {
+                if (!isdigit(argv[3][i]))
+                {
+                    shell_print(sh, "Error: start_time must be numeric (0000-2359)!");
+                    return -1;
+                }
+            }
+
+            // 设置长续航模式参数
+            set_long_battery_params(p_workmode, report_interval, argv[3]);
+            shell_print(sh, "Longlife mode config success!");
+        
+            break;
+        }
+        case 2: // 智能模式
+        {
+            // 校验参数个数（app modeset 2 s l ld se sw → argc=7）
+            if (argc != 7)
+            {
+                shell_print(sh, "Invalid argument count for mode 2!");
+                shell_print(sh, "Usage: app modeset 2 <static_int> <land_int> <land_distance> <sea_int> <sleep_sw>");
+                shell_print(sh, "  static_int    : Static state threshold (integer)");
+                shell_print(sh, "  land_int      : Land transport threshold (integer)");
+                shell_print(sh, "  land_distance : Land distance threshold (integer)");
+                shell_print(sh, "  sea_int       : Sea transport threshold (integer)");
+                shell_print(sh, "  sleep_sw      : Sleep switch (0/1/2)");
+                return -1;
+            }
+
+            // 解析并校验static_int（正整数）
+            static_int = strtoul(argv[2], &endptr, 10);
+            if (*endptr != '\0')
+            {
+                shell_print(sh, "Error: static_int must be an integer!");
+                return -1;
+            }
+
+            // 解析并校验land_int（正整数）
+            land_int = strtoul(argv[3], &endptr, 10);
+            if (*endptr != '\0')
+            {
+                shell_print(sh, "Error: land_int must be an integer!");
+                return -1;
+            }
+
+            // 解析并校验land_distance（正整数）
+            land_distance = strtoul(argv[4], &endptr, 10);
+            if (*endptr != '\0')
+            {
+                shell_print(sh, "Error: land_distance must be an integer!");
+                return -1;
+            }
+
+            // 解析并校验sea_int（正整数）
+            sea_int = strtoul(argv[5], &endptr, 10);
+            if (*endptr != '\0')
+            {
+                shell_print(sh, "Error: sea_int must be an integer!");
+                return -1;
+            }
+
+            // 解析并校验sleep_sw（仅支持0或1或2）
+            sleep_sw = (uint8_t)strtoul(argv[6], &endptr, 10);
+            if (*endptr != '\0' || (sleep_sw != 0 && sleep_sw != 1 && sleep_sw != 2))
+            {
+                shell_print(sh, "Error: sleep_sw must be 0 or 1 or 2!");
+                return -1;
+            }
+
+            // 设置智能模式参数
+            set_intelligent_params(p_workmode, static_int, land_int, sea_int, sleep_sw);
+            shell_print(sh, "Sensor mode config success!");
+            break;
+        }
+        default: // 不支持的模式标识
+            shell_print(sh, "Error: Unsupported mode_flag! Only 1 (longlife) or 2 (smart) are supported!");
+            return -1;
+    }
+
+    return 0;
+}
+
 /* 注册自定义命令到 Shell 子系统 */
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_app,
     SHELL_CMD(sysinfo, NULL, "Display system information", cmd_system_info),
@@ -112,6 +414,10 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_app,
     SHELL_CMD(memstat, NULL, "Display memory statistics", cmd_mem_stat),
     SHELL_CMD(gsensor, NULL, "Read G-Sensor 6-axis data", cmd_gsensor_read),
     SHELL_CMD(reboot, NULL, "Reboot system", cmd_reboot),
+    SHELL_CMD(switchmode, NULL, "Switch work mode", cmd_switch_mode),
+    SHELL_CMD(settime, NULL, "settime unix seconds ", cmd_set_time),
+    SHELL_CMD(gettime, NULL, "gettime unix seconds", cmd_get_time),
+    SHELL_CMD(modeset, NULL, "Configure longlife or smart mode parameters", cmd_modeset),
     SHELL_SUBCMD_SET_END
 );
 SHELL_CMD_REGISTER(app, &sub_app, "Application commands", NULL);

@@ -33,6 +33,9 @@
 /* 定时器回调函数类型定义 */
 typedef void (*TIMER_FUN)(void *param);
 
+#define DEFAULT_LONG_LIFE_INTERVAL      (4 * 60)
+#define DEFAULT_START_TIME              "0001"
+
 /* 消息结构体定义 */
 typedef struct MSG_S
 {
@@ -52,9 +55,32 @@ typedef enum
 /* 工作模式定义 */
 typedef enum
 {
-    MY_WORK_NORMAL = 0, // 工作模式
-    MY_LOW_POWER,       // 低功耗模式
+    MY_MODE_CONTINUOUS,     // 连续追踪模式
+    MY_MODE_LONG_LIFE,      // 长续航模式
+    MY_MODE_SMART,          // 智能模式
 } MY_WORK_MODE;
+
+// 长续航模式参数结构体
+typedef struct {
+    uint32_t reporting_interval_min;    // 上传间隔，单位：分钟（非负整数）
+    char start_time[5];                 // 开始时间，格式HHMM（24小时制，如"0001"），长度5含字符串结束符
+} LongBatteryMode;
+
+// 智能模式参数结构体
+typedef struct {
+    uint32_t stop_status_interval_sec;  // 停止状态上传间隔，单位：秒（非负整数）
+    uint32_t land_status_interval_sec;  // 陆运状态上传间隔，单位：秒（非负整数）
+    uint32_t sea_status_interval_sec;   // 海运状态上传间隔，单位：秒（非负整数）
+    uint8_t sleep_switch;               // 休眠开关，可设置范围：0/1/2
+} IntelligentMode;
+
+// 设备工作模式配置结构体
+typedef struct {
+    MY_WORK_MODE current_mode;
+    // 连续追踪模式的配置信息跟nordic无关,无需保存
+    LongBatteryMode long_battery;          // 长续航模式
+    IntelligentMode intelligent;           // 智能模式
+} DeviceWorkModeConfig;
 
 /*********************************************************************
 **函数名称:  my_system_reset
@@ -147,5 +173,62 @@ void my_delete_timer(int timerId);
 **返 回 值:  true 表示正在运行，false 表示未运行或不存在
 *********************************************************************/
 bool my_time_is_run(int timerId);
+
+/*********************************************************************
+**函数名称:  switch_work_mode
+**入口参数:  mode     --  要切换到的工作模式
+**出口参数:  无
+**函数功能:  切换工作模式，通过消息机制通知主线程
+*********************************************************************/
+void switch_work_mode(MY_WORK_MODE mode);
+
+/*********************************************************************
+**函数名称:  lte_power_check_timer_callback
+**入口参数:  timer    --  定时器指针
+**出口参数:  无
+**函数功能:  LTE电源检测定时器回调函数
+*********************************************************************/
+void lte_power_check_timer_callback(void *timer);
+
+/*********************************************************************
+**函数名称:  handle_long_life_mode
+**入口参数:  无
+**出口参数:  无
+**函数功能:  处理长续航模式逻辑
+*********************************************************************/
+void handle_long_life_mode(void);
+
+/*********************************************************************
+**函数名称:  handle_smart_mode
+**入口参数:  无
+**出口参数:  无
+**函数功能:  处理智能模式逻辑
+*********************************************************************/
+void handle_smart_mode(void);
+
+/*********************************************************************
+**函数名称:  handle_continuous_mode
+**入口参数:  无
+**出口参数:  无
+**函数功能:  处理连续追踪模式逻辑
+*********************************************************************/
+void handle_continuous_mode(void);
+
+/*********************************************************************
+**函数名称:  awaken_lte_timer_callback
+**入口参数:  timer    --  定时器指针
+**出口参数:  无
+**函数功能:  LTE唤醒定时器回调函数，用于唤醒LTE模块
+*********************************************************************/
+void awaken_lte_timer_callback(void *timer);
+
+/*********************************************************************
+**函数名称:  get_workmode_config_ptr
+**入口参数:  无
+**出口参数:  无
+**函数功能:  获取设备工作模式配置结构体指针
+**返 回 值:  返回 DeviceWorkModeConfig 结构体指针
+*********************************************************************/
+DeviceWorkModeConfig* get_workmode_config_ptr(void);
 
 #endif /* _MY_MAIN_H_ */

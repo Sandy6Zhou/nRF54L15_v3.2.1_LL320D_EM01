@@ -20,6 +20,10 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
+#include <time.h>
+#include <ctype.h>
+#include <psa/crypto.h>
 
 /* Zephyr核心 */
 #include <zephyr/device.h>
@@ -40,6 +44,7 @@
 #include <zephyr/sys/reboot.h>
 #include <zephyr/sys/util.h>
 #include <zephyr/sys/poweroff.h>
+#include <zephyr/sys/clock.h>
 
 /* Zephyr shell */
 #include <zephyr/shell/shell.h>
@@ -91,6 +96,7 @@ typedef enum
     MY_TIMER_ONE_MINUTE = 0, // 最核心定时器，一分钟定时器使用
     MY_TIMER_TEST,           // 1
     // MY_TIMER_WDT_FEED,       /* 看门狗喂狗定时器 */
+    MY_TIMER_LTE_POWER,      // LTE电源控制定时器
 
     MY_TIMER_MAX_ID,
 } MY_E_TIMER;
@@ -112,6 +118,15 @@ typedef enum
     MY_MSG_CTRL_LED,    /* LED 控制消息 */
     MY_MSG_CTRL_BUZZER, /* 蜂鸣器控制消息 */
     MY_MSG_GSENSOR_READ,   /* G-Sensor 读取六轴数据 */
+    MY_MSG_WORK_MODE_SWITCH,
+    MY_MSG_RESET_LTE_TIMER,
+    MY_MSG_LTE_PWRON,
+    MY_MSG_LTE_PWROFF,
+    MY_MSG_LTE_REV,
+    MY_MSG_GSENSOR_PWRON,
+    MY_MSG_GSENSOR_PWROFF,
+    MY_MSG_GSENSOR_GET_MOTION_STATUS,
+    MY_MSG_GSENSOR_INIT,
 
 } MY_MAIN_TASK_MSG;
 
@@ -127,5 +142,7 @@ typedef enum
 #include "my_motor.h"
 #include "my_battery.h"
 // #include "my_wdt.h"
+#include "my_tool.h"
+#include "my_cmd_setting.h"
 
 #endif /* _MY_COMMON_H_ */
