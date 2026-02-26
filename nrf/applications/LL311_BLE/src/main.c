@@ -453,6 +453,7 @@ void device_config_init(DeviceWorkModeConfig *p_workmode)
 int main(void)
 {
     int err = 0;
+    MSG_S msg;
 
     psa_crypto_init();  // PSA库初始化
     device_config_init(&g_workmode_config);
@@ -514,11 +515,6 @@ int main(void)
     {
         LOG_ERR("Failed to initialize Control module (err %d)", err);
     }
-    else
-    {
-        /* 启动时响一声提示音 */
-        my_ctrl_buzzer_play_tone(2000, 100);
-    }
 
     /* 初始化自定义任务信息 */
     custom_task_info_init();
@@ -527,9 +523,10 @@ int main(void)
     my_init_msg_handler(MOD_MAIN, &my_main_msgq);
 
     /* 主循环：等待并处理消息，逻辑已迁移至各线程 */
-    MSG_S msg;
     for (;;)
     {
+        memset(&msg, 0, sizeof(MSG_S));
+
         my_recv_msg(&my_main_msgq, (void *)&msg, sizeof(MSG_S), K_FOREVER);
 
         switch (msg.msgID)

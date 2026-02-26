@@ -320,6 +320,9 @@ int my_ctrl_init(k_tid_t *tid)
     /* 5. 设置线程名称 */
     k_thread_name_set(*tid, "MY_CTRL");
 
+    /* 启动时响一声提示音 */
+    my_ctrl_buzzer_play_tone(2000, 100);
+
     LOG_INF("Control module initialized");
     return 0;
 }
