@@ -11,6 +11,7 @@ project(LL311_BLE)
 # NORDIC SDK APP START
 target_sources(app PRIVATE
   src/main.c
+  src/my_ring_buf.c
   src/my_shell.c
   src/my_ble_core.c
   src/my_lte.c
