@@ -15,6 +15,9 @@
 #ifndef _MY_SHELL_H_
 #define _MY_SHELL_H_
 
+#define CMD_MATCHED(data,header)  (strncmp(data,header,strlen(header))==0)
+#define CMD_EQUAL(data,header)  (strcmp(data,header)==0)
+
 /********************************************************************
 **函数名称:  my_shell_init
 **入口参数:  无

@@ -48,4 +48,16 @@ int calculate_remaining_seconds(const char *start_time, int interval_min, long l
 *********************************************************************/
 psa_status_t rand_0_to_120_seconds(uint32_t *p_seconds);
 
+/************************************************************************
+**函数名称:  my_get_str_at_pos
+**入口参数:  szInput            ---       输入的原始字符串
+**           iPos               ---       要提取的字段在分隔符分割后的位置（从0开始）
+**           cSplit             ---       字段分隔符（如',' '|'等）
+**           szOutBuf           ---       输出缓冲区，存放提取到的字符串
+**           iBuffLen           ---       输出缓冲区长度（需预留'\0'空间）
+**出口参数:  bool               ---       true=提取后还有后续字段，false=无后续字段
+**函数功能:  按指定分隔符分割字符串，提取第iPos个位置的字段到输出缓冲区，防缓冲区溢出
+*************************************************************************/
+bool my_get_str_at_pos(char *szInput, uint16_t iPos, char cSplit, char *szOutBuf, uint16_t iBuffLen);
+
 #endif

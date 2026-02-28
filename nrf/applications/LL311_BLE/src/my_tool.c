@@ -198,3 +198,53 @@ psa_status_t rand_0_to_120_seconds(uint32_t *p_seconds)
 
     return PSA_SUCCESS;
 }
+
+/************************************************************************
+**函数名称:  my_get_str_at_pos
+**入口参数:  szInput            ---       输入的原始字符串
+**           iPos               ---       要提取的字段在分隔符分割后的位置（从0开始）
+**           cSplit             ---       字段分隔符（如',' '|'等）
+**           szOutBuf           ---       输出缓冲区，存放提取到的字符串
+**           iBuffLen           ---       输出缓冲区长度（需预留'\0'空间）
+**出口参数:  bool               ---       true=提取后还有后续字段，false=无后续字段
+**函数功能:  按指定分隔符分割字符串，提取第iPos个位置的字段到输出缓冲区，防缓冲区溢出
+*************************************************************************/
+bool my_get_str_at_pos(char *szInput, uint16_t iPos, char cSplit, char *szOutBuf, uint16_t iBuffLen)
+{
+    uint16_t i = 0;
+    char *c = szInput;
+    char *p = szOutBuf;
+    bool bHasMore = 0;
+
+    if (szInput == NULL)
+        return 0;
+
+    while (*c != '\0')
+    {
+        if (i == iPos && *c != cSplit)
+        {
+            *p++ = *c;
+
+            // 防止溢出，后面还要往这个 szBuf[iBuffLen-1] 放入结尾符
+            if (p >= (szOutBuf + iBuffLen - 1))
+                break;
+        }
+        else if (i > iPos)
+        {
+            bHasMore = 1;
+            break;
+        }
+
+        if (*c == cSplit)
+        {
+            i++;
+        }
+
+        c++;
+    }
+
+    *p = '\0';
+
+    return bHasMore;
+}
+

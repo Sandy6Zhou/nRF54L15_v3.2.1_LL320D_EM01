@@ -13,8 +13,26 @@
 
 #include "my_comm.h"
 
+// 串口协议报文头定义清单
+char LTE_PWRON[] = "LTE+PWRON=";
+char LTE_BTSET[] = "LTE+BTSET=";
+char LTE_NTCSET[] = "LTE+NTCSET=";
+char LTE_TIME[] = "LTE+TIME=";
+char LTE_NFCAUTH[] = "LTE+NFCAUTH=";
+char LTE_NFCTRIG[] = "LTE+NFCTRIG=";
+char LTE_TRANSMIT[] = "LTE+TRANSMIT=";
+char LTE_LOCK[] = "LTE+LOCK=";
+char LTE_BUZZER[] = "LTE+BUZZER=";
+char LTE_LED[] = "LTE+LED=";
+char LTE_FOTA[] = "LTE+FOTA=";
+char LTE_STATE[] = "LTE+STATE=";
+
 /* LTE电源状态跟踪 */
 static bool g_lte_power_state = false;  // false=关闭, true=开启
+
+// 4G模块是否完成开机，开机后可以进行正常数据收发
+// 0: 未开机； 1: 已开机(并发送了开机消息LTE+PWRON)
+bool g_bLteReady = 0;
 
 /* 注册 LTE 模块日志 */
 LOG_MODULE_REGISTER(my_lte, LOG_LEVEL_INF);
@@ -73,6 +91,7 @@ static void my_lte_task(void *p1, void *p2, void *p3)
 
             case MY_MSG_LTE_PWROFF:
                 my_lte_pwr_on(false);
+                g_bLteReady = 0;
                 break;
 
             // 收到4G发送的消息,例如返回UTC时间,在里面进行数据解析
@@ -171,10 +190,14 @@ static void lte_uart_cb(const struct device *dev, struct uart_event *evt, void *
 *********************************************************************/
 int my_lte_uart_send(const uint8_t *data, uint16_t len)
 {
+#if 0
     if (len == 0 || data == NULL)
     {
         return -EINVAL;
     }
+#endif
+
+    if (!g_bLteReady) return -1;
 
     return uart_tx(lte_uart_dev, data, len, SYS_FOREVER_MS);
 }
@@ -214,10 +237,246 @@ int my_lte_pwr_on(bool on)
     return err;
 }
 
-void my_lte_parse_cmd(char *cmd, int cmd_len)
+/*
+ * 4G模块上电后发送的第一条指令
+ * BLE收到此条报文后才能给4G模块发送指令
+ *
+ * LTE+PWRON=<上电原因>,<固件版本号>
+ */
+static int my_lte_handle_power_on(char *data)
 {
-    // TODO:
+    g_bLteReady = 1;
+
+    return 0;
+}
+
+/*
+LTE+BTSET=ADVINT,<TC>,<TA>,< TF >
+LTE+BTSET=ADVNME,<广播名称>
+LTE+BTSET=TAGADV,<开关状态>
+LTE+BTSET=CRFPWR,<功率值>
+LTE+BTSET=SCANSET,T1,T2
+LTE+BTSET=SCANREQ,< 超时时间 >
+*/
+static int my_lte_handle_bt_set(char *data)
+{
+    char param_name[16] = {0};
+    char value_buff[16] = {0};
+
+    my_get_str_at_pos(data, 0, ',', param_name, sizeof(param_name));
+
+    if (CMD_EQUAL(param_name, "ADVINT"))
+    {
+        // TODO
+        // 继续调用my_get_str_at_pos提取参数
+        // my_get_str_at_pos(data, 1, ',', value_buff, sizeof(value_buff));
+        // my_get_str_at_pos(data, 2, ',', value_buff, sizeof(value_buff));
+    }
+    else if (CMD_EQUAL(param_name, "ADVNME"))
+    {
+        ;
+    }
+    else if (CMD_EQUAL(param_name, "TAGADV"))
+    {
+        ;
+    }
+    else if (CMD_EQUAL(param_name, "CRFPWR"))
+    {
+        ;
+    }
+    else if (CMD_EQUAL(param_name, "SCANSET"))
+    {
+        ;
+    }
+    else if (CMD_EQUAL(param_name, "SCANREQ"))
+    {
+        ;
+    }
+
+    return 0;
+}
+
+/*
+ * LTE+TIME=UTC秒数,时区(分钟)
+ */
+static int my_lte_handle_time(char *data)
+{
+    char utc_seconds[16] = {0};
+    char zone_in_min[16] = {0};
+
+    my_get_str_at_pos(data, 0, ',', utc_seconds, sizeof(utc_seconds));
+    my_get_str_at_pos(data, 1, ',', zone_in_min, sizeof(zone_in_min));
+
+    return 0;
+}
+
+/*
+ * LTE+NTCSET=<SW>,<停止充电低温阈值>,<停止充电高温阈值 >,<恢复充电低温阈值>,<恢复充电高温阈值>
+ */
+static int my_lte_handle_ntc_set(char *data)
+{
+    char value_buff[16] = {0};
+
+    // 用value_buff依次提取各个参数
+    my_get_str_at_pos(data, 0, ',', value_buff, sizeof(value_buff));
+
+    return 0;
+}
+
+/*
+LTE+NFCAUTH=SET,<NFC.NO>,<OP>,<LAT>,<LON>,<半径>,<startTime>,<endTime>,<Unlock Times>
+LTE+NFCAUTH=PSET,<NFC.NO>
+LTE+NFCAUTH=DEL,ALL
+LTE+NFCAUTH=DEL,<NFC.NO>
+LTE+NFCAUTH=CHECK,<NFC.NO>
+*/
+static int my_lte_handle_nfc_auth(char *data)
+{
+    char cmd_name[16] = {0};
+    char val_buff[16] = {0};
+
+    my_get_str_at_pos(data, 0, ',', cmd_name, sizeof(cmd_name));
+
+    if (CMD_EQUAL(cmd_name, "SET"))
+    {
+    }
+    else if (CMD_EQUAL(cmd_name, "PSET"))
+    {
+    }
+    else if (CMD_EQUAL(cmd_name, "DEL"))
+    {
+    }
+    else if (CMD_EQUAL(cmd_name, "CHECK"))
+    {
+    }
+
+    return 0;
+}
+
+/*
+ * LTE+NFCTRIG=<联动卡号>,<Command>
+ */
+static int my_lte_handle_nfc_trig(char *data)
+{
+    return 0;
+}
+
+/*
+0: 开锁
+LTE+LOCK=0,<Time>,<Delay>
+
+1: 上锁
+LTE+LOCK=1,<Time>,<Delay> // Time, Delay 可选
+
+DT: 设置延迟上锁时间
+LTE+LOCK=DT,<延迟时间>
+*/
+static int my_lte_handle_lock(char *data)
+{
+    char cmd_name[16] = {0};
+    char val_buff[16] = {0};
+
+    my_get_str_at_pos(data, 0, ',', cmd_name, sizeof(cmd_name));
+
+    // 开锁
+    if (CMD_EQUAL(cmd_name, "0"))
+    {
+    }
+    // 上锁
+    else if (CMD_EQUAL(cmd_name, "1"))
+    {
+    }
+    // 自动上锁延迟时间
+    else if (CMD_EQUAL(cmd_name, "DT"))
+    {
+    }
+
+    return 0;
+}
+
+static int my_lte_handle_transmit(char *data)
+{
+    return 0;
+}
+
+static int my_lte_handle_buzzer(char *data)
+{
+    return 0;
+}
+
+static int my_lte_handle_led(char *data)
+{
+    return 0;
+}
+
+static int my_lte_handle_fota(char *data)
+{
+    return 0;
+}
+
+/*
+ * 处理各个协议指令
+ * cmd为已经拆分好的单条指令
+ */
+static int my_lte_parse_cmd(char *cmd, int cmd_len)
+{
+    int ret = 0;
+    char *p = cmd;
+
+    if (0 == strlen(cmd) || 0 == cmd_len)
+    {
+        return -1;
+    }
+
     LOG_INF("%s: %s", __func__, cmd);
+
+    // 按使用频次由高到低排序?
+    if (CMD_MATCHED(cmd, LTE_PWRON))
+    {
+        ret = my_lte_handle_power_on(p + strlen(LTE_PWRON));
+    }
+    else if (CMD_MATCHED(cmd, LTE_BTSET))
+    {
+        ret = my_lte_handle_bt_set(p + strlen(LTE_BTSET));
+    }
+    else if (CMD_MATCHED(cmd, LTE_TIME))
+    {
+        ret = my_lte_handle_time(p + strlen(LTE_TIME));
+    }
+    else if (CMD_MATCHED(cmd, LTE_NTCSET))
+    {
+        ret = my_lte_handle_ntc_set(p + strlen(LTE_NTCSET));
+    }
+    else if (CMD_MATCHED(cmd, LTE_NFCAUTH))
+    {
+        ret = my_lte_handle_nfc_auth(p + strlen(LTE_NFCAUTH));
+    }
+    else if (CMD_MATCHED(cmd, LTE_NFCTRIG))
+    {
+        ret = my_lte_handle_nfc_trig(p + strlen(LTE_NFCTRIG));
+    }
+    else if (CMD_MATCHED(cmd, LTE_LOCK))
+    {
+        ret = my_lte_handle_lock(p + strlen(LTE_LOCK));
+    }
+    else if (CMD_MATCHED(cmd, LTE_TRANSMIT))
+    {
+        ret = my_lte_handle_transmit(p + strlen(LTE_TRANSMIT));
+    }
+    else if (CMD_MATCHED(cmd, LTE_BUZZER))
+    {
+        ret = my_lte_handle_buzzer(p + strlen(LTE_BUZZER));
+    }
+    else if (CMD_MATCHED(cmd, LTE_LED))
+    {
+        ret = my_lte_handle_led(p + strlen(LTE_LED));
+    }
+    else if (CMD_MATCHED(cmd, LTE_FOTA))
+    {
+        ret = my_lte_handle_fota(p + strlen(LTE_FOTA));
+    }
+
+    return ret;
 }
 
 
