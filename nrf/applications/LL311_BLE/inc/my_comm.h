@@ -45,6 +45,8 @@
 #include <zephyr/sys/util.h>
 #include <zephyr/sys/poweroff.h>
 #include <zephyr/sys/clock.h>
+#include <zephyr/storage/flash_map.h>
+#include <zephyr/fs/zms.h>
 
 /* Zephyr shell */
 #include <zephyr/shell/shell.h>
@@ -145,5 +147,6 @@ typedef enum
 // #include "my_wdt.h"
 #include "my_tool.h"
 #include "my_cmd_setting.h"
+#include "my_zms_param.h"
 
 #endif /* _MY_COMMON_H_ */

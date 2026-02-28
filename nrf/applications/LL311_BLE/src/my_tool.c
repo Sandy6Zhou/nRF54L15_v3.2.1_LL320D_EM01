@@ -248,3 +248,297 @@ bool my_get_str_at_pos(char *szInput, uint16_t iPos, char cSplit, char *szOutBuf
     return bHasMore;
 }
 
+/********************************************************************
+**函数名称:  string_check_is_hex_str
+**入口参数:  str: 输入的字符串
+**出口参数:  无
+**函数功能:  检测字符串是不是全是十六进制数据组成(0~9,a,b,c,d,e,f,A,B,C,D,E,F)
+**返 回 值:  返回字符串的长度,0表示错误
+*********************************************************************/
+uint8_t string_check_is_hex_str(const char* str)
+{
+    uint8_t no_count = 0;
+
+    if (str == NULL)
+    {
+        return 0;
+    }
+
+    while (*str)
+    {
+        if ((*str >= '0' && *str <= '9') ||
+            (*str >= 'a' && *str <= 'f') ||
+            (*str >= 'A' && *str <= 'F'))
+        {
+            no_count++;
+            str++;
+        }
+        else
+        {
+            return 0;
+        }
+    }
+    return no_count;
+}
+
+/********************************************************************
+**函数名称:  hexstr_to_hex
+**入口参数:  dest: 目标数组, dest_size: 目标数组长度, src: 原始字符串
+**出口参数:  无
+**函数功能:  将十六进制字符串转换成十六进制数组
+**返 回 值:  返回十六进制数组长度,0表示错误
+*********************************************************************/
+uint8_t hexstr_to_hex(uint8_t *dest, uint8_t dest_size, const char *src)
+{
+    uint8_t offset = 0;
+    uint8_t temp_data = 0;
+    uint8_t hex_data = 0;
+    uint8_t byte_count = 0;
+
+    if (dest == NULL || src == NULL || dest_size == 0)
+    {
+        return 0;
+    }
+
+    while(*src)
+    {
+        if (*src >= '0' && *src <= '9')
+        {
+            temp_data = (uint8_t)(*src - '0');
+        }
+        else if (*src >= 'A' && *src <= 'F')
+        {
+            temp_data = (uint8_t)(*src - 'A' + 0x0A);
+        }
+        else if (*src >= 'a' && *src <= 'f')
+        {
+            temp_data = (uint8_t)(*src - 'a' + 0x0A);
+        }
+        else
+        {
+            return 0;
+        }
+
+
+        if (offset % 2)
+        {
+            hex_data |= (temp_data & 0x0F);
+            dest[byte_count] = hex_data;
+            byte_count++;
+
+            // 检查缓冲区边界
+            if (byte_count >= dest_size) {
+                break;
+            }
+        }
+        else
+        {
+            hex_data = ((temp_data << 4) & 0xf0);
+        }
+
+        offset++;
+        src++;
+    }
+
+    return ((offset / 2) + (offset % 2));
+}
+
+/********************************************************************
+**函数名称:  hex2ascii
+**入口参数:  digit: 要转换的十六进制数字(0-15)
+**出口参数:  无
+**函数功能:  将十六进制数字转换成ASCII字符
+**返 回 值:  返回对应的ASCII字符
+*********************************************************************/
+uint8_t hex2ascii(uint8_t digit)
+{
+    uint8_t val;
+
+    if (digit <= 9) {
+        val = digit - 0x0 + '0';
+    } else {
+        val = digit - 0xA + 'A';
+    }
+
+    return val;
+}
+
+/********************************************************************
+**函数名称:  hex2hexstr
+**入口参数:  hex: 十六进制数组, hex_len: 十六进制数组长度, str: 十六进制字符串, str_len: 十六进制字符串长度
+**出口参数:  无
+**函数功能:  将十六进制数组转换成十六进制字符串
+**返 回 值:  无
+*********************************************************************/
+void hex2hexstr(uint8_t *hex, uint16_t hex_len, uint8_t *str, uint16_t str_len)
+{
+    uint16_t i = 0,j=0;
+    uint8_t *buf = str;
+
+    if (str_len < 2*hex_len) {
+        LOG_INF("str_len is too small.");
+        return;
+    }
+
+    while(hex_len--)
+    {
+
+        buf[j++] = hex2ascii((hex[i] >> 4) & 0x0f);
+        buf[j++] = hex2ascii(hex[i] & 0x0f);
+        i++;
+    }
+    buf[j] = 0;
+}
+
+/********************************************************************
+**函数名称:  string_check_is_number
+**入口参数:  flag: flag & 1 允许字符串中包含'+'或'-', flag & 2 允许字符串中包含'.', flag & 4 数字不允许大于7或小于1, str: 传入的字符串
+**出口参数:  无
+**函数功能:  检测字符串是不是全是数字组成
+**返 回 值:  返回有效的字符数
+*********************************************************************/
+uint8_t string_check_is_number(uint8_t flag, const char* str)
+{
+    uint8_t no_count = 0;
+    while (*str)
+    {
+        if ((flag & 1) && no_count == 0 && (*str == '+' || *str == '-'))
+        {
+            no_count++;
+            str++;
+        }
+        else if ((flag & 2) && *str == '.')
+        {
+            flag &= ~2;
+            no_count++;
+            str++;
+        }
+        else if (*str >= '0' && *str <= '9')
+        {
+            no_count++;
+            str++;
+        }
+        else
+        {
+            return 0;
+        }
+    }
+    return no_count;
+}
+
+/********************************************************************
+**函数名称:  HexChar2HexData
+**入口参数:  c: 输入的字符
+**出口参数:  无
+**函数功能:  将十六进制字符转换成十六进制数据
+**返 回 值:  返回对应的十六进制值,0xFF表示无效字符
+*********************************************************************/
+static uint8_t HexChar2HexData(char c)
+{
+    uint8_t hex = 0x00;
+
+    if (c >= '0' && c <= '9')
+        hex = (uint8_t)(c - '0');
+    else if (c >= 'A' && c <= 'F')
+        hex = (uint8_t)(c-'A'+0x0A);
+    else if (c >= 'a' && c <= 'f')
+        hex = (uint8_t)(c-'a'+0x0A);
+    else
+        hex = 0xFF;
+
+    return hex;
+}
+
+/********************************************************************
+**函数名称:  macstr_to_hex
+**入口参数:  mac_str: MAC地址字符串, hex: 存储十六进制数据的指针
+**出口参数:  无
+**函数功能:  将MAC地址字符串转换为十六进制数据
+**返 回 值:  转换成功返回true,失败返回false
+*********************************************************************/
+bool macstr_to_hex(const char *mac_str, uint8_t *hex)
+{
+    uint16_t len;
+    char mystr[20];
+    uint8_t *hex_p;
+    uint16_t offset = 0;
+    uint8_t hex_data_count = 0;
+    uint8_t hex_H = 0x00;
+    uint8_t hex_L = 0x00;
+
+    if (mac_str == NULL)
+        return false;
+
+    len = strlen(mac_str);
+
+    if (len == 12 || len == 17)
+    {
+        hex_p = hex;
+
+        memset(mystr,0,sizeof mystr);
+        strcpy(mystr, (const char*)mac_str);
+        while(offset < len)
+        {
+            if (mystr[offset] == ':')
+            {
+                if (offset      == 2
+                    || offset   == 5
+                    || offset   == 8
+                    || offset   == 11
+                    || offset   == 14
+                )
+                {
+                    offset++;
+                }
+                else
+                    return false;
+            }
+            else
+            {
+                hex_H = 0x00;
+                hex_L = 0x00;
+
+                hex_H = HexChar2HexData(mystr[offset++]);
+                hex_L = HexChar2HexData(mystr[offset++]);
+                if (hex_H == 0xFF || hex_L == 0xFF)
+                    return false;
+
+                hex_data_count++;
+                if (hex_data_count > 6)
+                    return false;
+
+                *hex_p++ = ((hex_H << 4) & 0xF0) + (hex_L & 0x0F);
+             }
+        }
+        return true;
+    }
+
+    return false;
+}
+
+/********************************************************************
+**函数名称:  char_array_reverse
+**入口参数:  src: 输入的源数组, dest: 输出的逆序目标数组, src_len: src数组长度, dest_len: dest数组长度
+**出口参数:  无
+**函数功能:  字符数组整体逆序（无字符串终止符，纯字节操作）
+**返 回 值:  0: 成功; -1: 入参无效（空指针/长度为0）; -2: src/dest长度不一致;
+*********************************************************************/
+int char_array_reverse(const uint8_t *src, uint32_t src_len, uint8_t *dest, uint32_t dest_len)
+{
+    // 入参合法性检查（空指针/长度为0）
+    if (src == NULL || dest == NULL || src_len == 0 || dest_len == 0) {
+        return -1; // 入参为空或长度为0
+    }
+
+    // src和dest长度必须完全一致
+    if (src_len != dest_len) {
+        return -2; // src/dest长度不一致，直接返回
+    }
+
+    // 纯字节操作，无字符串终止符
+    for (uint32_t i = 0; i < src_len; i++) {
+        dest[i] = src[src_len - 1 - i];
+    }
+
+    return 0;
+}

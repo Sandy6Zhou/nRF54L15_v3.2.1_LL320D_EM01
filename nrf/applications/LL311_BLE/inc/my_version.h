@@ -12,7 +12,18 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260207"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260228"
+/* 软件版本:        V1.0
+** 完成日期:        2026.02.28
+** 作    者:        周森达 (zhousenda@jimiiot.com)
+** 修改内容:        1.增加双路广播TAG(默认只开启IOS,预留GOOGLE)
+**                 2.增加自定义SHELL指令并解析(RTT串口发送格式为:app AT_TEST "AT^GT_CM=PCBA,BT,xxxx")
+**                 3.增加自定义数据读写接口并增加部分指令(FF、GG、IMEI、MODIFYGV、JATAG、JGTAG、MAC)
+**                 4.暂时更改蓝牙设备名字为LL311-xxxxx(IMEI后五位)
+                   注：后续可再优化一版,同时开三路广播(一路可连接、两路不可连接),两路不可连接是常广播状态(独立不受可连接广播的影响)
+*/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260207"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.02.06
 ** 作    者:        Harrison Wu (wuyujiao@jimiiot.com)

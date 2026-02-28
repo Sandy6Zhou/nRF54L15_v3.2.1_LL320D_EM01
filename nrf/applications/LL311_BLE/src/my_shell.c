@@ -407,6 +407,76 @@ static int cmd_modeset(const struct shell *sh, size_t argc, char **argv)
     return 0;
 }
 
+/********************************************************************
+**函数名称:  my_shell_handle_rx
+**入口参数:  pData    ---        接收到的数据缓冲区
+**           iLen     ---        数据长度
+**出口参数:  无
+**函数功能:  处理接收到的字符串，解析并执行命令
+**返 回 值:  无
+*********************************************************************/
+static void my_shell_handle_rx(uint8_t *pData, uint32_t iLen)
+{
+    static char command[MAX_CMD_LEN] = {0};
+    static uint32_t index = 0;
+    uint32_t i;
+
+    for (i = 0; i < iLen; i++)
+    {
+        if (pData[i] == '\r' || pData[i] == '\n') // 回车是\r 为了兼容同时处理 \n
+        {
+            my_lte_parse_cmd(command, index);
+
+            command[0] = 0;
+            index = 0;
+
+            // 如果下个字符是\n，跳过
+            if (pData[i + 1] == '\n')
+            {
+                i++;
+            }
+        }
+        else if (index < (MAX_CMD_LEN - 1))
+        {
+            command[index++] = pData[i];
+            command[index] = '\0';
+        }
+    }
+}
+
+/********************************************************************
+**函数名称:  shell_at_test
+**入口参数:  sh       ---        shell结构体指针
+**           argc     ---        参数个数
+**           argv     ---        参数数组
+**出口参数:  无
+**函数功能:  AT测试命令处理函数
+**返 回 值:  0表示成功，-EINVAL表示参数错误
+*********************************************************************/
+static int shell_at_test(const struct shell *sh, size_t argc, char **argv)
+{
+    uint8_t rx_buff[512] = {0};
+    int len;
+
+    if (argc < 2) {
+        shell_error(sh, "Missing parameter");
+        return -EINVAL;
+    }
+
+    len = strlen(argv[1]);
+    memcpy(rx_buff, argv[1], len);
+    // 手动增加\r\n，使得my_shell_handle_rx能识别到
+    rx_buff[len++] = '\r';
+    rx_buff[len++] = '\n';
+    rx_buff[len] = 0;
+
+    shell_print(sh, "param: %s, len: %d", argv[1], len);
+
+    my_shell_handle_rx(rx_buff, len);
+
+    return 0;
+}
+
 /* 注册自定义命令到 Shell 子系统 */
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_app,
     SHELL_CMD(sysinfo, NULL, "Display system information", cmd_system_info),
@@ -418,8 +488,12 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_app,
     SHELL_CMD(settime, NULL, "settime unix seconds ", cmd_set_time),
     SHELL_CMD(gettime, NULL, "gettime unix seconds", cmd_get_time),
     SHELL_CMD(modeset, NULL, "Configure longlife or smart mode parameters", cmd_modeset),
+    SHELL_CMD(AT_TEST, NULL, "Usage:app AT_TEST \"TEST xxxx(AT^GT_CM=xxxx)\"", shell_at_test),
     SHELL_SUBCMD_SET_END
 );
+/* Zephyr Shell 子系统提供的宏，随 nRF Connect SDK一起提供，用来在 Shell里注册一个“根命令”
+ * 这个宏在头文件zephyr/shell/shell.h里定义，是Zephyr的Shell API的一部分
+ */
 SHELL_CMD_REGISTER(app, &sub_app, "Application commands", NULL);
 
 /********************************************************************

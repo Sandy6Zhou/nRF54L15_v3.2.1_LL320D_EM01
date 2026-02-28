@@ -61,6 +61,17 @@ K_MSGQ_DEFINE(my_lte_msgq, sizeof(MSG_S), 10, 4);
 K_THREAD_STACK_DEFINE(my_lte_task_stack, MY_LTE_TASK_STACK_SIZE);
 static struct k_thread my_lte_task_data;
 
+// 产测指令
+const char FACTORY_CMD_HEADER[] = "AT^GT_CM=";
+
+/* { visible, command, help, function } */
+CMD_STRUC AT_CMD_INNER[] = {
+
+    {1, "TEST",      "AT CMD TEST",             my_at_test},
+
+    {0, NULL,        NULL,                      NULL}
+};
+
 /********************************************************************
 **函数名称:  my_lte_task
 **入口参数:  无
@@ -235,6 +246,403 @@ int my_lte_pwr_on(bool on)
     }
 
     return err;
+}
+
+/********************************************************************
+**函数名称:  my_handle_at_pcba_cmd
+**入口参数:  pParam   ---        AT命令参数数组
+**           nParam   ---        参数个数
+**出口参数:  无
+**函数功能:  处理PCBA工厂命令，包括FF/GG/JATAG/JGTAG/MODIFYGV/IMEI/MAC等指令
+**返 回 值:  响应字符串指针
+*********************************************************************/
+static char *my_handle_at_pcba_cmd(char **pParam, int nParam)
+{
+    static char resp[256];
+    const lic_ff_struct *lic_ff;
+    const lic_gg_struct *lic_gg;
+    uint16_t ECDH_GValue;
+    uint8_t data_buff[64] = {0};
+    const GsmImei_t *gsmImei;
+    const uint8_t *edr_addr;
+    int ret;
+
+    memset(resp, 0, sizeof(resp));
+
+    // 产测指令至少有两个参数，且第一个参数一定是“PCBA”
+    // AT^GT_CM=PCBA,<xxx>
+    if (nParam < 2 || CMD_MATCHED(pParam[0], "PCBA") == 0)
+    {
+        sprintf(resp, "Factory CMD ERROR");
+        return resp;
+    }
+
+    // SMT测试指令
+    // AT^GT_CM=PCBA,BT,xxxx
+    if (CMD_MATCHED(pParam[1], "BT"))
+    {
+        if (nParam < 3)
+        {
+            sprintf(resp, "BT params error");
+            return resp;
+        }
+        else if (CMD_MATCHED(pParam[2], "FF"))
+        {
+            // AT^GT_CM=PCBA,BT,FF
+            if (nParam == 3)
+            {
+                lic_ff = my_param_get_ff();
+                if (lic_ff->flag == FLAG_VALID)
+                {
+                    hex2hexstr(lic_ff->hex, LICENSE_FF_STR_LEN / 2, data_buff, sizeof(data_buff));
+                    sprintf(resp, "RETURN_FF:%s", data_buff);
+                }
+                else
+                {
+                    sprintf(resp, "RETURN_FF");
+                }
+            }
+            // AT^GT_CM=PCBA,BT,FF,xxxx
+            else
+            {
+                my_param_set_ff(pParam[3], strlen(pParam[3]));
+                sprintf(resp, "RETURN_FF_SET_OK");
+            }
+        }
+        else if (CMD_MATCHED(pParam[2], "GG"))
+        {
+            // AT^GT_CM=PCBA,BT,GG
+            if (nParam == 3)
+            {
+                lic_gg = my_param_get_gg();
+                if (lic_gg->flag == FLAG_VALID)
+                {
+                    hex2hexstr(lic_gg->hex, LICENSE_GG_STR_LEN / 2, data_buff, sizeof(data_buff));
+                    sprintf(resp, "RETURN_GG:%s", data_buff);
+                }
+                else
+                {
+                    sprintf(resp, "RETURN_GG");
+                }
+            }
+            // AT^GT_CM=PCBA,BT,GG,xxxx
+            else
+            {
+                my_param_set_gg(pParam[3], strlen(pParam[3]));
+                sprintf(resp, "RETURN_GG_SET_OK");
+            }
+        }
+        else if (CMD_MATCHED(pParam[2], "JATAG"))
+        {
+            // AT^GT_CM=PCBA,BT,JATAG,ON/OFF
+            if (nParam == 4)
+            {
+                ret = my_param_set_jatag_or_jgtag(pParam[2], pParam[3]);
+                if (ret == 0) {
+                    sprintf(resp, "RETURN_JATAG_%s_OK", pParam[3]);
+                }else {
+                    sprintf(resp, "RETURN_JATAG_%s_FAIL", pParam[3]);
+                }
+            }
+            else
+            {
+                sprintf(resp, "RETURN_JATAG_SET_FAIL");
+            }
+        }
+        else if (CMD_MATCHED(pParam[2], "JGTAG"))
+        {
+            // AT^GT_CM=PCBA,BT,JGTAG,ON/OFF
+            if (nParam == 4)
+            {
+                ret = my_param_set_jatag_or_jgtag(pParam[2], pParam[3]);
+                if (ret == 0) {
+                    sprintf(resp, "RETURN_JGTAG_%s_OK", pParam[3]);
+                }else {
+                    sprintf(resp, "RETURN_JGTAG_%s_FAIL", pParam[3]);
+                }
+            }
+            else
+            {
+                sprintf(resp, "RETURN_JGTAG_SET_FAIL");
+            }
+        }
+        else if (CMD_MATCHED(pParam[2], "MODIFYGV"))
+        {
+            // AT^GT_CM=PCBA,BT,MODIFYGV
+            if (nParam == 3)
+            {
+                ECDH_GValue = my_param_get_Gvalue();
+                sprintf(resp, "RETURN_GV:%d (%04X)", ECDH_GValue, ECDH_GValue);
+            }
+            // AT^GT_CM=PCBA,BT,MODIFYGV,xxxx
+            else
+            {
+                ret = my_param_set_Gvalue(pParam[3]);
+                if (ret == 0){
+                    sprintf(resp, "RETURN_MODIFYGV_SET_OK");
+                } else {
+                    sprintf(resp, "RETURN_MODIFYGV_SET_FAIL");
+                }
+            }
+        }
+        else if (CMD_MATCHED(pParam[2], "IMEI"))
+        {
+            // AT^GT_CM=PCBA,BT,IMEI
+            if (nParam == 3)
+            {
+                gsmImei = my_param_get_imei();
+                if (gsmImei->flag == FLAG_VALID)
+                {
+                    memcpy(data_buff, gsmImei->hex, sizeof(gsmImei->hex));
+                    sprintf(resp, "RETURN_IMEI:%s", data_buff);
+                }
+                else
+                {
+                    sprintf(resp, "RETURN_IMEI");
+                }
+            }
+            // AT^GT_CM=PCBA,BT,IMEI,xxxx
+            else
+            {
+                ret = my_param_set_imei(pParam[3], strlen(pParam[3]));
+                if (ret == 0){
+                    //TODO 更新广播数据？
+                    sprintf(resp, "RETURN_IMEI_SET_OK");
+                } else {
+                    sprintf(resp, "RETURN_IMEI_SET_FAIL");
+                }
+            }
+        }
+        else if (CMD_MATCHED(pParam[2], "MAC"))
+        {
+            // AT^GT_CM=PCBA,BT,MAC
+            if (nParam == 3)
+            {
+                edr_addr = bt_get_mac_addr();
+                sprintf(resp, "RETURN_BT_MAC:%02X%02X%02X%02X%02X%02X",
+                edr_addr[5],edr_addr[4],edr_addr[3],edr_addr[2],edr_addr[1],edr_addr[0]);
+            }
+            // AT^GT_CM=PCBA,BT,MAC,xxxx
+            else
+            {
+                ret = my_param_set_mac(pParam[3], strlen(pParam[3]));
+                if (ret == 0){
+                    sprintf(resp, "RETURN_BT_MAC_SET_OK");
+                } else {
+                    sprintf(resp, "RETURN_BT_MAC_SET_FAIL");
+                }
+            }
+        }
+    }
+
+    return resp;
+}
+
+/********************************************************************
+**函数名称:  my_handle_at_factory_cmd
+**入口参数:  pParam   ---        AT命令参数数组
+**           nParam   ---        参数个数
+**出口参数:  无
+**函数功能:  处理AT工厂命令
+**返 回 值:  响应字符串指针
+*********************************************************************/
+static char *my_handle_at_factory_cmd(char **pParam, int nParam)
+{
+    static char resp[256];
+
+    memset(resp, 0, sizeof(resp));
+
+    // SMT相关指令
+    if (CMD_MATCHED(pParam[0], "PCBA"))
+    {
+        return my_handle_at_pcba_cmd(pParam, nParam);
+    }
+    // TODO
+
+    return resp;
+}
+
+/********************************************************************
+**函数名称:  my_at_test
+**入口参数:  argc     ---        参数个数
+**           argv     ---        参数数组
+**出口参数:  无
+**函数功能:  处理AT测试命令
+**返 回 值:  0表示成功，-1表示参数错误
+*********************************************************************/
+int my_at_test(int argc, char *argv[])
+{
+    char szValue[30] = {0};
+
+    if (argc < 2) return -1;
+
+    strncpy(szValue, argv[1], 30);
+
+    if (strcmp(szValue, "CPUINFO") == 0)
+    {
+        LOG_INF("==========>%s", szValue);
+    }
+    else
+    {
+        LOG_INF("Unrecognized Testing.");
+    }
+
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  GetCmdMatche
+**入口参数:  cmdline  ---        命令行字符串
+**出口参数:  无
+**函数功能:  匹配并查找命令在命令表中的索引
+**返 回 值:  命令索引（成功），-1（未找到）
+*********************************************************************/
+static int GetCmdMatche(char *cmdline)
+{
+    int i;
+
+    for (i = 0; AT_CMD_INNER[i].cmd != NULL; i++)
+    {
+        if (strlen(cmdline) != strlen(AT_CMD_INNER[i].cmd))
+            continue;
+        if (strncmp(AT_CMD_INNER[i].cmd, cmdline, strlen(AT_CMD_INNER[i].cmd)) == 0)
+            return i;
+    }
+
+    return -1;
+}
+
+/********************************************************************
+**函数名称:  ParseArgs
+**入口参数:  cmdline  ---        命令行原始内容
+**           argc     ---        输出：解析后参数个数
+**           argv     ---        输出：参数内容数组
+**出口参数:  无
+**函数功能:  解析命令行参数，将命令行字符串分解为参数数组
+**返 回 值:  无
+*********************************************************************/
+static void ParseArgs(char *cmdline, int *argc, char **argv)
+{
+#define STATE_WHITESPACE    0
+#define STATE_WORD          1
+
+    char *c;
+    int state = STATE_WHITESPACE;
+    int i;
+
+    *argc = 0;
+
+    if (strlen(cmdline) == 0)
+        return;
+
+    /* convert all tabs into single spaces */
+    c = cmdline;
+    while (*c != '\0')
+    {
+        if (*c == '\t')
+            *c = ' ';
+        c++;
+    }
+
+    c = cmdline;
+    i = 0;
+
+    /* now find all words on the command line */
+    while (*c != '\0')
+    {
+        if (state == STATE_WHITESPACE)
+        {
+            if (*c != ' ')
+            {
+                argv[i] = c;        //将argv[i]指向c
+                i++;
+                state = STATE_WORD;
+            }
+        }
+        else
+        { /* state == STATE_WORD */
+            if (*c == ' ')
+            {
+                *c = '\0';
+                state = STATE_WHITESPACE;
+            }
+        }
+        c++;
+    }
+
+    *argc = i;
+
+#undef STATE_WHITESPACE
+#undef STATE_WORD
+}
+
+/********************************************************************
+**函数名称:  my_parse_cmd_line
+**入口参数:  cmdline  ---        命令行字符串
+**           flag     ---        分隔符
+**           argc     ---        输出：参数个数
+**           argv     ---        输出：参数数组
+**出口参数:  无
+**函数功能:  按指定分隔符解析命令行参数
+**返 回 值:  无
+*********************************************************************/
+void my_parse_cmd_line(char *cmdline, char flag, int *argc, char **argv)
+{
+    char *c = cmdline;
+    int state = 0;
+    int i = 0;
+    int max_args = *argc;
+
+    *argc = 0;
+
+    if (strlen(cmdline) == 0)
+        return;
+
+    /* now find all words on the command line */
+    while (*c != '\0')
+    {
+        if (state == 0)
+        {
+            if (*c != flag)
+            {
+                argv[i] = c;        //将argv[i]指向c
+                state = 1;
+                i++;
+
+                if (i == max_args) break;
+            }
+        }
+        else
+        { /* state == 1*/
+            if (*c == flag)
+            {
+                *c = '\0';
+                state = 0;
+            }
+        }
+        c++;
+    }
+
+    *argc = i;
+}
+
+/********************************************************************
+**函数名称:  my_at_factory_cmd
+**入口参数:  pfactorycmd ---    产测命令字符串
+**出口参数:  无
+**函数功能:  解析并处理产测AT命令
+**返 回 值:  0表示成功
+*********************************************************************/
+static int my_at_factory_cmd(char *pfactorycmd)
+{
+    int argc = 0; // 输入输出参数
+    char *argv[MAX_ARGS] = { 0 };
+
+    my_parse_cmd_line(pfactorycmd + strlen(FACTORY_CMD_HEADER), ',' , &argc, argv);
+
+    LOG_INF("%s", my_handle_at_factory_cmd(argv, argc));
+
+    return 0;
 }
 
 /*
@@ -418,10 +826,12 @@ static int my_lte_handle_fota(char *data)
  * 处理各个协议指令
  * cmd为已经拆分好的单条指令
  */
-static int my_lte_parse_cmd(char *cmd, int cmd_len)
+int my_lte_parse_cmd(char *cmd, int cmd_len)
 {
     int ret = 0;
     char *p = cmd;
+    int argc, num_commands;
+    char *argv[MAX_ARGS];
 
     if (0 == strlen(cmd) || 0 == cmd_len)
     {
@@ -476,13 +886,34 @@ static int my_lte_parse_cmd(char *cmd, int cmd_len)
         ret = my_lte_handle_fota(p + strlen(LTE_FOTA));
     }
 
+    // 检查是否是产测指令
+    if (strncmp(cmd, FACTORY_CMD_HEADER, strlen(FACTORY_CMD_HEADER)) == 0)
+    {
+        my_at_factory_cmd(cmd);
+
+        return -1;
+    }
+
+    ParseArgs(cmd, &argc, argv);
+
+    /* only whitespace */
+    if (argc == 0) {
+        return -1;
+    }
+
+    num_commands = GetCmdMatche(argv[0]);
+    if (num_commands < 0) {
+        LOG_INF("No '%s' command", argv[0]);
+        return -1;
+    }
+
+    if (AT_CMD_INNER[num_commands].proc != NULL) {
+        AT_CMD_INNER[num_commands].proc(argc, argv);
+    }
+
     return ret;
 }
 
-
-// 暂定单条指令长度最长128个字节
-// 请根据实际需求修改
-#define MAX_CMD_LEN     128
 void my_lte_handle_recv(uint8_t *pData, uint32_t iLen)
 {
     static char command[MAX_CMD_LEN] = {0};

@@ -16,6 +16,11 @@
 #ifndef _MY_BLE_CORE_H_
 #define _MY_BLE_CORE_H_
 
+typedef enum {
+    APPLE_ADV_TYPE,
+    GOOGLE_ADV_TYPE
+} MY_ADV_TYPE;
+
 /*
  * BLE 核心初始化参数：
  * 目前暂无特定参数，预留结构体
@@ -44,15 +49,23 @@ int my_ble_core_init(const struct my_ble_core_init_param *param, k_tid_t *tid);
 *********************************************************************/
 int my_ble_core_start(void);
 
-#ifdef CONFIG_BT_NUS_SECURITY_ENABLED
 /********************************************************************
-**函数名称:  my_ble_button_changed
-**入口参数:  button_state ---    当前按键状态位图
-**            has_changed  ---    本次中断中发生变化的按键位图
+**函数名称:  set_adv_valid_status
+**入口参数:  index    ---        广播类型索引（0:APPLE, 1:GOOGLE）
+**           status   ---        广播状态（0:无效, 1:有效）
 **出口参数:  无
-**函数功能:  处理 BLE 配对时的按键确认/拒绝事件（数值比较确认）
+**函数功能:  设置指定类型广播的有效状态
+**返 回 值:  无
 *********************************************************************/
-void my_ble_button_changed(uint32_t button_state, uint32_t has_changed);
-#endif /* CONFIG_BT_NUS_SECURITY_ENABLED */
+void set_adv_valid_status(MY_ADV_TYPE index, int status);
+
+/********************************************************************
+**函数名称:  bt_get_mac_addr
+**入口参数:  无
+**出口参数:  无
+**函数功能:  获取设备蓝牙MAC地址
+**返 回 值:  指向MAC地址缓冲区的指针（6字节）
+*********************************************************************/
+const uint8_t *bt_get_mac_addr(void);
 
 #endif /* _MY_BLE_CORE_H_ */

@@ -455,6 +455,8 @@ int main(void)
     int err = 0;
     MSG_S msg;
 
+    my_param_load_config();
+
     psa_crypto_init();  // PSA库初始化
     device_config_init(&g_workmode_config);
 

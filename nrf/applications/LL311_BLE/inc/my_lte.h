@@ -50,4 +50,15 @@ int my_lte_pwr_on(bool on);
  */
 void my_lte_handle_recv(uint8_t *pData, uint32_t iLen);
 
+/********************************************************************
+**函数名称:  my_at_test
+**入口参数:  argc     ---        参数个数
+**           argv     ---        参数数组
+**出口参数:  无
+**函数功能:  处理AT测试命令
+**返 回 值:  0表示成功，-1表示参数错误
+*********************************************************************/
+int my_at_test(int argc, char *argv[]);
+
+int my_lte_parse_cmd(char *cmd, int cmd_len);
 #endif /* _MY_LTE_H_ */

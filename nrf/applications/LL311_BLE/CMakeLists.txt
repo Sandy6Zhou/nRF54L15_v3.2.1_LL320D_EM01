@@ -28,6 +28,7 @@ target_sources(app PRIVATE
 #  src/my_wdt.c
   src/my_tool.c
   src/my_cmd_setting.c
+  src/my_zms_param.c
 )
 
 # NORDIC SDK APP END

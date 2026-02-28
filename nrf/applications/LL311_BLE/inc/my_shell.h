@@ -15,8 +15,19 @@
 #ifndef _MY_SHELL_H_
 #define _MY_SHELL_H_
 
+#define MAX_CMD_LEN     128 // 暂定单条指令长度最长128个字节,请根据实际需求修改
+#define MAX_ARGS        10
+
 #define CMD_MATCHED(data,header)  (strncmp(data,header,strlen(header))==0)
 #define CMD_EQUAL(data,header)  (strcmp(data,header)==0)
+
+typedef int (*cmdproc)(int argc, char *argv[]);
+typedef struct {
+    bool bSee;   // 是否可见
+    char *cmd;
+    char *hlp;
+    cmdproc proc;
+}CMD_STRUC;
 
 /********************************************************************
 **函数名称:  my_shell_init
