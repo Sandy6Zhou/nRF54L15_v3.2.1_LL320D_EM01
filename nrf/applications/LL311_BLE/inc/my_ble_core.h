@@ -67,5 +67,14 @@ void set_adv_valid_status(MY_ADV_TYPE index, int status);
 **返 回 值:  指向MAC地址缓冲区的指针（6字节）
 *********************************************************************/
 const uint8_t *bt_get_mac_addr(void);
+/********************************************************************
+**函数名称:  ble_server_send_notification
+**入口参数:  data     ---        要发送的数据缓冲区指针
+**           tx_len   ---        数据长度
+**出口参数:  无
+**函数功能:  BLE服务器发送通知函数，处理GATT通知数据发送
+**返 回 值:  无
+*********************************************************************/
+void ble_server_send_notification(uint8_t *data, uint16_t tx_len);
 
 #endif /* _MY_BLE_CORE_H_ */

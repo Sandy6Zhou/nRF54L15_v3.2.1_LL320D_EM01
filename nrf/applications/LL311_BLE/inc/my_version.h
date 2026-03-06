@@ -12,7 +12,14 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_0303"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260305"
+/* 软件版本:        V1.0
+** 完成日期:        2026.03.05
+** 作    者:        周森达 (zhousenda@jimiiot.com)
+** 修改内容:        1. 增加BLE与APP鉴权连接与加解密功能
+*/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_0303"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.02.28
 ** 作    者:        Harrison Wu (wuyujiao@jimiiot.com)

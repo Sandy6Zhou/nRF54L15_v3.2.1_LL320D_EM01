@@ -163,6 +163,30 @@ int calculate_remaining_seconds(const char *start_time, int interval_min, long l
     return ret_code;
 }
 
+/************************************************************************
+**函数名称:  my_generate_random
+**入口参数:  out_val            ---       指向uint32_t类型变量的指针，用于存储生成的随机数
+**出口参数:  psa_status_t       ---       PSA_SUCCESS表示随机数生成成功，其他值表示对应的错误码
+**函数功能:  调用PSA加密API生成4字节随机数据，并将其拼接为一个32位无符号整数，存储到指定内存地址
+*************************************************************************/
+psa_status_t my_generate_random(uint32_t *out_val)
+{
+    uint8_t rnd[4];
+    psa_status_t status;
+
+    status = psa_generate_random(rnd, sizeof(rnd));
+    if (status != PSA_SUCCESS) {
+        return status;
+    }
+
+    *out_val = ((uint32_t)rnd[0] << 24) |
+               ((uint32_t)rnd[1] << 16) |
+               ((uint32_t)rnd[2] << 8)  |
+               ((uint32_t)rnd[3]);
+
+    return PSA_SUCCESS;
+}
+
 /*********************************************************************
 **函数名称:  rand_0_to_120_seconds
 **入口参数:  p_seconds  --  用于存储生成的随机秒数的指针
@@ -174,7 +198,6 @@ int calculate_remaining_seconds(const char *start_time, int interval_min, long l
 psa_status_t rand_0_to_120_seconds(uint32_t *p_seconds)
 {
     psa_status_t status;
-    uint8_t rnd[4];
     uint32_t val;
 
     if (p_seconds == NULL)
@@ -182,17 +205,11 @@ psa_status_t rand_0_to_120_seconds(uint32_t *p_seconds)
         return PSA_ERROR_INVALID_ARGUMENT;
     }
 
-    /* 确保在系统初始化阶段已经调用过 psa_crypto_init() */
-    status = psa_generate_random(rnd, sizeof(rnd));
+    status = my_generate_random(&val);
     if (status != PSA_SUCCESS)
     {
         return status;
     }
-
-    val = ((uint32_t)rnd[0] << 24) |
-                   ((uint32_t)rnd[1] << 16) |
-                   ((uint32_t)rnd[2] << 8)  |
-                   ((uint32_t)rnd[3]);
 
     *p_seconds = val % 121U;   /* 0–120 */
 

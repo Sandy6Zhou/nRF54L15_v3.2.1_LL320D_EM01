@@ -130,5 +130,12 @@ bool macstr_to_hex(const char *mac_str, uint8_t *hex);
 **返 回 值:  0: 成功; -1: 入参无效（空指针/长度为0）; -2: src/dest长度不一致;
 *********************************************************************/
 int char_array_reverse(const uint8_t *src, uint32_t src_len, uint8_t *dest, uint32_t dest_len);
+/************************************************************************
+**函数名称:  my_generate_random
+**入口参数:  out_val            ---       指向uint32_t类型变量的指针，用于存储生成的随机数
+**出口参数:  psa_status_t       ---       PSA_SUCCESS表示随机数生成成功，其他值表示对应的错误码
+**函数功能:  调用PSA加密API生成4字节随机数据，并将其拼接为一个32位无符号整数，存储到指定内存地址
+*************************************************************************/
+psa_status_t my_generate_random(uint32_t *out_val);
 
 #endif

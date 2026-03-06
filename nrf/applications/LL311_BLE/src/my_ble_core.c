@@ -41,12 +41,14 @@ static struct k_thread my_ble_task_data;
 #define FLAG_TYPE_VALUE                 0x06    // google的flag值
 #define CON_ADV_OBJ_MAX_NUM             2       // 0:GOOGLE, 1:APPLE
 #define ADV_INTERVAL                    3200    // 3200*0.625ms=2000ms
+#define BLE_NOTIFY_SEND_BUF_MAX_SIZE    1024
 
 typedef struct {
     struct bt_le_ext_adv *handle;
     bool valid;
 } ADV_HDL_S;
 
+static struct bt_conn *current_conn;
 static struct k_work adv_work;
 static struct bt_le_ext_adv *ext_adv[CONFIG_BT_EXT_ADV_MAX_ADV_SET];
 
@@ -61,6 +63,10 @@ ADV_HDL_S no_con_adv_obj_hdl[2] = {               // 不可连接广播句柄（
 
 static uint8_t battery_capacity = 100;            // 预留电量
 static uint16_t connect_id = 0xff;                // 连接ID
+static uint16_t ble_server_rx_index = 0;          // 发送缓存索引
+static bool ble_server_send_done = true;          // 发送完成标志
+static bool ble_data_send_enable[2] = {false};    // GOOGLE/APPLE发送使能
+static uint8_t uart_ble_server_buf[BLE_NOTIFY_SEND_BUF_MAX_SIZE]; // 发送缓存
 
 static void connected(struct bt_conn *conn, uint8_t err);
 static void disconnected(struct bt_conn *conn, uint8_t reason);
@@ -126,11 +132,10 @@ static int custom_char_write(struct bt_conn *conn,
     ARG_UNUSED(flags);
 
     LOG_INF("<-------------write_callback, len = %d", len);
-    for (int i = 0; i < len; i++) {
-        LOG_HEXDUMP_INF(((uint8_t *)buf) + i, 1, "RX data");
-    }
+    LOG_HEXDUMP_INF(((uint8_t *)buf), len, "RX data");
 
-    //TODO 处理收到的数据
+    BLE_DataInputBuffer((uint8_t *)buf, len);
+
     return len;
 }
 
@@ -147,7 +152,16 @@ static void custom_char_ccc_cfg_changed(const struct bt_gatt_attr *attr,
 {
     LOG_INF("CCC config changed: 0x%04x", value);
 
-    //TODO 使能发送标志
+    if (value & BT_GATT_CCC_NOTIFY)
+    {
+        ble_data_send_enable[GOOGLE_ADV_TYPE] = true;
+        ble_data_send_enable[APPLE_ADV_TYPE] = true;
+    } 
+    else
+    {
+        ble_data_send_enable[GOOGLE_ADV_TYPE] = false;
+        ble_data_send_enable[APPLE_ADV_TYPE] = false;
+    }
 }
 
 /********************************************************************
@@ -454,6 +468,7 @@ static void connected(struct bt_conn *conn, uint8_t err)
     bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
     LOG_INF("Connected %s", addr);
 
+    current_conn = bt_conn_ref(conn);
     connect_id = bt_conn_index(conn);
     LOG_INF("connect_id %d", connect_id);
 
@@ -482,8 +497,15 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
     bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
     LOG_INF("Disconnected: %s, reason 0x%02x %s", addr, reason, bt_hci_err_to_str(reason));
 
-    // 对端断开后，清除连接ID
+    if (current_conn) {
+        bt_conn_unref(current_conn);
+        current_conn = NULL;
+    }
+
+    // 对端断开后，清除连接ID并关闭数据发送标志位
     connect_id = 0xff;
+    ble_data_send_enable[GOOGLE_ADV_TYPE] = false;
+    ble_data_send_enable[APPLE_ADV_TYPE] = false;
 }
 
 /********************************************************************
@@ -506,6 +528,72 @@ static void recycled_cb(void)
         start_adv(&no_con_adv_obj_hdl[APPLE_ADV_TYPE], false);
         advertising_start();
     }
+}
+
+/********************************************************************
+**函数名称:  ble_server_send_notification
+**入口参数:  data     ---        要发送的数据缓冲区指针
+**           tx_len   ---        数据长度
+**出口参数:  无
+**函数功能:  BLE服务器发送通知函数，处理GATT通知数据发送
+**返 回 值:  无
+*********************************************************************/
+void ble_server_send_notification(uint8_t *data, uint16_t tx_len)
+{
+    int err;
+    uint16_t _tx_len;
+
+    if (connect_id == 0xff || current_conn == NULL)
+    {
+        LOG_WRN("BLE disconnected, skip send");
+        return ;
+    }
+
+    if (!ble_server_send_done)
+    {
+        if (tx_len > 0 && (ble_server_rx_index + tx_len) <= BLE_NOTIFY_SEND_BUF_MAX_SIZE)
+        {
+            memcpy(&uart_ble_server_buf[ble_server_rx_index], data, tx_len);
+            ble_server_rx_index += tx_len;
+        }
+        LOG_INF("Cache data: total %d, new %d", ble_server_rx_index, tx_len);
+        return ;
+    }
+
+    ble_server_send_done = false;
+    if (tx_len > 0 && (ble_server_rx_index + tx_len) <= BLE_NOTIFY_SEND_BUF_MAX_SIZE)
+    {
+        memcpy(&uart_ble_server_buf[ble_server_rx_index], data, tx_len);
+        ble_server_rx_index += tx_len;
+    }
+
+    _tx_len = (ble_server_rx_index > MIN(BLE_SERVER_MAX_DATA_LEN, BLE_SVC_TX_MAX_LEN))
+              ? MIN(BLE_SERVER_MAX_DATA_LEN, BLE_SVC_TX_MAX_LEN) : ble_server_rx_index;
+
+    if (ble_data_send_enable[GOOGLE_ADV_TYPE] || ble_data_send_enable[APPLE_ADV_TYPE])
+    {
+        LOG_HEXDUMP_INF(uart_ble_server_buf, _tx_len, "bt_gatt_notify:");
+
+        // my_gatt_svc.attrs[4]对应notify特征值
+        err = bt_gatt_notify(current_conn, &my_gatt_svc.attrs[4], uart_ble_server_buf, _tx_len);
+        if (err)
+        {
+            LOG_ERR("Notify send fail: %d", err);
+            ble_server_send_done = true;
+            return ;
+        }
+    }
+    else
+    {
+        LOG_WRN("BLE send enable not set");
+        ble_server_send_done = true;
+        return ;
+    }
+
+    ble_server_rx_index -= _tx_len;
+    memcpy(&uart_ble_server_buf[0], &uart_ble_server_buf[_tx_len], ble_server_rx_index);
+    LOG_INF("Send %d bytes, remain %d bytes", _tx_len, ble_server_rx_index);
+    ble_server_send_done = true;
 }
 
 /********************************************************************
@@ -646,6 +734,10 @@ static void my_ble_task(void *p1, void *p2, void *p3)
         switch (msg.msgID)
         {
             /* TODO: 添加 BLE 相关的消息处理逻辑 */
+            case MY_MSG_BLE_RX:
+                ble_rx_proc_handle();
+                break;
+
             default:
                 break;
         }

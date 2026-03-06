@@ -844,46 +844,57 @@ int my_lte_parse_cmd(char *cmd, int cmd_len)
     if (CMD_MATCHED(cmd, LTE_PWRON))
     {
         ret = my_lte_handle_power_on(p + strlen(LTE_PWRON));
+        goto END;
     }
     else if (CMD_MATCHED(cmd, LTE_BTSET))
     {
         ret = my_lte_handle_bt_set(p + strlen(LTE_BTSET));
+        goto END;
     }
     else if (CMD_MATCHED(cmd, LTE_TIME))
     {
         ret = my_lte_handle_time(p + strlen(LTE_TIME));
+        goto END;
     }
     else if (CMD_MATCHED(cmd, LTE_NTCSET))
     {
         ret = my_lte_handle_ntc_set(p + strlen(LTE_NTCSET));
+        goto END;
     }
     else if (CMD_MATCHED(cmd, LTE_NFCAUTH))
     {
         ret = my_lte_handle_nfc_auth(p + strlen(LTE_NFCAUTH));
+        goto END;
     }
     else if (CMD_MATCHED(cmd, LTE_NFCTRIG))
     {
         ret = my_lte_handle_nfc_trig(p + strlen(LTE_NFCTRIG));
+        goto END;
     }
     else if (CMD_MATCHED(cmd, LTE_LOCK))
     {
         ret = my_lte_handle_lock(p + strlen(LTE_LOCK));
+        goto END;
     }
     else if (CMD_MATCHED(cmd, LTE_TRANSMIT))
     {
         ret = my_lte_handle_transmit(p + strlen(LTE_TRANSMIT));
+        goto END;
     }
     else if (CMD_MATCHED(cmd, LTE_BUZZER))
     {
         ret = my_lte_handle_buzzer(p + strlen(LTE_BUZZER));
+        goto END;
     }
     else if (CMD_MATCHED(cmd, LTE_LED))
     {
         ret = my_lte_handle_led(p + strlen(LTE_LED));
+        goto END;
     }
     else if (CMD_MATCHED(cmd, LTE_FOTA))
     {
         ret = my_lte_handle_fota(p + strlen(LTE_FOTA));
+        goto END;
     }
 
     // 检查是否是产测指令
@@ -910,7 +921,7 @@ int my_lte_parse_cmd(char *cmd, int cmd_len)
     if (AT_CMD_INNER[num_commands].proc != NULL) {
         AT_CMD_INNER[num_commands].proc(argc, argv);
     }
-
+END:
     return ret;
 }
 

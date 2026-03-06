@@ -146,6 +146,7 @@ typedef enum
     MY_MSG_CTRL_KEY_SHORT_PRESS, /* 按键短按事件 */
     MY_MSG_CTRL_KEY_LONG_PRESS,  /* 按键长按事件（2秒） */
 
+    MY_MSG_BLE_RX,
 } MY_MAIN_TASK_MSG;
 
 /* ========== 集中引用所有模块头文件 ========== */
@@ -164,5 +165,6 @@ typedef enum
 #include "my_tool.h"
 #include "my_cmd_setting.h"
 #include "my_zms_param.h"
+#include "my_ble_app.h"
 
 #endif /* _MY_COMMON_H_ */
