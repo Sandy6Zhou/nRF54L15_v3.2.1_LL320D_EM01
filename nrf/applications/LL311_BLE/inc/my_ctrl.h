@@ -57,13 +57,4 @@ int my_ctrl_buzzer_play_tone(uint32_t freq_hz, uint32_t duration_ms);
 *********************************************************************/
 int my_ctrl_buzzer_play_sequence(const struct my_buzzer_note *notes, uint32_t num_notes);
 
-/********************************************************************
-**函数名称:  my_ctrl_push_msg
-**入口参数:  msg           ---   消息结构体指针
-**出口参数:  无
-**函数功能:  向控制模块消息队列发送消息
-**返 回 值:  0 表示成功，负值表示失败
-*********************************************************************/
-int my_ctrl_push_msg(const MSG_S *msg);
-
 #endif /* _MY_CTRL_H_ */

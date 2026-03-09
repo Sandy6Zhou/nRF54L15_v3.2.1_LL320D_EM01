@@ -8,8 +8,9 @@
 *********************************************************************
 ** 功能描述:        1. 整合 LED 与蜂鸣器控制接口
 **                 2. 实现独立线程处理按键扫描与逻辑
-**                 3. 实现 FUN_KEY 按键短按/长按检测（下降沿中断+50ms轮询）
-**                 4. 实现光感、剪线检测中断处理
+**                 3. 实现 FUN_KEY 按键短按/长按检测（下降沿中断+50ms轮询），实现按键事件发送到主任务
+**                 4. 实现光感(light sensor)检测中断处理,消抖处理，产生有光/无光事件并发送到主任务
+**                 5. 实现锁销(lock pin)检测中断处理，消抖处理，产生插入/断开事件并发送到主任务
 *********************************************************************/
 
 #include "my_comm.h"
@@ -23,7 +24,7 @@ LOG_MODULE_REGISTER(my_ctrl, LOG_LEVEL_INF);
 static const struct gpio_dt_spec fun_key = GPIO_DT_SPEC_GET(DT_ALIAS(fun_key), gpios);
 static const struct pwm_dt_spec buzzer = PWM_DT_SPEC_GET(DT_ALIAS(buzzer_pwm)); 
 static const struct gpio_dt_spec light_det = GPIO_DT_SPEC_GET(DT_ALIAS(light_detect), gpios);
-static const struct gpio_dt_spec cut_det = GPIO_DT_SPEC_GET(DT_ALIAS(cut_detect), gpios);
+static const struct gpio_dt_spec lock_pin_det = GPIO_DT_SPEC_GET(DT_ALIAS(lock_pin_det), gpios);
 static const struct gpio_dt_spec lock_led = GPIO_DT_SPEC_GET(DT_ALIAS(lock_led0), gpios);
 static const struct gpio_dt_spec batt_leds[] = {
     GPIO_DT_SPEC_GET(DT_ALIAS(battery_led0), gpios),
@@ -46,8 +47,32 @@ static struct
 /* 长按阈值：1.5秒 = 30个周期 */
 #define KEY_LONG_PRESS_COUNT (1500 / KEY_POLL_PERIOD_MS)
 
+/* 光感检测控制结构 */
+static struct
+{
+    struct k_timer timer;       /* 消抖定时器 */
+    bool state;                 /* 当前光感状态（true=有光，false=无光） */
+    bool debouncing;            /* 消抖中标志 */
+} light_sensor;
+
+/* 光感消抖时间：100ms */
+#define LIGHT_DEBOUNCE_MS 100
+
+/* 锁销检测控制结构 */
+static struct
+{
+    struct k_timer timer;       /* 消抖定时器 */
+    bool inserted;              /* 当前锁销状态（true=插入，false=断开） */
+    bool debouncing;            /* 消抖中标志 */
+} lock_pin_ctrl;
+
+/* 锁销消抖时间：100ms */
+#define LOCK_PIN_DEBOUNCE_MS 100
+
 /* 定时器回调前向声明 */
 static void key_timer_handler(struct k_timer *timer);
+static void light_sensor_timer_handler(struct k_timer *timer);
+static void lock_pin_timer_handler(struct k_timer *timer);
 
 /* 消息队列定义 */
 K_MSGQ_DEFINE(my_ctrl_msgq, sizeof(MSG_S), 10, 4);
@@ -188,6 +213,110 @@ static void key_timer_handler(struct k_timer *timer)
 }
 
 /********************************************************************
+**函数名称:  light_sensor_timer_handler
+**入口参数:  timer    ---   定时器指针
+**出口参数:  无
+**函数功能:  光感消抖定时器回调
+**返 回 值:  无
+**功能描述:  1. 100ms后读取光感电平确认状态
+**           2. 状态变化时发送消息到主任务
+**           3. 清除消抖标志
+*********************************************************************/
+static void light_sensor_timer_handler(struct k_timer *timer)
+{
+    ARG_UNUSED(timer);
+
+    int level = gpio_pin_get(light_det.port, light_det.pin);
+    bool new_state = (level == 1);
+
+    if (new_state != light_sensor.state)
+    {
+        light_sensor.state = new_state;
+        // LOG_INF("Light state changed: %s", new_state ? "LIGHT" : "DARK");
+
+        /* 发送光感状态变化消息到主任务 */
+        MSG_S msg;
+        msg.msgID = new_state ? MY_MSG_CTRL_LIGHT_SENSOR_BRIGHT : MY_MSG_CTRL_LIGHT_SENSOR_DARK;
+        msg.pData = NULL;
+        msg.DataLen = 0;
+        my_send_msg_data(MOD_CTRL, MOD_MAIN, &msg);
+    }
+
+    light_sensor.debouncing = false;
+}
+
+/********************************************************************
+**函数名称:  light_sensor_edge_handler
+**入口参数:  无
+**出口参数:  无
+**函数功能:  光感双边沿中断处理
+**返 回 值:  无
+**功能描述:  1. 检测光感状态变化（有光/无光）
+**           2. 启动100ms消抖定时器
+**           3. 避免重复触发消抖
+*********************************************************************/
+static void light_sensor_edge_handler(void)
+{
+    if (!light_sensor.debouncing)
+    {
+        light_sensor.debouncing = true;
+        k_timer_start(&light_sensor.timer, K_MSEC(LIGHT_DEBOUNCE_MS), K_NO_WAIT);
+    }
+}
+
+/********************************************************************
+**函数名称:  lock_pin_timer_handler
+**入口参数:  timer    ---   定时器指针
+**出口参数:  无
+**函数功能:  锁销消抖定时器回调
+**返 回 值:  无
+**功能描述:  1. 100ms后读取锁销电平确认状态
+**           2. 状态变化时发送消息到主任务
+**           3. 清除消抖标志
+*********************************************************************/
+static void lock_pin_timer_handler(struct k_timer *timer)
+{
+    ARG_UNUSED(timer);
+
+    int level = gpio_pin_get(lock_pin_det.port, lock_pin_det.pin);
+    bool new_state = (level == 1);
+
+    if (new_state != lock_pin_ctrl.inserted)
+    {
+        lock_pin_ctrl.inserted = new_state;
+        // LOG_INF("Lock pin state changed: %s", new_state ? "INSERTED" : "DISCONNECTED");
+
+        /* 发送锁销状态变化消息到主任务 */
+        MSG_S msg;
+        msg.msgID = new_state ? MY_MSG_CTRL_LOCK_PIN_INSERTED : MY_MSG_CTRL_LOCK_PIN_DISCONNECTED;
+        msg.pData = NULL;
+        msg.DataLen = 0;
+        my_send_msg_data(MOD_CTRL, MOD_MAIN, &msg);
+    }
+
+    lock_pin_ctrl.debouncing = false;
+}
+
+/********************************************************************
+**函数名称:  lock_pin_edge_handler
+**入口参数:  无
+**出口参数:  无
+**函数功能:  锁销双边沿中断处理
+**返 回 值:  无
+**功能描述:  1. 检测锁销状态变化（插入/断开）
+**           2. 启动100ms消抖定时器
+**           3. 避免重复触发消抖
+*********************************************************************/
+static void lock_pin_edge_handler(void)
+{
+    if (!lock_pin_ctrl.debouncing)
+    {
+        lock_pin_ctrl.debouncing = true;
+        k_timer_start(&lock_pin_ctrl.timer, K_MSEC(LOCK_PIN_DEBOUNCE_MS), K_NO_WAIT);
+    }
+}
+
+/********************************************************************
 **函数名称:  key_falling_edge_handler
 **入口参数:  无
 **出口参数:  无
@@ -234,16 +363,14 @@ static void misc_io_isr(const struct device *dev,
 
     if (pins & BIT(light_det.pin))
     {
-        int level = gpio_pin_get_dt(&light_det);
-        // LOG_INF("Light detect interrupt, level=%d", level);
-        /* TODO: 在这里处理光感变化事件 */
+        /* 双边沿触发，调用光感处理函数 */
+        light_sensor_edge_handler();
     }
 
-    if (pins & BIT(cut_det.pin))
+    if (pins & BIT(lock_pin_det.pin))
     {
-        int level = gpio_pin_get_dt(&cut_det);
-        // LOG_INF("Cut detect interrupt, level=%d", level);
-        /* TODO: 在这里处理剪线事件 */
+        /* 双边沿触发，调用锁销处理函数 */
+        lock_pin_edge_handler();
     }
 }
 
@@ -262,10 +389,12 @@ static void misc_io_isr(const struct device *dev,
 static int misc_io_init(void)
 {
     int ret;
+    int light_initial_level;
+    int lock_initial_level;
 
     if (!device_is_ready(fun_key.port) ||
         !device_is_ready(light_det.port) ||
-        !device_is_ready(cut_det.port))
+        !device_is_ready(lock_pin_det.port))
     {
         return -ENODEV;
     }
@@ -286,11 +415,11 @@ static int misc_io_init(void)
         return ret;
     }
 
-    /* 配置为输入（cut_det 配置为输入） */
-    ret = gpio_pin_configure_dt(&cut_det, GPIO_INPUT);
+    /* 锁销检测配置：配置为输入（lock_pin_det 配置为输入） */
+    ret = gpio_pin_configure_dt(&lock_pin_det, GPIO_INPUT);
     if (ret)
     {
-        LOG_ERR("Failed to configure cut_det: %d", ret);
+        LOG_ERR("Failed to configure lock_pin_det: %d", ret);
         return ret;
     }
 
@@ -302,7 +431,7 @@ static int misc_io_init(void)
         return ret;
     }
 
-    /* 配置光感中断：下降沿触发 */
+    /* 光感检测配置：配置光感中断：下降沿触发 */
     ret = gpio_pin_interrupt_configure_dt(&light_det, GPIO_INT_EDGE_FALLING);
     if (ret)
     {
@@ -310,13 +439,31 @@ static int misc_io_init(void)
         return ret;
     }
 
-    /* 配置剪线中断：下降沿触发 */
-    ret = gpio_pin_interrupt_configure_dt(&cut_det, GPIO_INT_EDGE_FALLING);
+    /* 初始化光感定时器和状态 */
+    k_timer_init(&light_sensor.timer, light_sensor_timer_handler, NULL);
+    light_sensor.state = false;
+    light_sensor.debouncing = false;
+    /* 读取初始状态 */
+    light_initial_level = gpio_pin_get(light_det.port, light_det.pin);
+    light_sensor.state = (light_initial_level == 1);
+    LOG_INF("Light initial state: %s", light_sensor.state ? "LIGHT" : "DARK");
+
+    /* 配置锁销中断：双边沿触发 */
+    ret = gpio_pin_interrupt_configure_dt(&lock_pin_det, GPIO_INT_EDGE_BOTH);
     if (ret)
     {
-        LOG_ERR("Failed to configure cut_det interrupt: %d", ret);
+        LOG_ERR("Failed to configure lock_pin_det interrupt: %d", ret);
         return ret;
     }
+
+    /* 初始化锁销定时器和状态 */
+    k_timer_init(&lock_pin_ctrl.timer, lock_pin_timer_handler, NULL);
+    lock_pin_ctrl.inserted = false;
+    lock_pin_ctrl.debouncing = false;
+    /* 读取初始状态 */
+    lock_initial_level = gpio_pin_get(lock_pin_det.port, lock_pin_det.pin);
+    lock_pin_ctrl.inserted = (lock_initial_level == 1);
+    LOG_INF("Lock pin initial state: %s", lock_pin_ctrl.inserted ? "INSERTED" : "DISCONNECTED");
 
     /* 初始化按键定时器 */
     key_timer_init();
@@ -325,7 +472,7 @@ static int misc_io_init(void)
     gpio_init_callback(&misc_io_cb, misc_io_isr,
                        BIT(fun_key.pin) |
                        BIT(light_det.pin) |
-                       BIT(cut_det.pin));
+                       BIT(lock_pin_det.pin));
     gpio_add_callback(fun_key.port, &misc_io_cb);
 
     return 0;
@@ -495,22 +642,6 @@ static void lock_led_set(bool on)
 {
     LOG_INF("%s:%d", __func__, on);
     gpio_pin_set_dt(&lock_led, on ? 1 : 0);
-}
-
-/********************************************************************
-**函数名称:  my_ctrl_push_msg
-**入口参数:  msg      ---   消息指针
-**出口参数:  无
-**函数功能:  向控制模块消息队列发送消息
-**返 回 值:  0 表示成功，负值表示失败
-**功能描述:  将消息放入 my_ctrl_msgq 队列，非阻塞方式
-*********************************************************************/
-int my_ctrl_push_msg(const MSG_S *msg)
-{
-    if (msg == NULL)
-        return -EINVAL;
-
-    return k_msgq_put(&my_ctrl_msgq, msg, K_NO_WAIT);
 }
 
 /********************************************************************

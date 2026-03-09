@@ -44,8 +44,8 @@
 		gsensor-int = &gsen_int;
 		batt-state = &charge_state;
 		charge-detect = &charge_det;
-		light-detect = &light_det;
-		cut-detect   = &cut_det;
+		light-detect = &light_det_pin;
+		lock-pin-det = &lock_pin_det_pin;
 		battery-led0 = &batt_led0;
 		battery-led1 = &batt_led1;
 		battery-led2 = &batt_led2;
@@ -171,18 +171,22 @@
 		io-channels = <&adc 0>;
 	};
 
-	/* 光感检测：P1.10，默认上拉，外部拉低触发 */
+	/* 光感检测：P1.10，外部1M下拉，有光高电平，无光低电平 */
 	light_det: light-det {
-		compatible = "nordic,gpio-pins";
-		gpios = <&gpio1 10 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
-		status = "okay";
+		compatible = "gpio-keys";
+		light_det_pin: light_det_pin {
+			gpios = <&gpio1 10 GPIO_ACTIVE_HIGH>;
+			label = "Light Detect";
+		};
 	};
 
-	/* 剪线检测：P1.11，默认上拉，外部拉低触发 */
-	cut_det: cut-det {
-		compatible = "nordic,gpio-pins";
-		gpios = <&gpio1 11 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
-		status = "okay";
+	/* 锁销检测：P1.11，外部1M下拉，锁销断开时低电平，插入后接3.3V变为高电平 */
+	lock_pin_det: lock-pin-det {
+		compatible = "gpio-keys";
+		lock_pin_det_pin: lock_pin_det_pin {
+			gpios = <&gpio1 11 GPIO_ACTIVE_HIGH>;
+			label = "Lock Pin Detect";
+		};
 	};
 
 	/* 电量指示灯组：P2.7 / P2.8 / P2.9 */

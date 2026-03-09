@@ -12,7 +12,17 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260305"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260306"
+/* 软件版本:        V1.0
+** 完成日期:        2026.03.06
+** 作    者:        Harrison Wu (wuyujiao@jimiiot.com)
+** 修改内容:       1. 在overlay中规范光感与锁销检测引脚定义；
+**                 2. 增加光感检测功能，状态发生变化时发送事件到主任务；
+**                 3. 增加锁销检测功能，状态发生变化时发送事件到主任务；
+**                 4. 删除my_ctrl_push_msg，已有统一的接口my_send_msg/my_send_msg_data; 
+*/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260305"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.03.05
 ** 作    者:        周森达 (zhousenda@jimiiot.com)

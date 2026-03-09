@@ -143,8 +143,12 @@ typedef enum
     MY_MSG_NFC_POLL_TIMEOUT, /* NFC轮询超时 */
 
     /* CTRL处理程序消息 */
-    MY_MSG_CTRL_KEY_SHORT_PRESS, /* 按键短按事件 */
-    MY_MSG_CTRL_KEY_LONG_PRESS,  /* 按键长按事件（2秒） */
+    MY_MSG_CTRL_KEY_SHORT_PRESS,       /* 按键短按事件 */
+    MY_MSG_CTRL_KEY_LONG_PRESS,        /* 按键长按事件（2秒） */
+    MY_MSG_CTRL_LIGHT_SENSOR_DARK,     /* 光传感器检测到黑暗环境 */
+    MY_MSG_CTRL_LIGHT_SENSOR_BRIGHT,   /* 光传感器检测到光明环境 */
+    MY_MSG_CTRL_LOCK_PIN_INSERTED,     /* 锁销插入检测 */
+    MY_MSG_CTRL_LOCK_PIN_DISCONNECTED, /* 锁销断开检测 */
 
     MY_MSG_BLE_RX,
 } MY_MAIN_TASK_MSG;

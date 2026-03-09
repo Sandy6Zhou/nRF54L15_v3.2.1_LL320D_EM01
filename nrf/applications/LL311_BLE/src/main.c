@@ -563,6 +563,22 @@ int main(void)
                 LOG_INF("KEY EVENT: Long press detected (2s)");
                 break;
 
+            case MY_MSG_CTRL_LIGHT_SENSOR_DARK:
+                LOG_INF("Light sensor detected: DARK");
+                break;
+
+            case MY_MSG_CTRL_LIGHT_SENSOR_BRIGHT:
+                LOG_INF("Light sensor detected: BRIGHT");
+                break;
+
+            case MY_MSG_CTRL_LOCK_PIN_INSERTED:
+                LOG_INF("Lock pin detected: INSERTED");
+                break;
+
+            case MY_MSG_CTRL_LOCK_PIN_DISCONNECTED:
+                LOG_INF("Lock pin detected: DISCONNECTED");
+                break;
+
             case MY_MSG_WORK_MODE_SWITCH:
                 /* 根据当前切换的模式处理对应的逻辑 */
                 switch (g_workmode_config.current_mode)
