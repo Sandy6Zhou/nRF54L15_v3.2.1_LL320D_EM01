@@ -25,6 +25,18 @@ typedef enum
     PARM_6,
     PARM_7,
     PARM_8,
+    PARM_9,
+    PARM_10,
+    PARM_11,
+    PARM_12,
+    PARM_13,
+    PARM_14,
+    PARM_15,
+    PARM_16,
+    PARM_17,
+    PARM_18,
+    PARM_19,
+    PARM_20,
     PARM_MAX
 } cmd_parm_struct;
 

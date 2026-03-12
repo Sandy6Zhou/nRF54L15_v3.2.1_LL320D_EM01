@@ -84,6 +84,95 @@ typedef struct {
     IntelligentMode intelligent;           // 智能模式
 } DeviceWorkModeConfig;
 
+/* 设备指令配置结构体 */
+typedef struct
+{
+    /* REMALM 指令配置 */
+    uint8_t remalm_sw;          /* 防拆报警开关: 0-OFF, 1-ON */
+    uint8_t remalm_mode;        /* 报警上报方式: 0-GPRS, 1-GPRS+SMS, 2-GPRS+SMS+CALL */
+
+    /* LOCKPINCYT 指令配置 */
+    uint8_t lockpincy_report;   /* 锁销非法拔除上报方式: 0-不上报, 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL */
+    uint8_t lockpincy_buzzer;   /* 锁销非法拔除蜂鸣器报警方式: 0-不报警, 1-报警30s, 2-持续报警 */
+
+    /* LOCKERR 指令配置 */
+    uint8_t lockerr_report;     /* 锁状态异常上报方式: 0-不上报, 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL */
+    uint8_t lockerr_buzzer;     /* 锁状态异常蜂鸣器报警方式: 0-不报警, 1-报警30s, 2-持续报警 */
+
+    /* PINSTAT 指令配置 */
+    uint8_t pinstat_report;     /* 锁销状态上报方式: 0-不上报, 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL */
+    uint8_t pinstat_trigger;    /* 锁销状态触发方式: 0-都不触发, 1-插入触发, 2-拔出触发, 3-插入拔出均触发 */
+
+    /* LOCKSTAT 指令配置 */
+    uint8_t lockstat_report;    /* 锁状态上报方式: 0-GPRS, 1-GPRS+SMS, 2-GPRS+SMS+CALL */
+    uint8_t lockstat_trigger;   /* 锁状态触发方式: 0-都不触发, 1-上锁触发, 2-解锁触发, 3-上锁解锁均触发 */
+
+    /* MOTDET 指令配置 */
+    uint16_t motdet_static_g;           /* 静止G值方差阈值 (1-500 mg) */
+    uint16_t motdet_land_g;             /* 陆运G值方差阈值 (1-3000 mg) */
+    uint16_t motdet_static_land_length; /* 静止进入陆运投票时长 (30-600 s) */
+    uint16_t motdet_sea_transport_time; /* 进入海运投票时长 (10-600 s) */
+    uint8_t  motdet_report_type;        /* 模式切换上报方式: 0-GPRS, 1-GPRS+SMS, 2-GPRS+SMS+CALL */
+
+    /* BATLEVEL 指令配置 */
+    uint8_t batlevel_empty_trg;         /* Empty状态触发方式: 0-不触发, 1-在线触发, 2-状态变化触发 */
+    uint8_t batlevel_empty_rpt;         /* Empty状态上报方式: 0-GPRS, 1-GPRS+SMS, 2-GPRS+SMS+CALL */
+    uint8_t batlevel_low_trg;           /* Low状态触发方式 */
+    uint8_t batlevel_low_rpt;           /* Low状态上报方式 */
+    uint8_t batlevel_normal_trg;        /* Normal状态触发方式 */
+    uint8_t batlevel_normal_rpt;        /* Normal状态上报方式 */
+    uint8_t batlevel_fair_trg;          /* Fair状态触发方式 */
+    uint8_t batlevel_fair_rpt;          /* Fair状态上报方式 */
+    uint8_t batlevel_high_trg;          /* High状态触发方式 */
+    uint8_t batlevel_high_rpt;          /* High状态上报方式 */
+    uint8_t batlevel_full_trg;          /* Full状态触发方式 */
+    uint8_t batlevel_full_rpt;          /* Full状态上报方式 */
+
+    /* CHARGESTA 指令配置 */
+    uint8_t chargesta_report;           /* 充电状态上报方式: 0-GPRS, 1-GPRS+SMS, 2-GPRS+SMS+CALL */
+
+    /* SHOCKALARM 指令配置 */
+    uint8_t shockalarm_sw;              /* 撞击报警开关: 0-OFF, 1-ON */
+    uint8_t shockalarm_level;           /* 撞击力度阈值: 1-5 (1最不敏感,5最敏感) */
+    uint8_t shockalarm_type;            /* 告警上报方式: 0-GPRS, 1-GPRS+SMS, 2-GPRS+SMS+CALL */
+
+    /* STARTR 指令配置 */
+    uint8_t startr_sw;                  /* 数据记录功能开关: 0-OFF, 1-ON */
+
+    /* PWRSAVE 指令配置 */
+    uint8_t pwsave_sw;                 /* 低功耗运输状态开关: 0-OFF, 1-ON */
+
+    /* BT_CRFPWR 指令配置 */
+    int8_t  bt_crfpwr;                  /* 蓝牙发射功率: -8,-4,0,3,5,7,12 dBm */
+
+    /* BT_UPDATA 指令配置 */
+    uint8_t  bt_updata_mode;            /* 工作方式: 0-不开启, 1-Cell启动时开启, 2-持续收集Cell启动上传, 3-持续收集Cell启动上传或唤醒上传 */
+    uint32_t bt_updata_scan_interval;   /* 蓝牙数据收集间隔: 1-86400秒 */
+    uint32_t bt_updata_scan_length;     /* 每次收集搜索时长: 1-86400秒 */
+    uint32_t bt_updata_updata_interval; /* 蓝牙唤醒间隔: 1-86400秒 */
+
+    /* TAG 指令配置 */
+    uint8_t tag_sw;                     /* Tag定位功能开关: 0-OFF, 1-ON */
+    uint16_t tag_interval;              /* 广播间隔: 100-60000ms */
+
+    /* LOCKCD 指令配置 */
+    uint16_t lockcd_countdown;          /* 插入后上锁倒计时: 0-3600秒, 0代表不自动上锁 */
+
+    /* LED 指令配置 */
+    uint8_t led_display;                /* LED显示开关: 0-OFF, 1-ON */
+
+    /* BUZZER 直接控制指令配置 */
+    uint8_t buzzer_operator;            /* 蜂鸣器操作: 0-停止, 1-持续报警, 2-成功提示音, 3-失败提示音, 4-异常提示音, 5-一般报警音 */
+
+    /* NCFTRIG 指令配置 */
+    char     ncftrig_nfc_no[16];        /* 联动的NFC卡号 */
+    char     ncftrig_command[128];      /* 需要执行的完整可执行指令 */
+
+} DeviceCmdConfig;
+
+/* 全局指令配置变量声明 */
+extern DeviceCmdConfig g_device_cmd_config;
+
 /*********************************************************************
 **函数名称:  my_system_reset
 **入口参数:  无

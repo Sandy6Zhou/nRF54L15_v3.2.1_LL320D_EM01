@@ -12,7 +12,14 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260309"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260311"
+/* 软件版本:        V1.0
+** 完成日期:        2026.03.11
+** 作    者:        周森达 (zhousenda@jimiiot.com)
+** 修改内容:        1.整理APP相关指令集并进行数据存储(其中一些比较复杂的指令暂未增加)
+*/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260309"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.03.09
 ** 作    者:        周森达 (zhousenda@jimiiot.com)
