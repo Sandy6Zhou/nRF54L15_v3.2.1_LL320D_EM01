@@ -10,6 +10,43 @@
 #ifndef _MY_CMD_SETTING_H_
 #define _MY_CMD_SETTING_H_
 
+#define AT_CMD_TABLE_TOTAL (sizeof(at_cmd_attr_table)/sizeof(at_cmd_attr_t))
+
+#define RESP_STRING_LENGTH_MAX              BLE_SVC_RX_MAX_LEN
+#define CMD_STRING_LENGTH_MAX               128                 //暂定可接收cmd缓冲区大小
+
+typedef enum
+{
+    PARM_1,
+    PARM_2,
+    PARM_3,
+    PARM_4,
+    PARM_5,
+    PARM_6,
+    PARM_7,
+    PARM_8,
+    PARM_MAX
+} cmd_parm_struct;
+
+typedef struct {
+    char *parm[PARM_MAX];
+    uint8_t parm_count;
+
+    char rcv_msg[CMD_STRING_LENGTH_MAX];            //接收到的数据
+    uint16_t rcv_length;
+
+    char resp_msg[RESP_STRING_LENGTH_MAX];          //应答数据
+    uint16_t resp_length;
+} at_cmd_struc;
+
+typedef int(*at_cmd_handler_t)(at_cmd_struc *msg);
+
+typedef struct
+{
+    char *cmd_str;
+    at_cmd_handler_t cmd_func;
+} at_cmd_attr_t;
+
 /********************************************************************
 **函数名称:  set_work_mode
 **入口参数:  config   ---        指向设备工作模式配置结构体的指针
@@ -43,5 +80,14 @@ int set_long_battery_params(DeviceWorkModeConfig *config, uint16_t reporting_int
 **返 回 值:  0 表示成功，负值表示失败（如参数非法等）
 *********************************************************************/
 int set_intelligent_params(DeviceWorkModeConfig *config, uint32_t static_int, uint32_t land_int, uint32_t sea_int, uint8_t sleep_sw);
+
+/********************************************************************
+**函数名称:  at_recv_cmd_handler
+**入口参数:  at_cmd_msg      ---        AT指令结构体指针，包含接收的指令和响应存储区域(输入/输出)
+**出口参数:  at_cmd_msg中更新响应消息内容和响应长度
+**函数功能:  解析接收到的AT指令并执行对应的处理函数
+**返回值:    成功返回处理函数返回的BLE数据类型，未匹配指令或处理失败返回0
+*********************************************************************/
+uint16_t at_recv_cmd_handler(at_cmd_struc *at_cmd_msg);
 
 #endif /* _MY_CMD_SETTING_H_ */

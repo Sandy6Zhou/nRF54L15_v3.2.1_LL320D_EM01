@@ -504,6 +504,62 @@ static void ble_comu_cid_data_handle(const uint8_t *data, uint16_t len)
     }
 }
 
+/********************************************************************
+**函数名称:  ble_comu_response_or_expansion_cmd
+**入口参数:  type          ---        命令类型
+**         :  str_data      ---        输入数据指针
+**         :  len           ---        数据长度
+**出口参数:  无
+**函数功能:  发送BLE通信响应或扩展命令数据
+**返回值:    无
+**注意事项:  数据长度会被扩展到16字节的倍数进行发送
+*********************************************************************/
+void ble_comu_response_or_expansion_cmd(uint16_t type, uint8_t *str_data, uint8_t len)
+{
+    uint8_t out_data[BLE_SVC_RX_MAX_LEN] = {0};
+    uint8_t send_len = 0;
+
+    memcpy(out_data, str_data, len);
+    send_len = len/16;
+    send_len *= 16;
+
+    if (len % 16)
+        send_len += 16;
+
+    ble_comu_send_packet(type, out_data, send_len);
+}
+
+/********************************************************************
+**函数名称:  ble_comu_at_cmd_handle
+**入口参数:  data          ---        AT命令数据输入指针
+**         :  len           ---        数据长度
+**出口参数:  无
+**函数功能:  处理BLE接收的AT命令
+**返回值:    无
+**注意事项:  根据AT命令处理结果决定是否发送响应数据
+*********************************************************************/
+static void ble_comu_at_cmd_handle(const uint8_t *data, uint16_t len)
+{
+    at_cmd_struc ble_at_msg = {0};
+    uint16_t cmd_type = 0;
+
+#if 0
+    LOG_INF("ble_comu_at_cmd_handle:%s, len=%d", data, len);
+    LOG_HEXDUMP_INF(data, len, "hex data:");
+#endif
+
+    ble_at_msg.rcv_length = len;
+    memcpy(ble_at_msg.rcv_msg, data, len);
+
+    cmd_type = at_recv_cmd_handler(&ble_at_msg);
+
+    // BLE_SERVER_MAX_DATA_LEN - 4这里的4是因为包头占用了4个字节
+    if (ble_at_msg.resp_length > 0 && ble_at_msg.resp_length <= (BLE_SERVER_MAX_DATA_LEN - 4))
+    {
+        ble_comu_response_or_expansion_cmd(cmd_type, (uint8_t*)ble_at_msg.resp_msg, ble_at_msg.resp_length);
+    }
+}
+
 /*********************************************************************
 **函数名称:  ble_comu_app_handle
 **入口参数:  type        --  收到的蓝牙数据类型
@@ -551,6 +607,10 @@ void ble_comu_app_handle(uint32_t type, const uint8_t *data, uint16_t len)
             {
                 case BLE_DATA_TYPE_CID:         //串号数据
                     ble_comu_cid_data_handle(dec_buf, len);
+                    break;
+
+                case BLE_DATA_TYPE_AT_CMD:      //用户指令
+                    ble_comu_at_cmd_handle(dec_buf, len);
                     break;
 
                 default:

@@ -167,8 +167,8 @@ typedef enum
 #include "my_battery.h"
 // #include "my_wdt.h"
 #include "my_tool.h"
-#include "my_cmd_setting.h"
 #include "my_zms_param.h"
 #include "my_ble_app.h"
+#include "my_cmd_setting.h"
 
 #endif /* _MY_COMMON_H_ */

@@ -12,7 +12,15 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260306"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260309"
+/* 软件版本:        V1.0
+** 完成日期:        2026.03.09
+** 作    者:        周森达 (zhousenda@jimiiot.com)
+** 修改内容:        1.增加监测MTU变化回调
+**                 2.增加APP用户指令与设备交互的链路
+*/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260306"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.03.06
 ** 作    者:        Harrison Wu (wuyujiao@jimiiot.com)

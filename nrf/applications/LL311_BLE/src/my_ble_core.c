@@ -87,6 +87,17 @@ static struct bt_conn_cb conn_callbacks = {
     .recycled = recycled_cb
 };
 
+// 监测MTU变化的回调
+static void att_mtu_updated(struct bt_conn *conn, uint16_t tx, uint16_t rx)
+{
+    LOG_INF("MTU updated: TX=%d, RX=%d", tx, rx);
+    ble_server_mtu = tx;
+}
+
+static struct bt_gatt_cb gatt_callbacks = {
+    .att_mtu_updated = att_mtu_updated,
+};
+
 static const struct bt_le_ext_adv_cb adv_cb = {
     .connected = adv_connected_cb
 };
@@ -690,6 +701,7 @@ int my_ble_core_start(void)
 
     // 注册连接回调
     bt_conn_cb_register(&conn_callbacks);
+    bt_gatt_cb_register(&gatt_callbacks);
 
     k_work_init(&adv_work, adv_work_handler);
 
