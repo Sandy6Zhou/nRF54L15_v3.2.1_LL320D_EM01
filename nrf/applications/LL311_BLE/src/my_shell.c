@@ -621,6 +621,318 @@ static int cmd_shutdown(const struct shell *shell, size_t argc, char **argv)
     return 0;
 }
 
+/********************************************************************
+**函数名称:  cmd_ble_log_test
+**入口参数:  shell    ---        Shell 句柄
+**           argc     ---        参数个数
+**           argv     ---        参数数组
+**出口参数:  无
+**函数功能:  测试蓝牙日志发送功能
+**返 回 值:  0 表示成功
+**使用示例:  app blog "test message"
+*********************************************************************/
+static int cmd_ble_log_test(const struct shell *shell, size_t argc, char **argv)
+{
+    const char *msg;
+    size_t len;
+    uint8_t send_len;
+
+    if (argc < 2)
+    {
+        shell_print(shell, "Usage: app blog \"<message>\"");
+        shell_print(shell, "Example: app blog \"Hello BLE Log\"");
+        shell_print(shell, "Note: Message must be enclosed in quotes");
+        return -1;
+    }
+
+    msg = argv[1];
+    len = strlen(msg);
+
+    /* 检查参数是否包含空格（带引号的参数在argc=2时是一个整体）
+     * 如果argc>2，说明参数被空格分割，用户可能忘记加引号 */
+    if (argc > 2)
+    {
+        shell_print(shell, "Error: Message must be enclosed in quotes");
+        shell_print(shell, "Usage: app blog \"<message>\"");
+        return -1;
+    }
+
+    /* 检查长度限制 */
+    if (len == 0)
+    {
+        shell_print(shell, "Message is empty");
+        return -1;
+    }
+
+    if (len > 512)
+    {
+        shell_print(shell, "Message too long (max 512 bytes)");
+        return -1;
+    }
+
+    /* 限制发送长度为 255 字节（ble_log_send 参数类型为 uint8_t） */
+    send_len = (len > 255) ? 255 : (uint8_t)len;
+
+    shell_print(shell, "Sending BLE log: %s", msg);
+    ble_log_send((uint8_t *)msg, send_len);
+    shell_print(shell, "BLE log sent, length: %d", send_len);
+
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  cmd_ble_log_config
+**入口参数:  shell    ---        Shell 句柄
+**           argc     ---        参数个数
+**           argv     ---        参数数组
+**出口参数:  无
+**函数功能:  蓝牙日志配置命令
+**返 回 值:  0 表示成功
+**使用示例:  app blogcfg global 1          (开启总开关)
+**           app blogcfg mod BLE 1         (开启BLE模块)
+**           app blogcfg level BLE 3       (BLE模块INF等级)
+**           app blogcfg show              (显示配置)
+*********************************************************************/
+static int cmd_ble_log_config(const struct shell *shell, size_t argc, char **argv)
+{
+    BleLogConfig_t *config;
+    int ret;
+    uint8_t level;
+    uint8_t mod_id;
+    uint8_t en;
+
+    if (argc < 2)
+    {
+        shell_print(shell, "Usage:");
+        shell_print(shell, "  app blogcfg global <0|1>        - Set global enable");
+        shell_print(shell, "  app blogcfg mod <name> <0|1>    - Set module enable");
+        shell_print(shell, "  app blogcfg level <name> <0-4>  - Set module level");
+        shell_print(shell, "  app blogcfg show                - Show configuration");
+        shell_print(shell, "Module names:");
+        shell_print(shell, "  MAIN, BLE, DFU, SENSOR, LTE, CTRL, SHELL, NFC,");
+        shell_print(shell, "  BATTERY, MOTOR, CMD, TOOL, PARAM, WDT, OTHER");
+        shell_print(shell, "Level: 0=NONE, 1=ERR, 2=WRN, 3=INF, 4=DBG");
+        return -1;
+    }
+
+    config = my_param_get_ble_log_config();
+
+    if (strcmp(argv[1], "global") == 0)
+    {
+        if (argc < 3)
+        {
+            shell_print(shell, "Current global enable: %d", config->global_en);
+            return 0;
+        }
+
+        en = atoi(argv[2]) ? 1 : 0; // 支持非0为1，否则为0
+
+        ret = my_param_set_ble_log_global(en);  // 保存全局使能参数
+        if (ret == 0)
+        {
+            shell_print(shell, "BLE log global enable set to: %d", en);
+        }
+        else
+        {
+            shell_print(shell, "Failed to set global enable");
+        }
+    }
+    else if (strcmp(argv[1], "mod") == 0)
+    {
+        if (argc < 4)
+        {
+            shell_print(shell, "Usage: app blogcfg mod <name> <0|1>");
+            return -1;
+        }
+
+        en = atoi(argv[3]) ? 1 : 0; // 支持非0为1，否则为0
+
+        if (strcmp(argv[2], "MAIN") == 0)
+            mod_id = BLE_LOG_MOD_MAIN;
+        else if (strcmp(argv[2], "BLE") == 0) // BLE 模块不支持 BLE 日志（递归风险），初始化时已禁用
+        {
+            shell_print(shell, "BLE module does not support BLE log (recursive risk)");
+            return -1;
+        }
+        else if (strcmp(argv[2], "DFU") == 0) // DFU 模块不支持 BLE 日志（递归风险），初始化时已禁用
+        {
+            shell_print(shell, "DFU module does not support BLE log (recursive risk)");
+            return -1;
+        }
+        else if (strcmp(argv[2], "SENSOR") == 0)
+            mod_id = BLE_LOG_MOD_SENSOR;
+        else if (strcmp(argv[2], "LTE") == 0)
+            mod_id = BLE_LOG_MOD_LTE;
+        else if (strcmp(argv[2], "CTRL") == 0)
+            mod_id = BLE_LOG_MOD_CTRL;
+        else if (strcmp(argv[2], "SHELL") == 0) // SHELL 模块不支持 BLE 日志（递归风险），初始化时已禁用
+        {
+            shell_print(shell, "SHELL module does not support BLE log (recursive risk)");
+            return -1;
+        }
+        else if (strcmp(argv[2], "NFC") == 0)
+            mod_id = BLE_LOG_MOD_NFC;
+        else if (strcmp(argv[2], "BATTERY") == 0)
+            mod_id = BLE_LOG_MOD_BATTERY;
+        else if (strcmp(argv[2], "MOTOR") == 0)
+            mod_id = BLE_LOG_MOD_MOTOR;
+        else if (strcmp(argv[2], "CMD") == 0) // CMD 模块不支持 BLE 日志（递归风险），初始化时已禁用
+        {
+            shell_print(shell, "CMD module does not support BLE log (recursive risk)");
+            return -1;
+        }
+        else if (strcmp(argv[2], "TOOL") == 0)
+            mod_id = BLE_LOG_MOD_TOOL;
+        else if (strcmp(argv[2], "PARAM") == 0)
+            mod_id = BLE_LOG_MOD_PARAM;
+        else if (strcmp(argv[2], "WDT") == 0)
+            mod_id = BLE_LOG_MOD_WDT;
+        else if (strcmp(argv[2], "OTHER") == 0)
+            mod_id = BLE_LOG_MOD_OTHER;
+        else
+        {
+            shell_print(shell, "Unknown module: %s", argv[2]);
+            return -1;
+        }
+
+        ret = my_param_set_ble_log_mod(mod_id, en);
+        if (ret == 0)
+        {
+            shell_print(shell, "BLE log module %s enable set to: %d", argv[2], en);
+        }
+        else
+        {
+            shell_print(shell, "Failed to set module enable");
+        }
+    }
+    else if (strcmp(argv[1], "level") == 0)
+    {
+        if (argc < 4)
+        {
+            shell_print(shell, "Usage: app blogcfg level <name> <0-4>");
+            return -1;
+        }
+
+        level = atoi(argv[3]);
+
+        if (strcmp(argv[2], "MAIN") == 0)
+            mod_id = BLE_LOG_MOD_MAIN;
+        else if (strcmp(argv[2], "BLE") == 0) // BLE 模块不支持 BLE 日志（递归风险），初始化时已禁用
+        {
+            shell_print(shell, "BLE module does not support BLE log (recursive risk)");
+            return -1;
+        }
+        else if (strcmp(argv[2], "DFU") == 0) // DFU 模块不支持 BLE 日志（递归风险），初始化时已禁用
+        {
+            shell_print(shell, "DFU module does not support BLE log (recursive risk)");
+            return -1;
+        }
+        else if (strcmp(argv[2], "SENSOR") == 0)
+            mod_id = BLE_LOG_MOD_SENSOR;
+        else if (strcmp(argv[2], "LTE") == 0)
+            mod_id = BLE_LOG_MOD_LTE;
+        else if (strcmp(argv[2], "CTRL") == 0)
+            mod_id = BLE_LOG_MOD_CTRL;
+        else if (strcmp(argv[2], "SHELL") == 0) // SHELL 模块不支持 BLE 日志（递归风险），初始化时已禁用
+        {
+            shell_print(shell, "SHELL module does not support BLE log (recursive risk)");
+            return -1;
+        }
+        else if (strcmp(argv[2], "NFC") == 0)
+            mod_id = BLE_LOG_MOD_NFC;
+        else if (strcmp(argv[2], "BATTERY") == 0)
+            mod_id = BLE_LOG_MOD_BATTERY;
+        else if (strcmp(argv[2], "MOTOR") == 0)
+            mod_id = BLE_LOG_MOD_MOTOR;
+        else if (strcmp(argv[2], "CMD") == 0) // CMD 模块不支持 BLE 日志（递归风险），初始化时已禁用
+        {
+            shell_print(shell, "CMD module does not support BLE log (recursive risk)");
+            return -1;
+        }
+        else if (strcmp(argv[2], "TOOL") == 0)
+            mod_id = BLE_LOG_MOD_TOOL;
+        else if (strcmp(argv[2], "PARAM") == 0)
+            mod_id = BLE_LOG_MOD_PARAM;
+        else if (strcmp(argv[2], "WDT") == 0)
+            mod_id = BLE_LOG_MOD_WDT;
+        else if (strcmp(argv[2], "OTHER") == 0)
+            mod_id = BLE_LOG_MOD_OTHER;
+        else
+        {
+            shell_print(shell, "Unknown module: %s", argv[2]);
+            return -1;
+        }
+
+        ret = my_param_set_ble_log_level(mod_id, level);
+        if (ret == 0)
+        {
+            shell_print(shell, "BLE log module %s level set to: %d", argv[2], level);
+        }
+        else
+        {
+            shell_print(shell, "Failed to set module level");
+        }
+    }
+    else if (strcmp(argv[1], "show") == 0)
+    {
+        shell_print(shell, "BLE Log Configuration:");
+        shell_print(shell, "  Global enable: %d", config->global_en);
+        shell_print(shell, "  Module status (ON/OFF + level(0:NONE 1:ERR 2:WRN 3:INF 4:DBG)):");
+        shell_print(shell, "    MAIN:   %s  %d",
+                    BLE_LOG_MOD_IS_ENABLED(config, BLE_LOG_MOD_MAIN) ? "ON" : "OFF",
+                    config->mod_level[BLE_LOG_MOD_MAIN]);
+        shell_print(shell, "    BLE:    %s  %d",
+                    BLE_LOG_MOD_IS_ENABLED(config, BLE_LOG_MOD_BLE) ? "ON" : "OFF",
+                    config->mod_level[BLE_LOG_MOD_BLE]);
+        shell_print(shell, "    DFU:    %s  %d",
+                    BLE_LOG_MOD_IS_ENABLED(config, BLE_LOG_MOD_DFU) ? "ON" : "OFF",
+                    config->mod_level[BLE_LOG_MOD_DFU]);
+        shell_print(shell, "    SENSOR: %s  %d",
+                    BLE_LOG_MOD_IS_ENABLED(config, BLE_LOG_MOD_SENSOR) ? "ON" : "OFF",
+                    config->mod_level[BLE_LOG_MOD_SENSOR]);
+        shell_print(shell, "    LTE:    %s  %d",
+                    BLE_LOG_MOD_IS_ENABLED(config, BLE_LOG_MOD_LTE) ? "ON" : "OFF",
+                    config->mod_level[BLE_LOG_MOD_LTE]);
+        shell_print(shell, "    CTRL:   %s  %d",
+                    BLE_LOG_MOD_IS_ENABLED(config, BLE_LOG_MOD_CTRL) ? "ON" : "OFF",
+                    config->mod_level[BLE_LOG_MOD_CTRL]);
+        shell_print(shell, "    SHELL:  %s  %d",
+                    BLE_LOG_MOD_IS_ENABLED(config, BLE_LOG_MOD_SHELL) ? "ON" : "OFF",
+                    config->mod_level[BLE_LOG_MOD_SHELL]);
+        shell_print(shell, "    NFC:    %s  %d",
+                    BLE_LOG_MOD_IS_ENABLED(config, BLE_LOG_MOD_NFC) ? "ON" : "OFF",
+                    config->mod_level[BLE_LOG_MOD_NFC]);
+        shell_print(shell, "    BATTERY: %s  %d",
+                    BLE_LOG_MOD_IS_ENABLED(config, BLE_LOG_MOD_BATTERY) ? "ON" : "OFF",
+                    config->mod_level[BLE_LOG_MOD_BATTERY]);
+        shell_print(shell, "    MOTOR:  %s  %d",
+                    BLE_LOG_MOD_IS_ENABLED(config, BLE_LOG_MOD_MOTOR) ? "ON" : "OFF",
+                    config->mod_level[BLE_LOG_MOD_MOTOR]);
+        shell_print(shell, "    CMD:    %s  %d",
+                    BLE_LOG_MOD_IS_ENABLED(config, BLE_LOG_MOD_CMD) ? "ON" : "OFF",
+                    config->mod_level[BLE_LOG_MOD_CMD]);
+        shell_print(shell, "    TOOL:   %s  %d",
+                    BLE_LOG_MOD_IS_ENABLED(config, BLE_LOG_MOD_TOOL) ? "ON" : "OFF",
+                    config->mod_level[BLE_LOG_MOD_TOOL]);
+        shell_print(shell, "    PARAM:  %s  %d",
+                    BLE_LOG_MOD_IS_ENABLED(config, BLE_LOG_MOD_PARAM) ? "ON" : "OFF",
+                    config->mod_level[BLE_LOG_MOD_PARAM]);
+        shell_print(shell, "    WDT:    %s  %d",
+                    BLE_LOG_MOD_IS_ENABLED(config, BLE_LOG_MOD_WDT) ? "ON" : "OFF",
+                    config->mod_level[BLE_LOG_MOD_WDT]);
+        shell_print(shell, "    OTHER:  %s  %d",
+                    BLE_LOG_MOD_IS_ENABLED(config, BLE_LOG_MOD_OTHER) ? "ON" : "OFF",
+                    config->mod_level[BLE_LOG_MOD_OTHER]);
+    }
+    else
+    {
+        shell_print(shell, "Unknown command: %s", argv[1]);
+        return -1;
+    }
+
+    return 0;
+}
+
 /* 注册自定义命令到 Shell 子系统 */
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_app,
     SHELL_CMD(sysinfo, NULL, "Display system information", cmd_system_info),
@@ -636,6 +948,8 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_app,
     SHELL_CMD(nfc_poll, NULL, "NFC polling: app nfc_poll <start|stop>", cmd_nfc_poll),
     SHELL_CMD(shutdown, NULL, "Shutdown system (enter ultra-low power mode)", cmd_shutdown),
     SHELL_CMD(batt_state_change, NULL, "battery state change", cmd_batt_stateconst),//手动改变电池状态，调试用
+    SHELL_CMD(blog, NULL, "Send BLE log test message: app blog <message>", cmd_ble_log_test),
+    SHELL_CMD(blogcfg, NULL, "BLE log config: app blogcfg <global|mod|level|show>", cmd_ble_log_config),
     SHELL_SUBCMD_SET_END
 );
 /* Zephyr Shell 子系统提供的宏，随 nRF Connect SDK一起提供，用来在 Shell里注册一个“根命令”

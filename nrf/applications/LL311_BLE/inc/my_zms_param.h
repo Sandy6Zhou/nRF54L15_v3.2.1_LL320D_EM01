@@ -10,12 +10,14 @@
 #ifndef _MY_ZMS_PARAM_H_
 #define _MY_ZMS_PARAM_H_
 
-#define ZMS_ID_FF           0
-#define ZMS_ID_GG           1
-#define ZMS_ID_ADV_VALID    2
-#define ZMS_ID_ECDH_G       3
-#define ZMS_ID_IMEI         4
-#define ZMS_ID_MAC          5
+#define ZMS_ID_FF             0
+#define ZMS_ID_GG             1
+#define ZMS_ID_ADV_VALID      2
+#define ZMS_ID_ECDH_G         3
+#define ZMS_ID_IMEI           4
+#define ZMS_ID_MAC            5
+#define ZMS_ID_BLE_TX_POWER   6
+#define ZMS_ID_BLE_LOG_CONFIG 7
 
 #define LICENSE_FF_STR_LEN                  (29 * 2)
 #define LICENSE_GG_STR_LEN                  (24 * 2)
@@ -56,6 +58,44 @@ typedef struct /* 存储的IMEI信息 */
     uint8_t hex[MY_MAC_LENGTH];
 }macaddr_t;
 
+typedef struct /* 存储的蓝牙发射功率参数 */
+{
+    uint8_t flag;    /* 参数有效标志 */
+    int8_t tx_power; /* 发射功率(dBm)，范围: -8 ~ +8 */
+} BleTxPower_t;
+
+/* 蓝牙日志模块ID定义 */
+#define BLE_LOG_MOD_MAIN     0 /* main模块 */
+#define BLE_LOG_MOD_BLE      1 /* 蓝牙模块 */
+#define BLE_LOG_MOD_DFU      2 /* DFU模块 */
+#define BLE_LOG_MOD_SENSOR   3 /* 传感器模块 */
+#define BLE_LOG_MOD_LTE      4 /* LTE模块 */
+#define BLE_LOG_MOD_CTRL     5 /* 控制模块 */
+#define BLE_LOG_MOD_SHELL    6 /* Shell模块 */
+#define BLE_LOG_MOD_NFC      7 /* NFC模块 */
+#define BLE_LOG_MOD_BATTERY  8 /* 电池模块 */
+#define BLE_LOG_MOD_MOTOR    9 /* 电机模块 */
+#define BLE_LOG_MOD_CMD     10 /* 命令设置模块 */
+#define BLE_LOG_MOD_TOOL    11 /* 工具模块 */
+#define BLE_LOG_MOD_PARAM   12 /* 参数模块 */
+#define BLE_LOG_MOD_WDT     13 /* 看门狗模块 */
+#define BLE_LOG_MOD_OTHER   14 /* 其他模块 */
+#define BLE_LOG_MOD_MAX     15 /* 最大模块数 */
+
+typedef struct /* 存储的蓝牙日志配置参数 */
+{
+    uint8_t  flag;                           /* 参数有效标志 */
+    uint8_t  global_en;                      /* 总开关: 0=关闭, 1=开启 */
+    uint8_t  reserved[2];                    /* 预留对齐，确保mod_en 4字节对齐 */
+    uint32_t mod_en;                         /* 模块开关bitmap，每位对应一个模块 */
+    uint8_t  mod_level[BLE_LOG_MOD_MAX];     /* 各模块日志等级阈值 */
+} BleLogConfig_t;
+
+/* 获取指定模块在 mod_en bitmap 中的开关状态
+ * 使用32位bitmap，mod_id 直接对应位位置 (0-31) */
+#define BLE_LOG_MOD_IS_ENABLED(config, mod_id) \
+    ((mod_id) < 32 ? ((config)->mod_en & (1U << (mod_id))) : 0)
+
 typedef struct
 {
     lic_ff_struct               lic_ff;
@@ -65,6 +105,8 @@ typedef struct
     GsmImei_t                   gsm_imei;
     macaddr_t                   my_macaddr;
     DeviceWorkModeConfig        *workmode_config;
+    BleTxPower_t                ble_tx_power;       /* 蓝牙发射功率 */
+    BleLogConfig_t              ble_log_config;     /* 蓝牙日志配置 */
 } ConfigParamStruct;
 
 extern ConfigParamStruct    gConfigParam;
@@ -165,4 +207,60 @@ int my_param_set_mac(char *param, uint8_t len);
 **返 回 值:  返回MAC地址结构体指针
 *********************************************************************/
 const macaddr_t *my_param_get_macaddr(void);
+/********************************************************************
+**函数名称:  my_param_set_ble_tx_power
+**入口参数:  tx_power: 发射功率(dBm)，范围: -40 ~ +8
+**出口参数:  无
+**函数功能:  设置蓝牙发射功率参数
+**返 回 值:  0表示成功，负值表示失败
+*********************************************************************/
+int my_param_set_ble_tx_power(int8_t tx_power);
+/********************************************************************
+**函数名称:  my_param_get_ble_tx_power
+**入口参数:  无
+**出口参数:  无
+**函数功能:  获取蓝牙发射功率参数
+**返 回 值:  发射功率(dBm)，如果参数无效返回默认值0
+*********************************************************************/
+int8_t my_param_get_ble_tx_power(void);
+/********************************************************************
+**函数名称:  my_param_set_ble_log_config
+**入口参数:  config: 蓝牙日志配置结构体指针
+**出口参数:  无
+**函数功能:  设置蓝牙日志完整配置
+**返 回 值:  0表示成功，负值表示失败
+*********************************************************************/
+int my_param_set_ble_log_config(const BleLogConfig_t *config);
+/********************************************************************
+**函数名称:  my_param_get_ble_log_config
+**入口参数:  无
+**出口参数:  无
+**函数功能:  获取蓝牙日志配置
+**返 回 值:  返回蓝牙日志配置结构体指针
+*********************************************************************/
+BleLogConfig_t *my_param_get_ble_log_config(void);
+/********************************************************************
+**函数名称:  my_param_set_ble_log_global
+**入口参数:  en: 总开关状态 (0=关闭, 1=开启)
+**出口参数:  无
+**函数功能:  设置蓝牙日志总开关
+**返 回 值:  0表示成功，负值表示失败
+*********************************************************************/
+int my_param_set_ble_log_global(uint8_t en);
+/********************************************************************
+**函数名称:  my_param_set_ble_log_mod
+**入口参数:  mod_id: 模块ID, en: 开关状态 (0=关闭, 1=开启)
+**出口参数:  无
+**函数功能:  设置指定模块的蓝牙日志开关
+**返 回 值:  0表示成功，负值表示失败
+*********************************************************************/
+int my_param_set_ble_log_mod(uint8_t mod_id, uint8_t en);
+/********************************************************************
+**函数名称:  my_param_set_ble_log_level
+**入口参数:  mod_id: 模块ID, level: 日志等级阈值
+**出口参数:  无
+**函数功能:  设置指定模块的蓝牙日志等级阈值
+**返 回 值:  0表示成功，负值表示失败
+*********************************************************************/
+int my_param_set_ble_log_level(uint8_t mod_id, uint8_t level);
 #endif

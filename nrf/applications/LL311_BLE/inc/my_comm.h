@@ -185,5 +185,6 @@ typedef enum
 #include "my_ble_app.h"
 #include "my_cmd_setting.h"
 #include "my_dfu_jimi.h"
+#include "my_ble_log.h"
 
 #endif /* _MY_COMMON_H_ */

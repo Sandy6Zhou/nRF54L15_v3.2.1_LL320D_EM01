@@ -9,6 +9,20 @@
 ** 功能描述:        1. 设备工作模式设置
 **                 2. 命令参数配置管理
 **                 3. 配置验证与存储
+**
+** 日志输出规范（重要）:
+**   - 本模块所有日志统一使用 LOG_INF/LOG_ERR/LOG_WRN/LOG_DBG
+**   - 禁止使用 MY_LOG_INF/MY_LOG_ERR 可输出蓝牙日志宏
+**
+** 原因说明:
+**   1. 本模块为蓝牙指令处理模块，指令响应已通过 BLE 通道返回给 APP
+**   2. 蓝牙连接建立后，指令响应数据通过 0xFEB5 特征值主动回传
+**   3. 如使用蓝牙日志宏，会导致日志递归发送（日志发送本身又产生日志）
+**   4. 统一使用 RTT 日志，既满足调试需求，又避免蓝牙通道冗余
+**
+** 示例:
+**   LOG_INF("BTLOG enabled");        // 正确 - 仅 RTT 输出
+**   MY_LOG_INF("BTLOG enabled");     // 错误 - 会触发蓝牙日志递归
 *********************************************************************/
 
 #include "my_comm.h"
@@ -123,6 +137,7 @@ static int led_cmd_handler(at_cmd_struc* msg);
 static int buzzer_cmd_handler(at_cmd_struc* msg);
 static int ncftrig_cmd_handler(at_cmd_struc* msg);
 static int nfcauth_cmd_handler(at_cmd_struc* msg);
+static int btlog_cmd_handler(at_cmd_struc* msg);
 
 static const at_cmd_attr_t at_cmd_attr_table[] =
 {
@@ -146,6 +161,7 @@ static const at_cmd_attr_t at_cmd_attr_table[] =
     {"BUZZER",         buzzer_cmd_handler},
     {"NCFTRIG",        ncftrig_cmd_handler},
     {"NFCAUTH",        nfcauth_cmd_handler},
+    {"BTLOG",          btlog_cmd_handler},
 };
 
 /*********************************************************************
@@ -2194,3 +2210,80 @@ param_invalid:
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
     return BLE_DATA_TYPE_AT_CMD;
 }
+
+/*********************************************************************
+**函数名称:  btlog_cmd_handler
+**入口参数:  msg      ---        AT指令结构体指针
+**出口参数:  msg->resp_msg  ---  响应消息
+**           msg->resp_length --- 响应长度
+**函数功能:  处理BTLOG指令：控制蓝牙日志开关
+**指令格式:  BTLOG,ON#    - 开启蓝牙日志
+**           BTLOG,OFF#   - 关闭蓝牙日志
+**           BTLOG#       - 查询蓝牙日志状态
+**参数说明:  ON  - 开启蓝牙日志总开关
+**           OFF - 关闭蓝牙日志总开关
+**           无参数 - 查询当前状态
+**返 回 值:  BLE数据类型
+*********************************************************************/
+static int btlog_cmd_handler(at_cmd_struc* msg)
+{
+    uint16_t remaining;
+    BleLogConfig_t *config;
+
+    remaining = sizeof(msg->resp_msg);
+    config = my_param_get_ble_log_config();
+
+    /* 无参数 - 查询状态 */
+    if (msg->parm_count == 0)
+    {
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_BTLOG_%s",
+                                    config->global_en ? "ON" : "OFF");
+        return BLE_DATA_TYPE_AT_CMD;
+    }
+
+    /* 有参数 - 设置状态 */
+    if (msg->parm_count == 1)
+    {
+        if (strcmp(msg->parm[1], "ON") == 0)
+        {
+            config->global_en = 1;
+            if (my_param_set_ble_log_config(config) == 0)
+            {
+                msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_BTLOG_ON_OK");
+                LOG_INF("BTLOG enabled");
+            }
+            else
+            {
+                msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_BTLOG_ON_FAIL");
+            }
+            return BLE_DATA_TYPE_AT_CMD;
+        }
+        else if (strcmp(msg->parm[1], "OFF") == 0)
+        {
+            config->global_en = 0;
+            if (my_param_set_ble_log_config(config) == 0)
+            {
+                msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_BTLOG_OFF_OK");
+                LOG_INF("BTLOG disabled");
+            }
+            else
+            {
+                msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_BTLOG_OFF_FAIL");
+            }
+            return BLE_DATA_TYPE_AT_CMD;
+        }
+        else
+        {
+            LOG_INF("BTLOG invalid param: %s", msg->parm[1]);
+            goto param_invalid;
+        }
+    }
+
+    /* 参数数量错误 */
+    LOG_INF("BTLOG param count error: %d", msg->parm_count);
+
+param_invalid:
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_BTLOG_FAIL");
+    return BLE_DATA_TYPE_AT_CMD;
+}
+

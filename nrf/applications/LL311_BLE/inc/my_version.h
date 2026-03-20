@@ -11,14 +11,22 @@
 
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
+
 #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260319"
+/* 软件版本:        V1.0
+** 完成日期:        2026.03.13
+** 作    者:        Harrison Wu (wuyujiao@jimiiot.com)
+** 修改内容:        增加蓝牙日志模块功能
+*/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260319"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.03.19
 ** 作    者:        曹阳 (caoyang@jimiiot.com)
 ** 修改内容:        1.实现按键短按电量指示灯根据电量状态闪烁功能
 */
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260313"
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260313"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.03.13
 ** 作    者:        Harrison Wu (wuyujiao@jimiiot.com)

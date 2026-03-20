@@ -297,6 +297,74 @@ const uint8_t *bt_get_mac_addr(void)
 }
 
 /********************************************************************
+**函数名称:  ble_set_tx_power
+**入口参数:  tx_power ---        发射功率(dBm)，范围: -40 ~ +8
+**出口参数:  无
+**函数功能:  设置蓝牙发射功率
+**返 回 值:  0表示成功，负值表示失败
+**说    明:  必须在 bt_enable() 之后调用
+*********************************************************************/
+int ble_set_tx_power(int8_t tx_power)
+{
+    int err;
+    struct net_buf *buf, *rsp = NULL;
+
+    /* 限制功率范围: nRF54L15 支持 -40 ~ +8 dBm */
+    if (tx_power < -40)
+    {
+        tx_power = -40;
+    }
+    else if (tx_power > 8)
+    {
+        tx_power = 8;
+    }
+
+    /* 使用 Nordic VS HCI 命令设置发射功率
+     * Opcode: 0xFC0F (VS_WRITE_TX_POWER_LEVEL)
+     * 参数: handle_type(1B) + handle(2B) + tx_power_level(1B)
+     */
+    buf = bt_hci_cmd_create(0xFC0F, 4);
+    if (!buf)
+    {
+        LOG_ERR("Failed to create HCI command buffer");
+        return -ENOMEM;
+    }
+
+    /* handle_type = 0 (Advertising), handle = 0, tx_power_level */
+    net_buf_add_u8(buf, 0);      /* handle_type: Advertising */
+    net_buf_add_le16(buf, 0);    /* handle: 0 */
+    net_buf_add_u8(buf, tx_power);  /* tx_power_level */
+
+    err = bt_hci_cmd_send_sync(0xFC0F, buf, &rsp);
+    if (err)
+    {
+        LOG_ERR("Failed to set TX power (err %d)", err);
+        return err;
+    }
+
+    if (rsp)
+    {
+        net_buf_unref(rsp);
+    }
+
+    LOG_INF("BLE TX power set to %d dBm", tx_power);
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  ble_set_tx_power_by_param
+**入口参数:  无
+**出口参数:  无
+**函数功能:  根据ZMS存储的参数设置蓝牙发射功率
+**返 回 值:  0表示成功，负值表示失败
+*********************************************************************/
+int ble_set_tx_power_by_param(void)
+{
+    int8_t tx_power = my_param_get_ble_tx_power();
+    return ble_set_tx_power(tx_power);
+}
+
+/********************************************************************
 **函数名称:  set_adv_valid_status
 **入口参数:  index    ---        广播类型索引（0:APPLE, 1:GOOGLE）
 **           status   ---        广播状态（0:无效, 1:有效）
@@ -586,6 +654,10 @@ static void connected(struct bt_conn *conn, uint8_t err)
     start_adv(&con_adv_obj_hdl[APPLE_ADV_TYPE], false);
     start_adv(&no_con_adv_obj_hdl[GOOGLE_ADV_TYPE], true);
     start_adv(&no_con_adv_obj_hdl[APPLE_ADV_TYPE], true);
+
+    /* 清除蓝牙日志断开标志，允许日志发送
+     * 注意：必须在连接成功后调用，确保日志可以正常发送 */
+    ble_log_connect_init();
 }
 
 /********************************************************************
@@ -613,6 +685,13 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
     connect_id = 0xff;
     ble_data_send_enable[GOOGLE_ADV_TYPE] = false;
     ble_data_send_enable[APPLE_ADV_TYPE] = false;
+
+    /* 清除蓝牙日志就绪标志，防止下次连接前发送日志 */
+    ble_log_set_ready(false);
+
+    /* 清理日志互斥锁，防止死锁
+     * 场景：日志发送任务持有锁时蓝牙断开，其他任务阻塞等待 */
+    ble_log_disconnect_cleanup();
 }
 
 /********************************************************************
@@ -644,6 +723,11 @@ static void recycled_cb(void)
 **出口参数:  无
 **函数功能:  BLE服务器发送通知函数，处理GATT通知数据发送
 **返 回 值:  无
+*********************************************************************
+**注意事项:  
+**           1. 本函数内不允许调用任何可能触发BLE发送的日志函数，避免递归调用
+**           2. 禁用MY_LOG_INF、MY_LOG_WRN、MY_LOG_ERR、MY_LOG_DBG
+**           3. 日志输出只允许调用LOG_INF、LOG_WRN、LOG_ERR、LOG_DBG、LOG_HEXDUMP_INF
 *********************************************************************/
 void ble_server_send_notification(uint8_t *data, uint16_t tx_len)
 {
@@ -701,6 +785,46 @@ void ble_server_send_notification(uint8_t *data, uint16_t tx_len)
     memcpy(&uart_ble_server_buf[0], &uart_ble_server_buf[_tx_len], ble_server_rx_index);
     LOG_INF("Send %d bytes, remain %d bytes", _tx_len, ble_server_rx_index);
     ble_server_send_done = true;
+}
+
+/********************************************************************
+**函数名称:  ble_is_connected
+**入口参数:  无
+**出口参数:  无
+**函数功能:  检查BLE是否已连接
+**返 回 值:  true=已连接，false=未连接
+*********************************************************************/
+bool ble_is_connected(void)
+{
+    return (connect_id != 0xff && current_conn != NULL);
+}
+
+/********************************************************************
+**函数名称:  ble_is_data_channel_ready
+**入口参数:  无
+**出口参数:  无
+**函数功能:  检查BLE数据通道是否就绪（连接建立+CCC使能）
+**返 回 值:  true=就绪，false=未就绪
+**注意事项:  仅当数据通道就绪后才能发送日志，避免在连接初期发送导致崩溃
+**           1. 物理连接已建立
+**           2. APP已使能CCC通知（0xFEB6特征值）
+**           3. 此时才能安全调用bt_gatt_notify发送数据
+*********************************************************************/
+bool ble_is_data_channel_ready(void)
+{
+    /* 检查物理连接 */
+    if (connect_id == 0xff || current_conn == NULL)
+    {
+        return false;
+    }
+    
+    /* 检查CCC通知是否已使能（APP已订阅通知） */
+    if (!ble_data_send_enable[GOOGLE_ADV_TYPE] && !ble_data_send_enable[APPLE_ADV_TYPE])
+    {
+        return false;
+    }
+    
+    return true;
 }
 
 /********************************************************************
@@ -924,6 +1048,9 @@ int my_ble_core_start(void)
 
     LOG_DBG("Bluetooth initialized");
 
+    /* 根据ZMS参数设置蓝牙发射功率 */
+    ble_set_tx_power_by_param();
+
     k_sem_give(&ble_init_ok);
 
     if (IS_ENABLED(CONFIG_SETTINGS))
@@ -1022,6 +1149,9 @@ static void my_ble_task(void *p1, void *p2, void *p3)
     MSG_S msg;
 
     LOG_INF("BLE task thread started");
+
+    /* 初始化蓝牙日志模块 */
+    ble_log_init();
 
     for (;;)
     {

@@ -26,6 +26,61 @@ const GsmImei_t gDefaultMacAddr =
     .hex = {0x66, 0x55, 0x44, 0x33, 0x22, 0x11}
 };
 
+/* 蓝牙默认_TX_POWER配置 */
+const BleTxPower_t gDefaultBleTxPower = 
+{
+    .flag = FLAG_VALID,
+    .tx_power = 0  /* 默认 0 dBm ，范围：-8dbm ~ +8dbm */
+};
+
+/* 蓝牙日志默认配置
+ * 重要说明：以下模块不支持蓝牙日志（使用 MY_LOG_* 会导致递归或干扰）
+ * - BLE 模块 (bit1): 蓝牙核心模块，使用蓝牙日志会导致递归发送
+ * - DFU 模块 (bit2): OTA升级期间使用蓝牙日志会干扰升级流程
+ * - SHELL 模块 (bit6): Shell 通过 RTT 交互，无需蓝牙日志
+ * - CMD 模块 (bit10): 蓝牙指令处理模块，指令响应已通过 BLE 通道返回
+ * 以上模块即使开启开关，也应保持 mod_level 为 LOG_LEVEL_NONE
+ */
+const BleLogConfig_t gDefaultBleLogConfig = 
+{
+    .flag = FLAG_VALID,
+    .global_en = 0,                         /* 默认关闭总开关 */
+    .reserved = {0, 0},
+    .mod_en =
+        (1U << BLE_LOG_MOD_MAIN)   |   /* bit0: MAIN    - 开启 */
+        (0U << BLE_LOG_MOD_BLE)    |   /* bit1: BLE     - 关闭，避免递归 */
+        (0U << BLE_LOG_MOD_DFU)    |   /* bit2: DFU     - 关闭，避免干扰 */
+        (1U << BLE_LOG_MOD_SENSOR) |   /* bit3: SENSOR  - 开启 */
+        (1U << BLE_LOG_MOD_LTE)    |   /* bit4: LTE     - 开启 */
+        (1U << BLE_LOG_MOD_CTRL)   |   /* bit5: CTRL    - 开启 */
+        (0U << BLE_LOG_MOD_SHELL)  |   /* bit6: SHELL   - 关闭，shell模块没有必要加蓝牙日志 */
+        (0U << BLE_LOG_MOD_NFC)    |   /* bit7: NFC     - 关闭 */
+        (1U << BLE_LOG_MOD_BATTERY)|   /* bit8: BATTERY - 开启 */
+        (1U << BLE_LOG_MOD_MOTOR)  |   /* bit9: MOTOR   - 开启 */
+        (0U << BLE_LOG_MOD_CMD)    |   /* bit10: CMD    - 关闭，指令模块避免递归 */
+        (1U << BLE_LOG_MOD_TOOL)   |   /* bit11: TOOL   - 开启 */
+        (1U << BLE_LOG_MOD_PARAM)  |   /* bit12: PARAM  - 开启 */
+        (1U << BLE_LOG_MOD_WDT)    |   /* bit13: WDT    - 开启 */
+        (0U << BLE_LOG_MOD_OTHER),     /* bit14: OTHER  - 关闭 */
+    .mod_level = {
+        [BLE_LOG_MOD_MAIN]   = LOG_LEVEL_INF,    /* bit0: MAIN    - 开启 */
+        [BLE_LOG_MOD_BLE]    = LOG_LEVEL_NONE,   /* bit1: BLE     - 关闭，避免递归 */
+        [BLE_LOG_MOD_DFU]    = LOG_LEVEL_NONE,   /* bit2: DFU     - 关闭，避免干扰 */
+        [BLE_LOG_MOD_SENSOR] = LOG_LEVEL_INF,    /* bit3: SENSOR  - 开启 */
+        [BLE_LOG_MOD_LTE]    = LOG_LEVEL_INF,    /* bit4: LTE     - 开启 */
+        [BLE_LOG_MOD_CTRL]   = LOG_LEVEL_INF,    /* bit5: CTRL    - 开启 */
+        [BLE_LOG_MOD_SHELL]  = LOG_LEVEL_INF,    /* bit6: SHELL   - 开启 */
+        [BLE_LOG_MOD_NFC]    = LOG_LEVEL_INF,    /* bit7: NFC     - 开启 */
+        [BLE_LOG_MOD_BATTERY] = LOG_LEVEL_INF,   /* bit8: BATTERY - 开启 */
+        [BLE_LOG_MOD_MOTOR]  = LOG_LEVEL_INF,    /* bit9: MOTOR   - 开启 */
+        [BLE_LOG_MOD_CMD]    = LOG_LEVEL_NONE,   /* bit10: CMD    - 关闭，指令模块避免递归 */
+        [BLE_LOG_MOD_TOOL]   = LOG_LEVEL_INF,    /* bit11: TOOL   - 开启 */
+        [BLE_LOG_MOD_PARAM]  = LOG_LEVEL_NONE,   /* bit12: PARAM  - 关闭 */
+        [BLE_LOG_MOD_WDT]    = LOG_LEVEL_INF,    /* bit13: WDT    - 开启 */
+        [BLE_LOG_MOD_OTHER]  = LOG_LEVEL_NONE,   /* bit14: OTHER  - 关闭 */
+    }
+};
+
 /********************************************************************
 **函数名称:  my_user_data_storage_init
 **入口参数:  无
@@ -205,6 +260,33 @@ void my_param_load_config(void)
         memcpy(data_buff, gConfigParam.my_macaddr.hex, sizeof(gConfigParam.my_macaddr.hex));
         LOG_INF("mac addr not set. Use default:mac addr(%02x:%02x:%02x:%02x:%02x:%02x)", 
             data_buff[5], data_buff[4], data_buff[3], data_buff[2], data_buff[1], data_buff[0]);
+    }
+
+    //--------Load BLE TX Power ---------------------
+    length = sizeof(BleTxPower_t);
+    ret = my_user_data_read(ZMS_ID_BLE_TX_POWER, &gConfigParam.ble_tx_power, length);
+    if (ret != length)
+    {
+        memcpy(&gConfigParam.ble_tx_power, &gDefaultBleTxPower, length);
+        LOG_INF("BLE TX power not set. Use default:%d dBm", gConfigParam.ble_tx_power.tx_power);
+    }
+    else
+    {
+        LOG_INF("BLE TX power loaded:%d dBm", gConfigParam.ble_tx_power.tx_power);
+    }
+
+    //--------Load BLE Log Config ---------------------
+    length = sizeof(BleLogConfig_t);
+    ret = my_user_data_read(ZMS_ID_BLE_LOG_CONFIG, &gConfigParam.ble_log_config, length);
+    if (ret != length)
+    {
+        memcpy(&gConfigParam.ble_log_config, &gDefaultBleLogConfig, length);
+        LOG_INF("BLE log config not set. Use default: global_en=%d", 
+                gConfigParam.ble_log_config.global_en);
+    }
+    else
+    {
+        LOG_INF("BLE log config loaded: global_en=%d", gConfigParam.ble_log_config.global_en);
     }
 
 }
@@ -585,4 +667,170 @@ int my_param_set_mac(char *param, uint8_t len)
 const macaddr_t *my_param_get_macaddr(void)
 {
     return &gConfigParam.my_macaddr;
+}
+
+/********************************************************************
+**函数名称:  my_param_set_ble_tx_power
+**入口参数:  tx_power: 发射功率(dBm)，范围: -40 ~ +8
+**出口参数:  无
+**函数功能:  设置蓝牙发射功率参数
+**返 回 值:  0表示成功，负值表示失败
+*********************************************************************/
+int my_param_set_ble_tx_power(int8_t tx_power)
+{
+    int ret;
+    int tx_power_len = sizeof(BleTxPower_t);
+
+    /* 限制功率范围: -40 ~ +8 dBm */
+    if (tx_power < -40)
+    {
+        tx_power = -40;
+    }
+    else if (tx_power > 8)
+    {
+        tx_power = 8;
+    }
+
+    gConfigParam.ble_tx_power.flag = FLAG_VALID;
+    gConfigParam.ble_tx_power.tx_power = tx_power;
+
+    ret = my_user_data_write(ZMS_ID_BLE_TX_POWER, &gConfigParam.ble_tx_power, tx_power_len);
+    if (ret != tx_power_len)
+    {
+        LOG_INF("zms set ble tx power Error!!!");
+        return -1;
+    }
+    else
+    {
+        LOG_INF("zms set ble tx power OK: %d dBm", tx_power);
+    }
+
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  my_param_get_ble_tx_power
+**入口参数:  无
+**出口参数:  无
+**函数功能:  获取蓝牙发射功率参数
+**返 回 值:  发射功率(dBm)，如果参数无效返回默认值0
+*********************************************************************/
+int8_t my_param_get_ble_tx_power(void)
+{
+    return gConfigParam.ble_tx_power.tx_power;
+}
+
+/********************************************************************
+**函数名称:  my_param_set_ble_log_config
+**入口参数:  config: 蓝牙日志配置结构体指针
+**出口参数:  无
+**函数功能:  设置蓝牙日志完整配置
+**返 回 值:  0表示成功，负值表示失败
+*********************************************************************/
+int my_param_set_ble_log_config(const BleLogConfig_t *config)
+{
+    int ret;
+    int config_len = sizeof(BleLogConfig_t);
+
+    if (config == NULL)
+    {
+        return -EINVAL;
+    }
+
+    memcpy(&gConfigParam.ble_log_config, config, config_len);
+    gConfigParam.ble_log_config.flag = FLAG_VALID;
+
+    ret = my_user_data_write(ZMS_ID_BLE_LOG_CONFIG, &gConfigParam.ble_log_config, config_len);
+    if (ret != config_len)
+    {
+        LOG_INF("zms set ble log config Error!!!");
+        return -1;
+    }
+    else
+    {
+        LOG_INF("zms set ble log config OK: global_en=%d", gConfigParam.ble_log_config.global_en);
+    }
+
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  my_param_get_ble_log_config
+**入口参数:  无
+**出口参数:  无
+**函数功能:  获取蓝牙日志配置
+**返 回 值:  返回蓝牙日志配置结构体指针
+*********************************************************************/
+BleLogConfig_t *my_param_get_ble_log_config(void)
+{
+    return &gConfigParam.ble_log_config;
+}
+
+/********************************************************************
+**函数名称:  my_param_set_ble_log_global
+**入口参数:  en: 总开关状态 (0=关闭, 1=开启)
+**出口参数:  无
+**函数功能:  设置蓝牙日志总开关
+**返 回 值:  0表示成功，负值表示失败
+*********************************************************************/
+int my_param_set_ble_log_global(uint8_t en)
+{
+    BleLogConfig_t *config;
+
+    config = my_param_get_ble_log_config();
+    config->global_en = (en != 0) ? 1 : 0;
+
+    return my_param_set_ble_log_config(config);
+}
+
+/********************************************************************
+**函数名称:  my_param_set_ble_log_mod
+**入口参数:  mod_id: 模块ID, en: 开关状态 (0=关闭, 1=开启)
+**出口参数:  无
+**函数功能:  设置指定模块的蓝牙日志开关
+**返 回 值:  0表示成功，负值表示失败
+*********************************************************************/
+int my_param_set_ble_log_mod(uint8_t mod_id, uint8_t en)
+{
+    BleLogConfig_t *config;
+
+    if (mod_id >= BLE_LOG_MOD_MAX || mod_id >= 32)
+    {
+        return -EINVAL;
+    }
+
+    config = my_param_get_ble_log_config();
+
+    if (en)
+    {
+        config->mod_en |= (1U << mod_id);
+    }
+    else
+    {
+        config->mod_en &= ~(1U << mod_id);
+    }
+
+    return my_param_set_ble_log_config(config);
+}
+
+/********************************************************************
+**函数名称:  my_param_set_ble_log_level
+**入口参数:  mod_id: 模块ID, level: 日志等级阈值
+**出口参数:  无
+**函数功能:  设置指定模块的蓝牙日志等级阈值
+**返 回 值:  0表示成功，负值表示失败
+*********************************************************************/
+int my_param_set_ble_log_level(uint8_t mod_id, uint8_t level)
+{
+    BleLogConfig_t *config;
+
+    if (mod_id >= BLE_LOG_MOD_MAX)
+    {
+        return -EINVAL;
+    }
+
+    config = my_param_get_ble_log_config();
+    config->mod_level[mod_id] = level;
+
+    return my_param_set_ble_log_config(config);
 }

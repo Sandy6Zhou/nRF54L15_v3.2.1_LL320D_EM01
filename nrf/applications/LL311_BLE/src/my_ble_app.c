@@ -34,6 +34,60 @@ static uint8_t ble_encrypt_buf[BLE_RESP_LENGTH_MAX];
 /* BLE 响应缓冲区（多个响应函数共用，单线程安全） */
 static uint8_t ble_rsp_buf[BLE_MTU_DATA_LEN];
 
+/* BLE 日志环形缓冲区 */
+#define BLE_LOG_RING_BUF_SIZE   2048
+static uint8_t ble_log_ring_buf[BLE_LOG_RING_BUF_SIZE];
+static uint16_t ble_log_write_idx = 0;
+static uint16_t ble_log_read_idx = 0;
+static uint16_t ble_log_data_len = 0;
+
+/* 互斥锁保护环形缓冲区，防止 ble_log_send 重入导致数据损坏
+ * 原因：k_yield() 后其他任务可能调用 ble_log_send，造成竞态 */
+static struct k_mutex ble_log_mutex;
+
+/* 蓝牙断开标志，用于通知 ble_log_send 提前退出
+ * 注意：在持有锁期间检查此标志，避免强制释放锁导致的未定义行为 */
+static volatile bool ble_log_disconnect_pending = false;
+
+/********************************************************************
+**函数名称:  ble_log_disconnect_cleanup
+**入口参数:  无
+**出口参数:  无
+**函数功能:  蓝牙断开时设置断开标志，通知 ble_log_send 清理资源
+**返 回 值:  无
+**注意事项:  在蓝牙断开回调中调用，不强制释放互斥锁（Zephyr不允许非持有者释放）
+*********************************************************************/
+void ble_log_disconnect_cleanup(void)
+{
+    /* 设置断开标志，通知 ble_log_send 提前退出
+     * 注意：不强制释放互斥锁，因为 Zephyr 不允许非持有者释放锁
+     * 持有者会在 ble_log_send 中检测到断开标志后自行释放锁 */
+    ble_log_disconnect_pending = true;
+
+    /* 注意：不清空缓冲区索引和数据，让持有锁的任务自行处理
+     * 原因：如果任务A持有锁时清空索引，会导致任务A操作缓冲区时数据不一致
+     * 缓冲区会在 ble_log_send 检测到断开标志后，由持有者安全清空 
+     * 这里的日志输出要用 LOG_DBG 而不是 LOG_DBG 防止递归调用 */
+
+    LOG_DBG("BLE log disconnect pending flag set");
+}
+
+/********************************************************************
+**函数名称:  ble_log_connect_init
+**入口参数:  无
+**出口参数:  无
+**函数功能:  蓝牙连接建立时清除断开标志，允许日志发送
+**返 回 值:  无
+**注意事项:  在蓝牙连接回调中调用，清除断开标志使能日志发送
+*********************************************************************/
+void ble_log_connect_init(void)
+{
+    ble_log_disconnect_pending = false;
+
+    /* 日志输出要用 LOG_DBG 而不是 LOG_DBG 防止递归调用 */
+    LOG_DBG("BLE log disconnect pending flag cleared");
+}
+
 /*********************************************************************
 **函数名称:  pkcs7_pad
 **入口参数:  buf         --  待填充的数据缓冲区
@@ -307,9 +361,6 @@ cleanup:
 *********************************************************************/
 void BLE_DataTransOverBle(uint8_t *data, uint16_t len)
 {
-    LOG_INF("%s len=%d", __func__, len);
-    LOG_HEXDUMP_INF(data, len, "uart_trans_ble:");
-
     ble_server_send_notification(data, len);
 }
 
@@ -364,8 +415,8 @@ static void ble_comu_send_packet(uint16_t type, uint8_t *data, uint16_t len)
 
     memcpy(&ble_tx_buf[4], data, len);
 
-    // 密钥交换不需要加密
-    if (type == BLE_DATA_TYPE_PKEY)
+    // 密钥交换和蓝牙日志不需要加密
+    if (type == BLE_DATA_TYPE_PKEY || type == BLE_DATA_TYPE_BT_LOG)
     {
         memcpy(ble_encrypt_buf, data, len);
     }
@@ -502,6 +553,8 @@ static void ble_comu_cid_data_handle(const uint8_t *data, uint16_t len)
         if (memcmp(data, gsmImei->hex, GSM_IMEI_LENGTH) == 0)
         {
             ble_comu_response_cmd(BLE_RSP_CMD_CID, BLE_RSP_PARAM_SUCCESS);
+            /* CID验证成功，确认是自己的APP，开启蓝牙日志（延迟1秒后允许发送） */
+            ble_log_set_ready(true);
         }
         else
         {
@@ -539,6 +592,198 @@ void ble_comu_response_or_expansion_cmd(uint16_t type, uint8_t *str_data, uint8_
         send_len += 16;
 
     ble_comu_send_packet(type, ble_rsp_buf, send_len);
+}
+
+/********************************************************************
+**函数名称:  ble_log_send_packet
+**入口参数:  type     ---        命令类型（固定为 BLE_DATA_TYPE_BT_LOG）
+**           data     ---        日志数据指针
+**           len      ---        日志数据长度
+**出口参数:  无
+**函数功能:  发送蓝牙日志数据包，无需16字节对齐，明文传输
+**返 回 值:  无
+*********************************************************************/
+static void ble_log_send_packet(uint16_t type, uint8_t *data, uint16_t len)
+{
+    uint16_t send_len;
+
+    if (data == NULL || (len > BLE_RESP_LENGTH_MAX))
+    {
+        LOG_INF("ble log packet data or len(%d) error!", len);
+        return;
+    }
+
+    /* 确保最小发送长度为16字节（APP协议要求）
+     * 如果数据不足16字节，填充0 */
+    send_len = (len < 16) ? 16 : len;
+
+    // 封装包头、包类型
+    ble_tx_buf[0] = (BLE_DATA_PACKET_HEAD >> 8) & 0xFF;
+    ble_tx_buf[1] = BLE_DATA_PACKET_HEAD & 0xFF;
+    ble_tx_buf[2] = (type >> 8) & 0xFF;
+    ble_tx_buf[3] = type & 0xFF;
+
+    /* 复制数据，不足16字节的部分填充0 */
+    memcpy(&ble_tx_buf[4], data, len);
+    if (send_len > len)
+    {
+        memset(&ble_tx_buf[4 + len], 0, send_len - len);
+    }
+
+    /* 日志输出 */
+    LOG_HEXDUMP_DBG(ble_tx_buf, send_len + 4, "BLE LOG TX:");
+
+    BLE_DataTransOverBle(ble_tx_buf, send_len + 4);
+}
+
+/********************************************************************
+**函数名称:  ble_log_ring_buf_write
+**入口参数:  data     ---        日志数据指针
+**           len      ---        日志数据长度
+**出口参数:  无
+**函数功能:  写入日志数据到环形缓冲区
+**返 回 值:  实际写入的字节数
+*********************************************************************/
+static uint16_t ble_log_ring_buf_write(uint8_t *data, uint16_t len)
+{
+    uint16_t i;
+    uint16_t write_len = len;
+
+    /* 如果缓冲区空间不足，覆盖旧数据 */
+    if (len > BLE_LOG_RING_BUF_SIZE - ble_log_data_len)
+    {
+        write_len = BLE_LOG_RING_BUF_SIZE - ble_log_data_len;
+        LOG_WRN("BLE log ring buffer full, drop %d bytes", len - write_len);
+    }
+
+    for (i = 0; i < write_len; i++)
+    {
+        ble_log_ring_buf[ble_log_write_idx] = data[i];
+        ble_log_write_idx = (ble_log_write_idx + 1) % BLE_LOG_RING_BUF_SIZE;
+    }
+    ble_log_data_len += write_len;
+
+    return write_len;
+}
+
+/********************************************************************
+**函数名称:  ble_log_ring_buf_read
+**入口参数:  buf      ---        读取缓冲区指针
+**           len      ---        期望读取的最大长度
+**出口参数:  无
+**函数功能:  从环形缓冲区读取日志数据
+**返 回 值:  实际读取的字节数
+*********************************************************************/
+static uint16_t ble_log_ring_buf_read(uint8_t *buf, uint16_t len)
+{
+    uint16_t i;
+    uint16_t read_len = (len < ble_log_data_len) ? len : ble_log_data_len;
+
+    for (i = 0; i < read_len; i++)
+    {
+        buf[i] = ble_log_ring_buf[ble_log_read_idx];
+        ble_log_read_idx = (ble_log_read_idx + 1) % BLE_LOG_RING_BUF_SIZE;
+    }
+    ble_log_data_len -= read_len;
+
+    return read_len;
+}
+
+/********************************************************************
+**函数名称:  ble_log_send
+**入口参数:  data     ---        日志数据指针
+**           len      ---        日志数据长度
+**出口参数:  无
+**函数功能:  发送蓝牙日志到APP，通过指令通道（0x5901）明文传输
+**           超长日志自动缓存，分批发送
+**返 回 值:  无
+**注意事项:  1. 使用 BLE_DATA_TYPE_BT_LOG（0x5901）数据类型
+**           2. 数据自动对齐到16字节（AES加密需要）
+**           3. 单包日志内容最大240字节，超过会导致蓝牙自动断开
+*********************************************************************/
+void ble_log_send(uint8_t *data, uint8_t len)
+{
+    uint16_t max_data_len;
+    uint8_t chunk[BLE_LOG_MAX_CHUNK_SIZE];  /* 单包最大240字节，避免栈溢出 */
+    uint8_t chunk_len;
+    uint16_t read_len;
+    uint8_t send_cnt = 0;
+
+    /* MTU 为默认值时不处理日志，避免影响正常通信，这里很重要，不然可能出现一直占用CPU资源 */
+    if (ble_server_mtu <= BLE_SERVER_MIN_MTU)
+    {
+        return;
+    }
+
+    /* 蓝牙数据通道未就绪时不处理日志，避免无效操作
+     * 注意：必须等APP使能CCC通知后才能发送，否则可能导致栈溢出
+     */
+    if (!ble_is_data_channel_ready())
+    {
+        return;
+    }
+
+    /* 计算最大数据长度
+     * 限制为 BLE_LOG_MAX_CHUNK_SIZE(240)，超过会导致蓝牙自动断开
+     */
+    max_data_len = (ble_server_mtu > BLE_LOG_MTU_OVERHEAD) ? (ble_server_mtu - BLE_LOG_MTU_OVERHEAD) : 0;
+    if (max_data_len > BLE_LOG_MAX_CHUNK_SIZE)
+    {
+        max_data_len = BLE_LOG_MAX_CHUNK_SIZE;
+    }
+
+    /* 获取互斥锁，保护环形缓冲区操作
+     * 原因：k_yield() 可能触发任务切换，其他任务调用 ble_log_send 会造成竞态 */
+    k_mutex_lock(&ble_log_mutex, K_FOREVER);
+
+    /* 检查断开标志，如果蓝牙已断开，清空缓冲区后释放锁并返回
+     * 注意：在持有锁期间检查，确保不会发送数据到已断开的连接 */
+    if (ble_log_disconnect_pending)
+    {
+        /* 安全清空缓冲区（持有锁期间操作，避免竞态） */
+        ble_log_write_idx = 0;
+        ble_log_read_idx = 0;
+        ble_log_data_len = 0;
+        k_mutex_unlock(&ble_log_mutex);
+        return;
+    }
+
+    /* 写入环形缓冲区 */
+    ble_log_ring_buf_write(data, len);
+
+    /* 立即尝试发送缓存中的数据
+     * 注意事项：
+     * 1. 每发送一包后执行 k_yield（主动让出 CPU），避免长时间占用 CPU，这里很重要，如果日志多，可能导致CPU一直被占
+     * 2. 最大连续发送 10 包后退出，防止阻塞其他任务
+     * 3. 剩余数据下次调用时继续发送
+     * 4. 蓝牙断开后立即停止发送，避免无效操作
+     * 5. 持有互斥锁期间调用 k_yield()，其他任务阻塞在锁上，不会重入
+     * 6. 每次循环检查断开标志，确保能及时响应蓝牙断开事件
+     */
+    while (ble_log_data_len > 0 && send_cnt < 10 && ble_is_connected() &&
+           !ble_log_disconnect_pending)
+    {
+        read_len = (max_data_len < sizeof(chunk)) ? max_data_len : sizeof(chunk);
+        chunk_len = ble_log_ring_buf_read(chunk, read_len);
+        if (chunk_len == 0)
+        {
+            break;
+        }
+        ble_log_send_packet(BLE_DATA_TYPE_BT_LOG, chunk, chunk_len);
+        send_cnt++;
+        k_yield();  /* 主动让出 CPU，避免阻塞 -- 这里很重要，如果日志多，可能导致CPU一直被占 */
+    }
+
+    /* 如果是因为断开标志退出循环，清空缓冲区（持有锁期间操作，避免竞态） */
+    if (ble_log_disconnect_pending)
+    {
+        ble_log_write_idx = 0;
+        ble_log_read_idx = 0;
+        ble_log_data_len = 0;
+    }
+
+    /* 释放互斥锁 */
+    k_mutex_unlock(&ble_log_mutex);
 }
 
 /********************************************************************
@@ -632,6 +877,20 @@ static void ble_comu_app_handle(uint32_t type, const uint8_t *data, uint16_t len
             }
         }
     }
+}
+
+/********************************************************************
+**函数名称:  ble_log_init
+**入口参数:  无
+**出口参数:  无
+**函数功能:  初始化蓝牙日志模块，包括互斥锁初始化
+**返 回 值:  0 表示成功
+*********************************************************************/
+int ble_log_init(void)
+{
+    k_mutex_init(&ble_log_mutex);
+    LOG_INF("BLE log module initialized");
+    return 0;
 }
 
 /*********************************************************************
