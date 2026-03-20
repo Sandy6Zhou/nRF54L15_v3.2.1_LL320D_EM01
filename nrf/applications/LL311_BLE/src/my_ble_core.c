@@ -90,12 +90,16 @@ static struct bt_conn_cb conn_callbacks = {
 // 监测MTU变化的回调
 static void att_mtu_updated(struct bt_conn *conn, uint16_t tx, uint16_t rx)
 {
-    LOG_INF("MTU updated: TX=%d, RX=%d", tx, rx);
-    ble_server_mtu = tx;
+    if (tx >= CONFIG_BT_L2CAP_TX_MTU)
+        ble_server_mtu = CONFIG_BT_L2CAP_TX_MTU;
+    else
+        ble_server_mtu = tx;
+
+    LOG_INF("ble_server_mtu: %d, rx:%d", ble_server_mtu, rx);
 }
 
 static struct bt_gatt_cb gatt_callbacks = {
-    .att_mtu_updated = att_mtu_updated,
+    .att_mtu_updated = att_mtu_updated, // 监测MTU变化的回调
 };
 
 static const struct bt_le_ext_adv_cb adv_cb = {
@@ -121,6 +125,98 @@ BT_GATT_SERVICE_DEFINE(my_gatt_svc,
                 BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
 );
 
+/* OTA 状态回调结构体 */
+static struct mgmt_callback ota_chunk_callback;
+static struct mgmt_callback ota_started_callback;
+static struct mgmt_callback ota_stopped_callback;
+static struct mgmt_callback ota_pending_callback;
+
+/* 配对密钥（IMEI 后 6 位）*/
+static uint32_t ota_passkey = 0;
+
+/********************************************************************
+**函数名称:  auth_passkey_entry
+**入口参数:  conn     ---   BLE 连接句柄
+**出口参数:  无
+**函数功能:  输入配对密钥回调
+**返 回 值:  0 表示成功
+**功能描述:  1. 在需要输入配对密钥时触发
+**           2. 自动回复 IMEI 后 6 位作为配对密钥
+*********************************************************************/
+static int auth_passkey_entry(struct bt_conn *conn)
+{
+    char addr[BT_ADDR_LE_STR_LEN];
+
+    bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
+    LOG_INF("Passkey entry for %s: %06u", addr, ota_passkey);
+
+    /* 自动回复配对密钥 */
+    bt_conn_auth_passkey_entry(conn, ota_passkey);
+
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  auth_passkey_display
+**入口参数:  conn     ---   BLE 连接句柄
+**           passkey  ---   配对密钥
+**出口参数:  无
+**函数功能:  显示配对密钥回调
+**返 回 值:  无
+**功能描述:  1. 在配对过程中显示密钥
+**           2. 使用 IMEI 后 6 位作为配对密钥
+*********************************************************************/
+static void auth_passkey_display(struct bt_conn *conn, unsigned int passkey)
+{
+    char addr[BT_ADDR_LE_STR_LEN];
+
+    bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
+    LOG_INF("Passkey for %s: %06u (display only, actual: %06u)", addr, passkey, ota_passkey);
+}
+
+/********************************************************************
+**函数名称:  auth_cancel
+**入口参数:  conn     ---   BLE 连接句柄
+**出口参数:  无
+**函数功能:  取消配对回调
+**返 回 值:  无
+**功能描述:  配对取消时触发
+*********************************************************************/
+static void auth_cancel(struct bt_conn *conn)
+{
+    char addr[BT_ADDR_LE_STR_LEN];
+
+    bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
+    LOG_INF("Pairing cancelled: %s", addr);
+}
+
+/* 配对信息回调 - 配对完成通知 */
+static void auth_pairing_complete(struct bt_conn *conn, bool bonded)
+{
+    char addr[BT_ADDR_LE_STR_LEN];
+    bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
+    LOG_INF("Pairing complete: %s, bonded: %d", addr, bonded);
+}
+
+static void auth_pairing_failed(struct bt_conn *conn, enum bt_security_err reason)
+{
+    char addr[BT_ADDR_LE_STR_LEN];
+    bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
+    LOG_ERR("Pairing failed: %s, reason: %d", addr, reason);
+}
+
+static struct bt_conn_auth_info_cb auth_info_cb = {
+    .pairing_complete = auth_pairing_complete,
+    .pairing_failed = auth_pairing_failed,
+};
+
+/* 配对回调结构体 - 设备自动输入静态密钥（IMEI后6位） */
+static struct bt_conn_auth_cb auth_cb = {
+    .passkey_display = auth_passkey_display,
+    .passkey_entry = auth_passkey_entry,
+    .cancel = auth_cancel,
+};
+
 /********************************************************************
 **函数名称:  custom_char_write
 **入口参数:  conn     ---        BLE连接句柄
@@ -142,9 +238,9 @@ static int custom_char_write(struct bt_conn *conn,
     ARG_UNUSED(offset);
     ARG_UNUSED(flags);
 
-    LOG_INF("<-------------write_callback, len = %d", len);
-    LOG_HEXDUMP_INF(((uint8_t *)buf), len, "RX data");
+    LOG_INF("ble received %d bytes data", len);
 
+    /* 数据转发到 BLE APP 层处理（包含解密流程） */
     BLE_DataInputBuffer((uint8_t *)buf, len);
 
     return len;
@@ -668,6 +764,142 @@ static int non_connectable_adv_create(void)
 }
 
 /********************************************************************
+**函数名称:  ota_chunk_cb
+**入口参数:  event       ---   事件 ID
+**           prev_status ---   上一个处理状态
+**           rc          ---   返回码指针
+**           group       ---   组 ID 指针
+**           abort_more  ---   中止标志指针
+**           data        ---   事件数据
+**           data_size   ---   数据大小
+**出口参数:  rc          ---   返回码
+**           group       ---   组 ID
+**           abort_more  ---   中止标志
+**函数功能:  OTA 数据块上传回调
+**返 回 值:  MGMT_CB_OK 表示处理成功
+**功能描述:  1. 每次镜像数据块上传时触发
+**           2. 输出 OTA 上传进度日志
+*********************************************************************/
+static enum mgmt_cb_return ota_chunk_cb(uint32_t event, enum mgmt_cb_return prev_status,
+                                        int32_t *rc, uint16_t *group, bool *abort_more,
+                                        void *data, size_t data_size)
+{
+    ARG_UNUSED(event);
+    ARG_UNUSED(prev_status);
+    ARG_UNUSED(rc);
+    ARG_UNUSED(group);
+    ARG_UNUSED(abort_more);
+    ARG_UNUSED(data);
+    ARG_UNUSED(data_size);
+
+    LOG_INF("OTA: chunk upload in progress");
+
+    return MGMT_CB_OK;
+}
+
+/********************************************************************
+**函数名称:  ota_started_cb
+**入口参数:  event       ---   事件 ID
+**           prev_status ---   上一个处理状态
+**           rc          ---   返回码指针
+**           group       ---   组 ID 指针
+**           abort_more  ---   中止标志指针
+**           data        ---   事件数据
+**           data_size   ---   数据大小
+**出口参数:  rc          ---   返回码
+**           group       ---   组 ID
+**           abort_more  ---   中止标志
+**函数功能:  OTA 开始回调
+**返 回 值:  MGMT_CB_OK 表示处理成功
+**功能描述:  1. DFU 操作开始时触发
+**           2. 输出 OTA 开始日志
+*********************************************************************/
+static enum mgmt_cb_return ota_started_cb(uint32_t event, enum mgmt_cb_return prev_status,
+                                          int32_t *rc, uint16_t *group, bool *abort_more,
+                                          void *data, size_t data_size)
+{
+    ARG_UNUSED(event);
+    ARG_UNUSED(prev_status);
+    ARG_UNUSED(rc);
+    ARG_UNUSED(group);
+    ARG_UNUSED(abort_more);
+    ARG_UNUSED(data);
+    ARG_UNUSED(data_size);
+
+    LOG_INF("OTA: DFU started");
+
+    return MGMT_CB_OK;
+}
+
+/********************************************************************
+**函数名称:  ota_stopped_cb
+**入口参数:  event       ---   事件 ID
+**           prev_status ---   上一个处理状态
+**           rc          ---   返回码指针
+**           group       ---   组 ID 指针
+**           abort_more  ---   中止标志指针
+**           data        ---   事件数据
+**           data_size   ---   数据大小
+**出口参数:  rc          ---   返回码
+**           group       ---   组 ID
+**           abort_more  ---   中止标志
+**函数功能:  OTA 停止回调
+**返 回 值:  MGMT_CB_OK 表示处理成功
+**功能描述:  1. DFU 操作停止时触发
+**           2. 输出 OTA 停止日志
+*********************************************************************/
+static enum mgmt_cb_return ota_stopped_cb(uint32_t event, enum mgmt_cb_return prev_status,
+                                          int32_t *rc, uint16_t *group, bool *abort_more,
+                                          void *data, size_t data_size)
+{
+    ARG_UNUSED(event);
+    ARG_UNUSED(prev_status);
+    ARG_UNUSED(rc);
+    ARG_UNUSED(group);
+    ARG_UNUSED(abort_more);
+    ARG_UNUSED(data);
+    ARG_UNUSED(data_size);
+
+    LOG_INF("OTA: DFU stopped");
+
+    return MGMT_CB_OK;
+}
+
+/********************************************************************
+**函数名称:  ota_pending_cb
+**入口参数:  event       ---   事件 ID
+**           prev_status ---   上一个处理状态
+**           rc          ---   返回码指针
+**           group       ---   组 ID 指针
+**           abort_more  ---   中止标志指针
+**           data        ---   事件数据
+**           data_size   ---   数据大小
+**出口参数:  rc          ---   返回码
+**           group       ---   组 ID
+**           abort_more  ---   中止标志
+**函数功能:  OTA 传输完成回调
+**返 回 值:  MGMT_CB_OK 表示处理成功
+**功能描述:  1. DFU 传输完成时触发
+**           2. 输出 OTA 传输完成日志
+*********************************************************************/
+static enum mgmt_cb_return ota_pending_cb(uint32_t event, enum mgmt_cb_return prev_status,
+                                          int32_t *rc, uint16_t *group, bool *abort_more,
+                                          void *data, size_t data_size)
+{
+    ARG_UNUSED(event);
+    ARG_UNUSED(prev_status);
+    ARG_UNUSED(rc);
+    ARG_UNUSED(group);
+    ARG_UNUSED(abort_more);
+    ARG_UNUSED(data);
+    ARG_UNUSED(data_size);
+
+    LOG_INF("OTA: DFU transfer complete, pending confirmation");
+
+    return MGMT_CB_OK;
+}
+
+/********************************************************************
 **函数名称:  my_ble_core_start
 **入口参数:  无
 **出口参数:  无
@@ -699,11 +931,63 @@ int my_ble_core_start(void)
         settings_load();
     }
 
-    // 注册连接回调
+    /* 获取 IMEI 并设置配对密钥为后 6 位 */
+    {
+        const GsmImei_t *imei = my_param_get_imei();
+        char passkey_str[7] = {0};
+
+        /* 提取 IMEI 后 6 位 */
+        memcpy(passkey_str, &imei->hex[GSM_IMEI_LENGTH - 6], 6);
+        passkey_str[6] = '\0';
+
+        /* 转换为数字并保存配对密钥 */
+        ota_passkey = atoi(passkey_str);
+        LOG_INF("OTA pairing passkey set to IMEI last 6 digits: %06u", ota_passkey);
+    }
+
+    /* 注册配对回调 */
+    err = bt_conn_auth_cb_register(&auth_cb);
+    if (err)
+    {
+        LOG_ERR("Failed to register auth callbacks (err %d)", err);
+        return err;
+    }
+    LOG_INF("Pairing callbacks registered");
+
+    /* 注册配对信息回调 */
+    bt_conn_auth_info_cb_register(&auth_info_cb);
+    LOG_INF("Pairing info callbacks registered");
+
+    /* 注册连接回调 */
     bt_conn_cb_register(&conn_callbacks);
+
+    /* 注册 GATT 回调, 处理 GATT 事件 */
     bt_gatt_cb_register(&gatt_callbacks);
 
     k_work_init(&adv_work, adv_work_handler);
+
+    /* 注册 OTA 状态监听回调 */
+    ota_chunk_callback.callback = ota_chunk_cb;
+    ota_chunk_callback.event_id = MGMT_EVT_OP_IMG_MGMT_DFU_CHUNK;
+    mgmt_callback_register(&ota_chunk_callback);
+
+    ota_started_callback.callback = ota_started_cb;
+    ota_started_callback.event_id = MGMT_EVT_OP_IMG_MGMT_DFU_STARTED;
+    mgmt_callback_register(&ota_started_callback);
+
+    ota_stopped_callback.callback = ota_stopped_cb;
+    ota_stopped_callback.event_id = MGMT_EVT_OP_IMG_MGMT_DFU_STOPPED;
+    mgmt_callback_register(&ota_stopped_callback);
+
+    ota_pending_callback.callback = ota_pending_cb;
+    ota_pending_callback.event_id = MGMT_EVT_OP_IMG_MGMT_DFU_PENDING;
+    mgmt_callback_register(&ota_pending_callback);
+
+    LOG_INF("OTA status hooks registered");
+
+    /* 初始化 Jimi DFU */
+    jimi_dfu_timer_init();
+    LOG_INF("Jimi DFU initialized");
 
     // 创建可连接及不可连接的广播
     err = connectable_adv_create();

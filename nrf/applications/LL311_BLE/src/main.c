@@ -446,6 +446,34 @@ void device_config_init(DeviceWorkModeConfig *p_workmode)
 }
 
 /********************************************************************
+**函数名称:  print_app_info
+**入口参数:  无
+**出口参数:  无
+**函数功能:  打印应用信息
+**返 回 值:  无
+**功能描述:  1. 打印软件版本信息
+**           2. 打印蓝牙 MAC 地址
+**           3. 打印 IMEI 信息
+*********************************************************************/
+static void print_app_info(void)
+{
+    const macaddr_t *mac_addr = my_param_get_macaddr();
+    const GsmImei_t *imei = my_param_get_imei();
+
+    LOG_INF("============================================");
+    LOG_INF("App Info:");
+    LOG_INF("  Version    : %s", SOFTWARE_VERSION);
+    LOG_INF("  BLE MAC    : %02X:%02X:%02X:%02X:%02X:%02X",
+            mac_addr->hex[0], mac_addr->hex[1], mac_addr->hex[2],
+            mac_addr->hex[3], mac_addr->hex[4], mac_addr->hex[5]);
+    LOG_INF("  IMEI       : %c%c%c%c%c%c%c%c%c%c%c%c%c%c%c",
+            imei->hex[0], imei->hex[1], imei->hex[2], imei->hex[3], imei->hex[4],
+            imei->hex[5], imei->hex[6], imei->hex[7], imei->hex[8], imei->hex[9],
+            imei->hex[10], imei->hex[11], imei->hex[12], imei->hex[13], imei->hex[14]);
+    LOG_INF("============================================");
+}
+
+/********************************************************************
 **函数名称:  main
 **入口参数:  无
 **出口参数:  无
@@ -461,6 +489,9 @@ int main(void)
 
     psa_crypto_init();  // PSA库初始化
     device_config_init(&g_workmode_config);
+
+    /* 打印应用信息 */
+    print_app_info();
 
     /* 获取当前线程 ID 并保存 */
     my_main_task_id = k_current_get();
@@ -560,7 +591,18 @@ int main(void)
                 break;
 
             case MY_MSG_CTRL_KEY_LONG_PRESS:
-                LOG_INF("KEY EVENT: Long press detected (2s)");
+                if (g_workmode_config.current_mode == MY_MODE_SHUTDOWN)
+                {
+                    /* 关机模式下长按唤醒 */
+                    LOG_INF("KEY EVENT: Long press detected in SHUTDOWN mode, waking up...");
+                    g_workmode_config.current_mode = MY_MODE_SMART;
+                    LOG_INF("System waken up, entering SMART mode");
+                    handle_smart_mode();
+                }
+                else
+                {
+                    LOG_INF("KEY EVENT: Long press detected (2s)");
+                }
                 break;
 
             case MY_MSG_CTRL_LIGHT_SENSOR_DARK:
@@ -577,6 +619,13 @@ int main(void)
 
             case MY_MSG_CTRL_LOCK_PIN_DISCONNECTED:
                 LOG_INF("Lock pin detected: DISCONNECTED");
+                break;
+
+            case MY_MSG_CTRL_SHUTDOWN_REQUEST:
+                LOG_INF("Shutdown request received, entering SHUTDOWN mode");
+                /* 切换到关机模式 */
+                g_workmode_config.current_mode = MY_MODE_SHUTDOWN;
+                LOG_INF("System shutdown complete. Press FUN_KEY for 2s to wakeup.");
                 break;
 
             case MY_MSG_WORK_MODE_SWITCH:
@@ -598,6 +647,11 @@ int main(void)
                         handle_continuous_mode();
                         break;
 
+                    case MY_MODE_SHUTDOWN:
+                        LOG_INF("System is in SHUTDOWN mode (ultra-low power)");
+                        /* 关机模式下不执行任何操作 */
+                        break;
+
                     default:
                         LOG_INF("Switched to NORMAL mode");
                         break;
@@ -606,6 +660,18 @@ int main(void)
 
             case MY_MSG_RESET_LTE_TIMER:
                 set_reset_lte_timer();
+                break;
+
+            case MY_MSG_DFU_START:
+                LOG_INF("DFU start received");
+                break;
+
+            case MY_MSG_DFU_TIMEOUT:
+                LOG_INF("DFU timeout received");
+                break;
+
+            case MY_MSG_DFU_COMPLETE:
+                LOG_INF("DFU complete received");
                 break;
 
             default:

@@ -8,6 +8,9 @@
 *********************************************************************
 ** 功能描述:        1. 提供交互协议相关宏定义
 **                 2. 为外部提供数据接收和解析相关接口
+** OTA 效率优化:    为提升 OTA 传输效率，采用双 PDU 模式，MTU 扩大至 498 字节
+**                 （默认 MTU 247 仅支持单 PDU，498 支持双 PDU，理论吞吐提升约 2 倍）
+** 配置位置:        prj.conf 中 CONFIG_BT_L2CAP_TX_MTU=498 和 CONFIG_BT_BUF_ACL_RX_SIZE=502
 *********************************************************************/
 #ifndef _MY_BLE_APP_H_
 #define _MY_BLE_APP_H_
@@ -24,7 +27,7 @@
 #define BLE_DATA_TYPE_QUERY                     0x3304          //查询仪表数据及应答
 #define BLE_DATA_TYPE_REPORT                    0x3305          //仪表数据上行汇报及应答
 #define BLE_DATA_TYPE_CMD                       0x5505          //其它指令数据
-#define BLE_DATA_TYPE_FILE_TRANS                0x4605          //文件指令
+#define BLE_DATA_TYPE_FILE_TRANS                0x4605          //DFU文件指令,参考Jimi Iot 蓝牙通信协议V3.1.6_2026-3-5 6.4 OTA文件传输
 #define BLE_DATA_TYPE_QEURY_VER                 0x5601          //app下行查询版本号
 #define BLE_DATA_TYPE_RSP_VER1                  0x5602          //设备类型
 #define BLE_DATA_TYPE_RSP_VER2                  0x5603          //设备版本号
@@ -33,14 +36,17 @@
 #define BLE_DATA_TYPE_SET_IMEI                  0x5707          //设置IMEI号
 #define BLE_DATA_TYPE_AT_CMD                    0x5808          //用户指令
 
-#define BLE_COMU_DEV_CODE                       0xB3
-#define BLE_COMU_APP_CODE                       0xC2
-#define BLE_COMU_CMD_START                      0x89
-#define BLE_COMU_ALARM_START                    0x78
+#define BLE_DFU_HEAD1                           0x78            // DFU包头1
+#define BLE_DFU_HEAD2                           0x79            // DFU包头2
 
-#define BLE_PKEY_RX_CMD                         0x8900C200
-#define BLE_PKEY_RSP_DATA1                      0x00
-#define BLE_PKEY_RSP_DATA3                      0x00
+#define BLE_COMU_DEV_CODE                       0xB3            // 设备码
+#define BLE_COMU_APP_CODE                       0xC2            // 应用码
+#define BLE_COMU_CMD_START                      0x89            // 命令码
+#define BLE_COMU_ALARM_START                    0x78            // 告警码
+
+#define BLE_PKEY_RX_CMD                         0x8900C200      // 公钥接收命令
+#define BLE_PKEY_RSP_DATA1                      0x00            // 公钥接收响应数据1
+#define BLE_PKEY_RSP_DATA3                      0x00 
 
 /* APP下行控制指令    */
 #define BLE_APP_CMD_APP_LINK                    0x00
@@ -85,8 +91,8 @@
 
 extern uint16_t ble_server_mtu;
 
-#define BLE_SERVER_MAX_MTU         517    // MTU最大长度，系统用掉了3个字节,可用数据最大514字节
-#define BLE_SERVER_MTU_DFT         23     // MTU默认长度
+#define BLE_SERVER_MAX_MTU CONFIG_BT_L2CAP_TX_MTU // MTU最大长度，系统用掉了3个字节,可用数据最大244字节
+#define BLE_SERVER_MIN_MTU 23                     // MTU默认最小长度
 
 #define BLE_SERVER_MAX_DATA_LEN    (ble_server_mtu - 3)
 #define BLE_SVC_RX_MAX_LEN         (BLE_SERVER_MAX_MTU - 3)
@@ -99,7 +105,7 @@ extern uint16_t ble_server_mtu;
 #define BLE_CMD_DATA_LEN_UNIT       16              // 蓝牙命令内容长度基数16字节，因为要加密，必须是16字节的倍数
 #define BLE_GATT_FRAME_LEN_MIN      (BLE_FRAME_HEAD_LEN + BLE_CMD_HEAD_LEN + BLE_CMD_DATA_LEN_UNIT)
 
-#define BLE_MTU_DATA_LEN            (256 + 16)
+#define BLE_MTU_DATA_LEN            (512 + 16)  /* MTU 498 支持，最大解密后约 512 字节，对齐 16 字节 */
 
 /*********************************************************************
 **函数名称:  BLE_DataInputBuffer
@@ -118,6 +124,17 @@ void BLE_DataInputBuffer(const uint8_t *data, uint16_t len);
 **返 回 值:  无
 *********************************************************************/
 void ble_rx_proc_handle(void);
+
+/*********************************************************************
+**函数名称:  my_ble_dfu_send_response
+**入口参数:  cmd   ---   命令码
+**           data  ---   响应数据
+**           len   ---   数据长度
+**出口参数:  无
+**函数功能:  发送 DFU 响应数据
+**返 回 值:  无
+*********************************************************************/
+void my_ble_dfu_send_response(uint8_t cmd, uint8_t *data, uint16_t len);
 
 #endif
 

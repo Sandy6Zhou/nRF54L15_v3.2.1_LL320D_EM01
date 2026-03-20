@@ -528,6 +528,34 @@ static int cmd_nfc_poll(const struct shell *shell, size_t argc, char **argv)
     return 0;
 }
 
+/********************************************************************
+**函数名称：cmd_shutdown
+**入口参数：shell   ---        Shell 实例指针
+**           argc    ---        参数数量
+**           argv    ---        参数数组
+**出口参数：无
+**函数功能：执行系统关机（进入超低功耗模式，仅按键可唤醒）
+**返 回 值：0 表示成功
+*********************************************************************/
+static int cmd_shutdown(const struct shell *shell, size_t argc, char **argv)
+{
+    MSG_S msg;
+
+    ARG_UNUSED(argc);
+    ARG_UNUSED(argv);
+
+    shell_print(shell, "System shutdown request...");
+    shell_print(shell, "Entering SHUTDOWN mode (ultra-low power, only KEY can wakeup)");
+
+    /* 发送关机请求到主任务 */
+    msg.msgID = MY_MSG_CTRL_SHUTDOWN_REQUEST;
+    msg.pData = NULL;
+    msg.DataLen = 0;
+    my_send_msg_data(MOD_MAIN, MOD_MAIN, &msg);
+
+    return 0;
+}
+
 /* 注册自定义命令到 Shell 子系统 */
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_app,
     SHELL_CMD(sysinfo, NULL, "Display system information", cmd_system_info),
@@ -541,6 +569,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_app,
     SHELL_CMD(modeset, NULL, "Configure longlife or smart mode parameters", cmd_modeset),
     SHELL_CMD(AT_TEST, NULL, "Usage:app AT_TEST \"TEST xxxx(AT^GT_CM=xxxx)\"", shell_at_test),
     SHELL_CMD(nfc_poll, NULL, "NFC polling: app nfc_poll <start|stop>", cmd_nfc_poll),
+    SHELL_CMD(shutdown, NULL, "Shutdown system (enter ultra-low power mode)", cmd_shutdown),
     SHELL_SUBCMD_SET_END
 );
 /* Zephyr Shell 子系统提供的宏，随 nRF Connect SDK一起提供，用来在 Shell里注册一个“根命令”

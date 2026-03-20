@@ -55,9 +55,13 @@
 
 /* Zephyr蓝牙 */
 #include <zephyr/bluetooth/bluetooth.h>
+#include <zephyr/bluetooth/conn.h>
 #include <zephyr/bluetooth/gatt.h>
 #include <zephyr/bluetooth/hci.h>
 #include <zephyr/bluetooth/uuid.h>
+
+/* Zephyr MCUmgr */
+#include <zephyr/mgmt/mcumgr/mgmt/callbacks.h>
 
 /* Nordic SDK/HAL */
 #include <hal/nrf_gpio.h>
@@ -149,8 +153,15 @@ typedef enum
     MY_MSG_CTRL_LIGHT_SENSOR_BRIGHT,   /* 光传感器检测到光明环境 */
     MY_MSG_CTRL_LOCK_PIN_INSERTED,     /* 锁销插入检测 */
     MY_MSG_CTRL_LOCK_PIN_DISCONNECTED, /* 锁销断开检测 */
+    MY_MSG_CTRL_SHUTDOWN_REQUEST,      /* 关机请求 */
 
+    /* BLE 处理程序消息 */
     MY_MSG_BLE_RX,
+
+    /* DFU OTA 状态消息 */
+    MY_MSG_DFU_START,    /* DFU OTA 开始 */
+    MY_MSG_DFU_TIMEOUT,  /* DFU OTA 超时退出 */
+    MY_MSG_DFU_COMPLETE, /* DFU OTA 完成 */
 } MY_MAIN_TASK_MSG;
 
 /* ========== 集中引用所有模块头文件 ========== */
@@ -170,5 +181,6 @@ typedef enum
 #include "my_zms_param.h"
 #include "my_ble_app.h"
 #include "my_cmd_setting.h"
+#include "my_dfu_jimi.h"
 
 #endif /* _MY_COMMON_H_ */

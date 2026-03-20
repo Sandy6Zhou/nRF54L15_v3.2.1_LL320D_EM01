@@ -37,6 +37,7 @@ target_sources(app PRIVATE
   ext_module/nfc/drivers/FM175XX/src/nfc_mifare.c
   ext_module/nfc/drivers/FM175XX/src/nfc_ntag.c
   src/my_ble_app.c
+  src/my_dfu_jimi.c
 )
 
 # NORDIC SDK APP END

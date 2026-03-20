@@ -856,3 +856,30 @@ int validate_time_format(const char *time_str, uint8_t *valid)
     *valid = 1;
     return 0;
 }
+
+/*********************************************************************
+**函数名称:  my_crc16_calc
+**入口参数:  data       --  数据缓冲区
+**           len        --  数据长度
+**           polynomial --  CRC16 多项式（如 0xA001）
+**出口参数:  无
+**函数功能:  计算 CRC16 校验值（支持不同多项式）
+**返 回 值:  CRC16 校验值
+*********************************************************************/
+uint16_t my_crc16_calc(const uint8_t *data, uint16_t len, uint16_t polynomial)
+{
+    uint16_t crc = 0;
+    uint16_t i, j;
+
+    for (i = 0; i < len; i++) {
+        crc ^= data[i];
+        for (j = 0; j < 8; j++) {
+            if ((crc & 1) == 0) {
+                crc >>= 1;
+            } else {
+                crc = (crc >> 1) ^ polynomial;
+            }
+        }
+    }
+    return crc;
+}

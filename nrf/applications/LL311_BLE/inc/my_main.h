@@ -60,6 +60,7 @@ typedef enum
     MY_MODE_CONTINUOUS,     // 连续追踪模式
     MY_MODE_LONG_LIFE,      // 长续航模式
     MY_MODE_SMART,          // 智能模式
+    MY_MODE_SHUTDOWN,       // 关机模式，该模式下所有功能关闭，只有按键可以唤醒设备，长按2秒开机，开机后智能模式，这种主要应用在仓储模式，进入超低功耗模式
 } MY_WORK_MODE;
 
 // 长续航模式参数结构体

@@ -15,6 +15,23 @@
 #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260313"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.03.13
+** 作    者:        Harrison Wu (wuyujiao@jimiiot.com)
+** 修改内容:        1. 基于几米蓝牙通信协议 V3.1.6 的 6.4 OTA 文件传输协议实现DFU功能(my_jimi_dfu.c/my_jimi_dfu.h/my_bie_app.c/my_bie_app.h)；
+**                 2. 支持MCUmgr OTA功能，并进行状态监听(my_ble_core.c/my_ble_core.h/main.c)；
+**                 3. 增加BLE SMP配对权限，配对密钥自动使用IMEI号后6位，在在 my_ble_core_start 启动时从参数中提取并设置; 
+**                 4. 增加关机模式功能（my_main.h/mai.c/my_shell.c）;
+**                 4. 长按键在关机模式下唤醒，自动切换到智能模式;
+**                 5. 添加系统启动时系统信息打印；
+**                 6. OTA效率优化，MTU扩展至498（prj.conf/my_ble_app.h),采用双PDU模式; 
+**                 7. 优化栈变量转为静态全局缓冲区(my_ble_app.c -ble_tx_buf\ble_encrypt_buf\ble_rsp_buf); 
+**                 8. 内存管理规范化：malloc/free替换为MY_MALLOC_BUFFER/MY_FREE_BUFFER；
+**                 9. my_ble_app.c日志级别调整，AES密钥、明文、密文的HEX DUMP由LOG_HEXDUMP_INF除为LOG_HEXDUMP_DBG；
+**                 10. my_tool新增CRC校验函数主要用于DFU CRC的验证.
+*/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260313"
+/* 软件版本:        V1.0
+** 完成日期:        2026.03.13
 ** 作    者:        周森达 (zhousenda@jimiiot.com)
 ** 修改内容:        1.实现NFC开关锁与权限设置(包含卡号管理及权限设置相关指令)
 */
