@@ -11,6 +11,9 @@
 **                 3. 包含串口回环测试逻辑
 *********************************************************************/
 
+/* 必须在包含 my_comm.h 之前定义 BLE_LOG_MODULE_ID，避免与 my_ble_log.h 中的默认定义冲突 */
+#define BLE_LOG_MODULE_ID BLE_LOG_MOD_LTE
+
 #include "my_comm.h"
 
 // 串口协议报文头定义清单
@@ -87,7 +90,7 @@ static void my_lte_task(void *p1, void *p2, void *p3)
 
     MSG_S msg;
 
-    LOG_INF("LTE thread started");
+    MY_LOG_INF("LTE thread started");
 
     for (;;)
     {
@@ -151,11 +154,11 @@ static void lte_uart_cb(const struct device *dev, struct uart_event *evt, void *
     switch (evt->type)
     {
         case UART_TX_DONE:
-            LOG_DBG("LTE UART TX Done");
+            MY_LOG_DBG("LTE UART TX Done");
             break;
 
         case UART_RX_RDY:
-            LOG_DBG("LTE UART RX Ready, len: %d", evt->data.rx.len);
+            MY_LOG_DBG("LTE UART RX Ready, len: %d", evt->data.rx.len);
 #if 0
             /* 串口回环测试：将收到的数据直接原样发回 */
             my_lte_uart_send(&evt->data.rx.buf[evt->data.rx.offset], evt->data.rx.len);
@@ -183,7 +186,7 @@ static void lte_uart_cb(const struct device *dev, struct uart_event *evt, void *
             break;
 
         case UART_TX_ABORTED:
-            LOG_WRN("LTE UART TX Aborted");
+            MY_LOG_WRN("LTE UART TX Aborted");
             break;
 
         default:
@@ -228,7 +231,7 @@ int my_lte_pwr_on(bool on)
     if (g_lte_power_state == on)
     {
         /* 状态相同，无需操作 */
-        LOG_INF("LTE Power: already %s", on ? "ON" : "OFF");
+        MY_LOG_INF("LTE Power: already %s", on ? "ON" : "OFF");
         return 0;
     }
 
@@ -238,11 +241,11 @@ int my_lte_pwr_on(bool on)
     {
         /* 操作成功，更新状态 */
         g_lte_power_state = on;
-        LOG_INF("LTE Power Control: %s", on ? "Power ON" : "Power OFF");
+        MY_LOG_INF("LTE Power Control: %s", on ? "Power ON" : "Power OFF");
     }
     else
     {
-        LOG_ERR("LTE Power Control failed (err %d)", err);
+        MY_LOG_ERR("LTE Power Control failed (err %d)", err);
     }
 
     return err;
@@ -480,11 +483,11 @@ int my_at_test(int argc, char *argv[])
 
     if (strcmp(szValue, "CPUINFO") == 0)
     {
-        LOG_INF("==========>%s", szValue);
+        MY_LOG_INF("==========>%s", szValue);
     }
     else
     {
-        LOG_INF("Unrecognized Testing.");
+        MY_LOG_INF("Unrecognized Testing.");
     }
 
     return 0;
@@ -640,7 +643,7 @@ static int my_at_factory_cmd(char *pfactorycmd)
 
     my_parse_cmd_line(pfactorycmd + strlen(FACTORY_CMD_HEADER), ',' , &argc, argv);
 
-    LOG_INF("%s", my_handle_at_factory_cmd(argv, argc));
+    MY_LOG_INF("%s", my_handle_at_factory_cmd(argv, argc));
 
     return 0;
 }
@@ -838,7 +841,7 @@ int my_lte_parse_cmd(char *cmd, int cmd_len)
         return -1;
     }
 
-    LOG_INF("%s: %s", __func__, cmd);
+    MY_LOG_INF("%s: %s", __func__, cmd);
 
     // 按使用频次由高到低排序?
     if (CMD_MATCHED(cmd, LTE_PWRON))
@@ -914,7 +917,7 @@ int my_lte_parse_cmd(char *cmd, int cmd_len)
 
     num_commands = GetCmdMatche(argv[0]);
     if (num_commands < 0) {
-        LOG_INF("No '%s' command", argv[0]);
+        MY_LOG_INF("No '%s' command", argv[0]);
         return -1;
     }
 
@@ -968,13 +971,13 @@ int my_lte_init(k_tid_t *tid)
     /* 检查硬件设备是否就绪 */
     if (!device_is_ready(lte_uart_dev))
     {
-        LOG_ERR("LTE UART device not ready");
+        MY_LOG_ERR("LTE UART device not ready");
         return -ENODEV;
     }
 
     if (!gpio_is_ready_dt(&lte_pwr_gpio))
     {
-        LOG_ERR("LTE Power GPIO not ready");
+        MY_LOG_ERR("LTE Power GPIO not ready");
         return -ENODEV;
     }
 
@@ -982,7 +985,7 @@ int my_lte_init(k_tid_t *tid)
     err = gpio_pin_configure_dt(&lte_pwr_gpio, GPIO_OUTPUT_INACTIVE);
     if (err)
     {
-        LOG_ERR("Failed to configure LTE Power GPIO (err %d)", err);
+        MY_LOG_ERR("Failed to configure LTE Power GPIO (err %d)", err);
         return err;
     }
 
@@ -993,7 +996,7 @@ int my_lte_init(k_tid_t *tid)
     err = uart_callback_set(lte_uart_dev, lte_uart_cb, NULL);
     if (err)
     {
-        LOG_ERR("Failed to set LTE UART callback (err %d)", err);
+        MY_LOG_ERR("Failed to set LTE UART callback (err %d)", err);
         return err;
     }
 
@@ -1001,7 +1004,7 @@ int my_lte_init(k_tid_t *tid)
     err = uart_rx_enable(lte_uart_dev, lte_rx_buf_1, LTE_UART_BUF_SIZE, 10 * USEC_PER_MSEC);
     if (err)
     {
-        LOG_ERR("Failed to enable LTE UART RX (err %d)", err);
+        MY_LOG_ERR("Failed to enable LTE UART RX (err %d)", err);
         return err;
     }
 
@@ -1017,7 +1020,7 @@ int my_lte_init(k_tid_t *tid)
     /* 设置线程名称 */
     k_thread_name_set(*tid, "MY_LTE");
 
-    LOG_INF("LTE module initialized successfully (Loopback mode)");
+    MY_LOG_INF("LTE module initialized successfully (Loopback mode)");
 
     /* 初始化完成后默认开启模块电源 */
     my_lte_pwr_on(true);

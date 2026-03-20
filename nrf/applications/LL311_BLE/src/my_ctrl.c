@@ -13,6 +13,9 @@
 **                 5. 实现锁销(lock pin)检测中断处理，消抖处理，产生插入/断开事件并发送到主任务
 *********************************************************************/
 
+/* 必须在包含 my_comm.h 之前定义 BLE_LOG_MODULE_ID，避免与 my_ble_log.h 中的默认定义冲突 */
+#define BLE_LOG_MODULE_ID BLE_LOG_MOD_CTRL
+
 #include "my_comm.h"
 
 /* 注册控制模块日志 */
@@ -115,7 +118,7 @@ static void enable_wakeup_pin(void)
 *********************************************************************/
 static void go_to_system_off(void)
 {
-    LOG_INF("Config wakeup pin and enter System OFF");
+    MY_LOG_INF("Config wakeup pin and enter System OFF");
 
     /* 清 RESETREAS，避免立即被旧的唤醒原因拉起（手册要求） */
     nrf_reset_resetreas_clear(NRF_RESET, 0xFFFFFFFF);
@@ -233,7 +236,7 @@ static void light_sensor_timer_handler(struct k_timer *timer)
     if (new_state != light_sensor.state)
     {
         light_sensor.state = new_state;
-        // LOG_INF("Light state changed: %s", new_state ? "LIGHT" : "DARK");
+        // MY_LOG_INF("Light state changed: %s", new_state ? "LIGHT" : "DARK");
 
         /* 发送光感状态变化消息到主任务 */
         MSG_S msg;
@@ -285,7 +288,7 @@ static void lock_pin_timer_handler(struct k_timer *timer)
     if (new_state != lock_pin_ctrl.inserted)
     {
         lock_pin_ctrl.inserted = new_state;
-        // LOG_INF("Lock pin state changed: %s", new_state ? "INSERTED" : "DISCONNECTED");
+        // MY_LOG_INF("Lock pin state changed: %s", new_state ? "INSERTED" : "DISCONNECTED");
 
         /* 发送锁销状态变化消息到主任务 */
         MSG_S msg;
@@ -404,7 +407,7 @@ static int misc_io_init(void)
     ret = gpio_pin_configure(fun_key.port, fun_key.pin, GPIO_INPUT | GPIO_PULL_UP);
     if (ret)
     {
-        LOG_ERR("Failed to configure fun_key: %d", ret);
+        MY_LOG_ERR("Failed to configure fun_key: %d", ret);
         return ret;
     }
 
@@ -412,7 +415,7 @@ static int misc_io_init(void)
     ret = gpio_pin_configure_dt(&light_det, GPIO_INPUT);
     if (ret)
     {
-        LOG_ERR("Failed to configure light_det: %d", ret);
+        MY_LOG_ERR("Failed to configure light_det: %d", ret);
         return ret;
     }
 
@@ -420,7 +423,7 @@ static int misc_io_init(void)
     ret = gpio_pin_configure_dt(&lock_pin_det, GPIO_INPUT);
     if (ret)
     {
-        LOG_ERR("Failed to configure lock_pin_det: %d", ret);
+        MY_LOG_ERR("Failed to configure lock_pin_det: %d", ret);
         return ret;
     }
 
@@ -428,7 +431,7 @@ static int misc_io_init(void)
     ret = gpio_pin_interrupt_configure_dt(&fun_key, GPIO_INT_EDGE_FALLING);
     if (ret)
     {
-        LOG_ERR("Failed to configure fun_key interrupt: %d", ret);
+        MY_LOG_ERR("Failed to configure fun_key interrupt: %d", ret);
         return ret;
     }
 
@@ -436,7 +439,7 @@ static int misc_io_init(void)
     ret = gpio_pin_interrupt_configure_dt(&light_det, GPIO_INT_EDGE_FALLING);
     if (ret)
     {
-        LOG_ERR("Failed to configure light_det interrupt: %d", ret);
+        MY_LOG_ERR("Failed to configure light_det interrupt: %d", ret);
         return ret;
     }
 
@@ -447,13 +450,13 @@ static int misc_io_init(void)
     /* 读取初始状态 */
     light_initial_level = gpio_pin_get(light_det.port, light_det.pin);
     light_sensor.state = (light_initial_level == 1);
-    LOG_INF("Light initial state: %s", light_sensor.state ? "LIGHT" : "DARK");
+    MY_LOG_INF("Light initial state: %s", light_sensor.state ? "LIGHT" : "DARK");
 
     /* 配置锁销中断：双边沿触发 */
     ret = gpio_pin_interrupt_configure_dt(&lock_pin_det, GPIO_INT_EDGE_BOTH);
     if (ret)
     {
-        LOG_ERR("Failed to configure lock_pin_det interrupt: %d", ret);
+        MY_LOG_ERR("Failed to configure lock_pin_det interrupt: %d", ret);
         return ret;
     }
 
@@ -464,7 +467,7 @@ static int misc_io_init(void)
     /* 读取初始状态 */
     lock_initial_level = gpio_pin_get(lock_pin_det.port, lock_pin_det.pin);
     lock_pin_ctrl.inserted = (lock_initial_level == 1);
-    LOG_INF("Lock pin initial state: %s", lock_pin_ctrl.inserted ? "INSERTED" : "DISCONNECTED");
+    MY_LOG_INF("Lock pin initial state: %s", lock_pin_ctrl.inserted ? "INSERTED" : "DISCONNECTED");
 
     /* 初始化按键定时器 */
     key_timer_init();
@@ -517,7 +520,7 @@ int my_ctrl_buzzer_play_tone(uint32_t freq_hz, uint32_t duration_ms)
         int err = pwm_set_dt(&buzzer, period, pulse);
         if (err)
         {
-            LOG_ERR("Failed to set PWM (err %d)", err);
+            MY_LOG_ERR("Failed to set PWM (err %d)", err);
             return err;
         }
     }
@@ -606,7 +609,7 @@ static int leds_init(void)
 *********************************************************************/
 void my_ctrl_led_process(MY_LED_ID led_id, MY_LED_CTRL_CMD led_cmd)
 {
-    LOG_INF("my_led:%d cmd:%d", led_id, led_cmd);
+    MY_LOG_INF("my_led:%d cmd:%d", led_id, led_cmd);
     // 根据 LED 操作命令执行不同的操作
     switch (led_cmd)
     {
@@ -676,7 +679,7 @@ static int batt_led_set_level(uint8_t level)
 *********************************************************************/
 static void lock_led_set(bool on)
 {
-    LOG_INF("%s:%d", __func__, on);
+    MY_LOG_INF("%s:%d", __func__, on);
     gpio_pin_set_dt(&lock_led, on ? 1 : 0);
 }
 
@@ -785,7 +788,7 @@ static void my_ctrl_task(void *p1, void *p2, void *p3)
 
     MSG_S msg;
 
-    LOG_INF("Control thread started");
+    MY_LOG_INF("Control thread started");
 
     for (;;)
     {
@@ -829,7 +832,7 @@ int my_ctrl_init(k_tid_t *tid)
     /* 2. 初始化蜂鸣器 PWM */
     if (!pwm_is_ready_dt(&buzzer))
     {
-        LOG_ERR("Buzzer PWM not ready");
+        MY_LOG_ERR("Buzzer PWM not ready");
         return -ENODEV;
     }
 
@@ -848,6 +851,6 @@ int my_ctrl_init(k_tid_t *tid)
     /* 启动时响一声提示音 */
     my_ctrl_buzzer_play_tone(2000, 100);
 
-    LOG_INF("Control module initialized");
+    MY_LOG_INF("Control module initialized");
     return 0;
 }

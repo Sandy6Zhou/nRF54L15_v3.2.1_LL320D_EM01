@@ -1,3 +1,6 @@
+/* 必须在包含 my_comm.h 之前定义 BLE_LOG_MODULE_ID，避免与 my_ble_log.h 中的默认定义冲突 */
+#define BLE_LOG_MODULE_ID BLE_LOG_MOD_TOOL
+
 #include "my_comm.h"
 
 LOG_MODULE_REGISTER(my_tool, LOG_LEVEL_INF);
@@ -23,7 +26,7 @@ int my_set_system_time(time_t _sec)
     ret = sys_clock_settime(SYS_CLOCK_REALTIME, &ts);
     if (ret < 0)
     {
-        LOG_INF("sys_clock_settime failed, ret=%d", ret);
+        MY_LOG_INF("sys_clock_settime failed, ret=%d", ret);
         return ret;
     }
 
@@ -46,7 +49,7 @@ time_t my_get_system_time_sec(void)
     ret = sys_clock_gettime(SYS_CLOCK_REALTIME, &ts);
     if (ret < 0)
     {
-        LOG_INF("clock_gettime failed, ret=%d", ret);
+        MY_LOG_INF("clock_gettime failed, ret=%d", ret);
         return (time_t)-1;
     }
 
@@ -81,7 +84,7 @@ int calculate_remaining_seconds(const char *start_time, int interval_min, long l
     /* 1. 参数合法性校验：start_time非空且长度为4 */
     if (start_time == NULL || strlen(start_time) != 4)
     {
-        LOG_INF("Error: start_time format is invalid, must be 4-digit string (HHMM)");
+        MY_LOG_INF("Error: start_time format is invalid, must be 4-digit string (HHMM)");
         return ret_code;
     }
 
@@ -90,7 +93,7 @@ int calculate_remaining_seconds(const char *start_time, int interval_min, long l
     {
         if (!isdigit(start_time[i]))
         {
-            LOG_INF("Error: start_time contains non-numeric characters");
+            MY_LOG_INF("Error: start_time contains non-numeric characters");
             return ret_code;
         }
     }
@@ -98,14 +101,14 @@ int calculate_remaining_seconds(const char *start_time, int interval_min, long l
     /* 3. 参数合法性校验：上报间隔为正整数 */
     if (interval_min <= 0)
     {
-        LOG_INF("Error: reporting interval must be a positive integer (minutes)");
+        MY_LOG_INF("Error: reporting interval must be a positive integer (minutes)");
         return ret_code;
     }
 
     /* 4. 参数合法性校验：UTC时间戳非负 */
     if (utc_timestamp < 0)
     {
-        LOG_INF("Error: UTC timestamp must be a non-negative integer (seconds)");
+        MY_LOG_INF("Error: UTC timestamp must be a non-negative integer (seconds)");
         return ret_code;
     }
 
@@ -114,7 +117,7 @@ int calculate_remaining_seconds(const char *start_time, int interval_min, long l
     minute = (start_time[2] - '0') * 10 + (start_time[3] - '0');
     if (hour < 0 || hour > 23 || minute < 0 || minute > 59)
     {
-        LOG_INF("Error: hour (%d) or minute (%d) in start_time is out of range (hour:0-23, minute:0-59)", hour, minute);
+        MY_LOG_INF("Error: hour (%d) or minute (%d) in start_time is out of range (hour:0-23, minute:0-59)", hour, minute);
         return ret_code;
     }
 
@@ -151,10 +154,10 @@ int calculate_remaining_seconds(const char *start_time, int interval_min, long l
             remaining_seconds = (int)((base_seconds + DAY_SECONDS) - current_seconds_of_day);
         }
     }
-    LOG_INF("current_seconds_of_day:%d,base_seconds:%d,next_point:%d,remaining_seconds:%d",
+    MY_LOG_INF("current_seconds_of_day:%d,base_seconds:%d,next_point:%d,remaining_seconds:%d",
         current_seconds_of_day,base_seconds,next_point,remaining_seconds);
 
-    LOG_INF("interval_min:%d,interval_seconds:%d",
+    MY_LOG_INF("interval_min:%d,interval_seconds:%d",
         interval_min,interval_seconds);
 
     /* 10. 函数执行成功，更新返回码为剩余秒数 */
@@ -393,7 +396,7 @@ void hex2hexstr(uint8_t *hex, uint16_t hex_len, uint8_t *str, uint16_t str_len)
     uint8_t *buf = str;
 
     if (str_len < 2*hex_len) {
-        LOG_INF("str_len is too small.");
+        MY_LOG_INF("str_len is too small.");
         return;
     }
 

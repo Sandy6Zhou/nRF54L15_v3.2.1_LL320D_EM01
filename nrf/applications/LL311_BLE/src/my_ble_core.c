@@ -13,6 +13,9 @@
 **                 4. 连接状态指示和安全管理
 *********************************************************************/
 
+/* 必须在包含 my_comm.h 之前定义 BLE_LOG_MODULE_ID，避免与 my_ble_log.h 中的默认定义冲突 */
+#define BLE_LOG_MODULE_ID BLE_LOG_MOD_BLE
+
 #include "my_comm.h"
 
 LOG_MODULE_REGISTER(my_ble_core, LOG_LEVEL_INF);

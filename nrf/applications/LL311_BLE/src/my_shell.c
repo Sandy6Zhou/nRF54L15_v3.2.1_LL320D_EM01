@@ -9,6 +9,9 @@
 ** 功能描述:        注册自定义 Shell 命令，用于系统诊断和设备控制
 *********************************************************************/
 
+/* 必须在包含 my_comm.h 之前定义 BLE_LOG_MODULE_ID，避免与 my_ble_log.h 中的默认定义冲突 */
+#define BLE_LOG_MODULE_ID BLE_LOG_MOD_SHELL
+
 #include "my_comm.h"
 
 #define LOG_MODULE_NAME my_shell

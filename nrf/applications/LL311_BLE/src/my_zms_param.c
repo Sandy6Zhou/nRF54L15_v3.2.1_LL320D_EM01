@@ -1,3 +1,6 @@
+/* 必须在包含 my_comm.h 之前定义 BLE_LOG_MODULE_ID，避免与 my_ble_log.h 中的默认定义冲突 */
+#define BLE_LOG_MODULE_ID BLE_LOG_MOD_PARAM
+
 #include "my_comm.h"
 
 LOG_MODULE_REGISTER(my_zms_param, LOG_LEVEL_INF);
@@ -54,7 +57,7 @@ const BleLogConfig_t gDefaultBleLogConfig =
         (1U << BLE_LOG_MOD_LTE)    |   /* bit4: LTE     - 开启 */
         (1U << BLE_LOG_MOD_CTRL)   |   /* bit5: CTRL    - 开启 */
         (0U << BLE_LOG_MOD_SHELL)  |   /* bit6: SHELL   - 关闭，shell模块没有必要加蓝牙日志 */
-        (0U << BLE_LOG_MOD_NFC)    |   /* bit7: NFC     - 关闭 */
+        (1U << BLE_LOG_MOD_NFC)    |   /* bit7: NFC     - 开启 */
         (1U << BLE_LOG_MOD_BATTERY)|   /* bit8: BATTERY - 开启 */
         (1U << BLE_LOG_MOD_MOTOR)  |   /* bit9: MOTOR   - 开启 */
         (0U << BLE_LOG_MOD_CMD)    |   /* bit10: CMD    - 关闭，指令模块避免递归 */
@@ -75,7 +78,7 @@ const BleLogConfig_t gDefaultBleLogConfig =
         [BLE_LOG_MOD_MOTOR]  = LOG_LEVEL_INF,    /* bit9: MOTOR   - 开启 */
         [BLE_LOG_MOD_CMD]    = LOG_LEVEL_NONE,   /* bit10: CMD    - 关闭，指令模块避免递归 */
         [BLE_LOG_MOD_TOOL]   = LOG_LEVEL_INF,    /* bit11: TOOL   - 开启 */
-        [BLE_LOG_MOD_PARAM]  = LOG_LEVEL_NONE,   /* bit12: PARAM  - 关闭 */
+        [BLE_LOG_MOD_PARAM]  = LOG_LEVEL_INF,    /* bit12: PARAM  - 开启 */
         [BLE_LOG_MOD_WDT]    = LOG_LEVEL_INF,    /* bit13: WDT    - 开启 */
         [BLE_LOG_MOD_OTHER]  = LOG_LEVEL_NONE,   /* bit14: OTHER  - 关闭 */
     }
@@ -101,12 +104,12 @@ static int my_user_data_storage_init(void)
     /* 打开 pm_static.yml 中的 settings_storage 分区 */
     err = flash_area_open(FLASH_AREA_ID(settings_storage), &fa);
     if (err) {
-        LOG_INF("flash_area_open failed: %d", err);
+        MY_LOG_INF("flash_area_open failed: %d", err);
         return err;
     }
 
     if (!device_is_ready(fa->fa_dev)) {
-        LOG_INF("Flash device for settings_storage not ready");
+        MY_LOG_INF("Flash device for settings_storage not ready");
         flash_area_close(fa);
         return -ENODEV;
     }
@@ -124,7 +127,7 @@ static int my_user_data_storage_init(void)
 
     err = zms_mount(&user_data_fs);
     if (err) {
-        LOG_INF("zms_mount failed: %d", err);
+        MY_LOG_INF("zms_mount failed: %d", err);
         flash_area_close(fa);
         return err;
     }
@@ -151,7 +154,7 @@ static int my_user_data_write(uint32_t id, const void *data, int len)
 
     ret = zms_write(&user_data_fs, id, data, len);
     if (ret < 0) {
-        LOG_INF("write data failed: %d (id=0x%08x)", (int)ret, id);
+        MY_LOG_INF("write data failed: %d (id=0x%08x)", (int)ret, id);
     }
 
     return ret;
@@ -174,7 +177,7 @@ static int my_user_data_read(uint32_t id, void *data, int len)
 
     ret = zms_read(&user_data_fs, id, data, len);
     if (ret < 0) {
-        LOG_INF("read data failed: %d (id=0x%08x)", (int)ret, id);
+        MY_LOG_INF("read data failed: %d (id=0x%08x)", (int)ret, id);
     }
 
     return ret;
@@ -196,7 +199,7 @@ void my_param_load_config(void)
     // 先初始化数据存储
     ret = my_user_data_storage_init();
     if (ret != 0) {
-        LOG_INF("Storage init failed: %d", ret);
+        MY_LOG_INF("Storage init failed: %d", ret);
         return;
     }
 
@@ -205,7 +208,7 @@ void my_param_load_config(void)
     ret = my_user_data_read(ZMS_ID_FF, &gConfigParam.lic_ff, length);
     if (ret != length)
     {
-        LOG_INF("get zms ff fail");
+        MY_LOG_INF("get zms ff fail");
         memset(&gConfigParam.lic_ff, 0, length);
     }
 
@@ -214,7 +217,7 @@ void my_param_load_config(void)
     ret = my_user_data_read(ZMS_ID_GG, &gConfigParam.lic_gg, length);
     if (ret != length)
     {
-        LOG_INF("get zms gg fail");
+        MY_LOG_INF("get zms gg fail");
         memset(&gConfigParam.lic_gg, 0, length);
     }
 
@@ -224,7 +227,7 @@ void my_param_load_config(void)
     if (ret != length)
     {
         memcpy(&gConfigParam.adv_valid_value, &gDefaultAdvValidValue, length);
-        LOG_INF("Adv valid value not found. Use default:AppleValid(%d),GoogleValid(%d)", 
+        MY_LOG_INF("Adv valid value not found. Use default:AppleValid(%d),GoogleValid(%d)", 
                 gConfigParam.adv_valid_value.AppleValid, 
                 gConfigParam.adv_valid_value.GoogleValid);
     }
@@ -238,7 +241,7 @@ void my_param_load_config(void)
     if (ret != length)
     {
         gConfigParam.ECDH_GValue = DEFAULT_ECDH_G_VALUE;
-        LOG_INF("ECDH G value not found. Use default:ECDH G value(0x%04x)", gConfigParam.ECDH_GValue);
+        MY_LOG_INF("ECDH G value not found. Use default:ECDH G value(0x%04x)", gConfigParam.ECDH_GValue);
     }
 
     //--------Load IMEI Value ---------------------
@@ -248,7 +251,7 @@ void my_param_load_config(void)
     {
         memcpy(&gConfigParam.gsm_imei, &gDefaultImeiValue, length);
         memcpy(data_buff, gConfigParam.gsm_imei.hex, sizeof(gConfigParam.gsm_imei.hex));
-        LOG_INF("imei not found. Use default:imei value(%s)", data_buff);
+        MY_LOG_INF("imei not found. Use default:imei value(%s)", data_buff);
     }
 
     //--------Load mac addr ---------------------
@@ -258,7 +261,7 @@ void my_param_load_config(void)
     {
         memcpy(&gConfigParam.my_macaddr, &gDefaultMacAddr, length);
         memcpy(data_buff, gConfigParam.my_macaddr.hex, sizeof(gConfigParam.my_macaddr.hex));
-        LOG_INF("mac addr not set. Use default:mac addr(%02x:%02x:%02x:%02x:%02x:%02x)", 
+        MY_LOG_INF("mac addr not set. Use default:mac addr(%02x:%02x:%02x:%02x:%02x:%02x)", 
             data_buff[5], data_buff[4], data_buff[3], data_buff[2], data_buff[1], data_buff[0]);
     }
 
@@ -268,11 +271,11 @@ void my_param_load_config(void)
     if (ret != length)
     {
         memcpy(&gConfigParam.ble_tx_power, &gDefaultBleTxPower, length);
-        LOG_INF("BLE TX power not set. Use default:%d dBm", gConfigParam.ble_tx_power.tx_power);
+        MY_LOG_INF("BLE TX power not set. Use default:%d dBm", gConfigParam.ble_tx_power.tx_power);
     }
     else
     {
-        LOG_INF("BLE TX power loaded:%d dBm", gConfigParam.ble_tx_power.tx_power);
+        MY_LOG_INF("BLE TX power loaded:%d dBm", gConfigParam.ble_tx_power.tx_power);
     }
 
     //--------Load BLE Log Config ---------------------
@@ -281,12 +284,12 @@ void my_param_load_config(void)
     if (ret != length)
     {
         memcpy(&gConfigParam.ble_log_config, &gDefaultBleLogConfig, length);
-        LOG_INF("BLE log config not set. Use default: global_en=%d", 
+        MY_LOG_INF("BLE log config not set. Use default: global_en=%d", 
                 gConfigParam.ble_log_config.global_en);
     }
     else
     {
-        LOG_INF("BLE log config loaded: global_en=%d", gConfigParam.ble_log_config.global_en);
+        MY_LOG_INF("BLE log config loaded: global_en=%d", gConfigParam.ble_log_config.global_en);
     }
 
 }
@@ -305,13 +308,13 @@ bool my_param_set_ff(char *param, uint8_t len)
 
     if (len != LICENSE_FF_STR_LEN)
     {
-        LOG_INF("my_param_set_ff len error!");
+        MY_LOG_INF("my_param_set_ff len error!");
         return false;
     }
 
     if (string_check_is_hex_str((const char *)param) != LICENSE_FF_STR_LEN)
     {
-        LOG_INF("invalid param");
+        MY_LOG_INF("invalid param");
         return false;
     }
 
@@ -321,12 +324,12 @@ bool my_param_set_ff(char *param, uint8_t len)
     ret = my_user_data_write(ZMS_ID_FF, &gConfigParam.lic_ff, lic_stuct_len);
     if (ret != lic_stuct_len)
     {
-        LOG_INF("zms set ff Error!!!");
+        MY_LOG_INF("zms set ff Error!!!");
         return false;
     }
     else
     {
-        LOG_INF("zms set ff OK!!!");
+        MY_LOG_INF("zms set ff OK!!!");
     }
 
     return true;
@@ -358,13 +361,13 @@ bool my_param_set_gg(char *param, uint8_t len)
 
     if (len != LICENSE_GG_STR_LEN)
     {
-        LOG_INF("my_param_set_gg len error!");
+        MY_LOG_INF("my_param_set_gg len error!");
         return false;
     }
 
     if (string_check_is_hex_str((const char *)param) != LICENSE_GG_STR_LEN)
     {
-        LOG_INF("invalid param");
+        MY_LOG_INF("invalid param");
         return false;
     }
 
@@ -374,12 +377,12 @@ bool my_param_set_gg(char *param, uint8_t len)
     ret = my_user_data_write(ZMS_ID_GG, &gConfigParam.lic_gg, lic_stuct_len);
     if (ret != lic_stuct_len)
     {
-        LOG_INF("zms set gg Error!!!");
+        MY_LOG_INF("zms set gg Error!!!");
         return false;
     }
     else
     {
-        LOG_INF("zms set gg OK!!!");
+        MY_LOG_INF("zms set gg OK!!!");
     }
 
     return true;
@@ -410,7 +413,7 @@ int my_param_set_jatag_or_jgtag(char *cmd, char *param)
     int ret;
 
     if (cmd == NULL || param == NULL) {
-        LOG_INF("cmd or param is null");
+        MY_LOG_INF("cmd or param is null");
         return -1;
     }
 
@@ -424,12 +427,12 @@ int my_param_set_jatag_or_jgtag(char *cmd, char *param)
             ret = my_user_data_write(ZMS_ID_ADV_VALID, &gConfigParam.adv_valid_value, valid_len);
             if (ret != valid_len)
             {
-                LOG_INF("zms set jatag Error!!!");
+                MY_LOG_INF("zms set jatag Error!!!");
                 return -1;
             }
             else
             {
-                LOG_INF("zms set jatag OK!!!");
+                MY_LOG_INF("zms set jatag OK!!!");
             }
         }
         else if (CMD_MATCHED(param, "OFF"))
@@ -442,12 +445,12 @@ int my_param_set_jatag_or_jgtag(char *cmd, char *param)
                 ret = my_user_data_write(ZMS_ID_ADV_VALID, &gConfigParam.adv_valid_value, valid_len);
                 if (ret != valid_len)
                 {
-                    LOG_INF("zms set jatag Error!!!");
+                    MY_LOG_INF("zms set jatag Error!!!");
                     return -1;
                 }
                 else
                 {
-                    LOG_INF("zms set jatag OK!!!");
+                    MY_LOG_INF("zms set jatag OK!!!");
                 }
             }
             else
@@ -470,12 +473,12 @@ int my_param_set_jatag_or_jgtag(char *cmd, char *param)
             ret = my_user_data_write(ZMS_ID_ADV_VALID, &gConfigParam.adv_valid_value, valid_len);
             if (ret != valid_len)
             {
-                LOG_INF("zms set jgtag Error!!!");
+                MY_LOG_INF("zms set jgtag Error!!!");
                 return -1;
             }
             else
             {
-                LOG_INF("zms set jgtag OK!!!");
+                MY_LOG_INF("zms set jgtag OK!!!");
             }
         }
         else if (CMD_MATCHED(param, "OFF"))
@@ -488,12 +491,12 @@ int my_param_set_jatag_or_jgtag(char *cmd, char *param)
                 ret = my_user_data_write(ZMS_ID_ADV_VALID, &gConfigParam.adv_valid_value, valid_len);
                 if (ret != valid_len)
                 {
-                    LOG_INF("zms set jgtag Error!!!");
+                    MY_LOG_INF("zms set jgtag Error!!!");
                     return -1;
                 }
                 else
                 {
-                    LOG_INF("zms set jgtag OK!!!");
+                    MY_LOG_INF("zms set jgtag OK!!!");
                 }
             }
             else
@@ -525,14 +528,14 @@ int my_param_set_Gvalue(char *param)
 
     if (string_check_is_number(0, param) == 0)
     {
-        LOG_INF("Gvalue param is not number");
+        MY_LOG_INF("Gvalue param is not number");
         return -1;
     }
 
     Gvalue = atoi(param);
     if (Gvalue < 10000 || Gvalue > 60000)
     {
-        LOG_INF("MODIFYGV set fail, range(10000~60000)");
+        MY_LOG_INF("MODIFYGV set fail, range(10000~60000)");
         return -1;
     }
 
@@ -542,12 +545,12 @@ int my_param_set_Gvalue(char *param)
     ret = my_user_data_write(ZMS_ID_ECDH_G, &gConfigParam.ECDH_GValue, Gvalue_len);
     if (ret != Gvalue_len)
     {
-        LOG_INF("zms set Gvalue Error!!!");
+        MY_LOG_INF("zms set Gvalue Error!!!");
         return -1;
     }
     else
     {
-        LOG_INF("zms set Gvalue OK!!!");
+        MY_LOG_INF("zms set Gvalue OK!!!");
     }
 
     return 0;
@@ -579,13 +582,13 @@ int my_param_set_imei(char *param, uint8_t len)
 
     if (len != GSM_IMEI_LENGTH)
     {
-        LOG_INF("my_param_set_imei len error!");
+        MY_LOG_INF("my_param_set_imei len error!");
         return -1;
     }
 
     if (string_check_is_hex_str((const char *)param) != GSM_IMEI_LENGTH)
     {
-        LOG_INF("invalid param");
+        MY_LOG_INF("invalid param");
         return -1;
     }
 
@@ -595,12 +598,12 @@ int my_param_set_imei(char *param, uint8_t len)
     ret = my_user_data_write(ZMS_ID_IMEI, &gConfigParam.gsm_imei, GsmImei_struct_len);
     if (ret != GsmImei_struct_len)
     {
-        LOG_INF("zms set imei Error!!!");
+        MY_LOG_INF("zms set imei Error!!!");
         return -1;
     }
     else
     {
-        LOG_INF("zms set imei OK!!!");
+        MY_LOG_INF("zms set imei OK!!!");
     }
 
     return 0;
@@ -646,12 +649,12 @@ int my_param_set_mac(char *param, uint8_t len)
     ret = my_user_data_write(ZMS_ID_MAC, &gConfigParam.my_macaddr, macaddr_t_len);
     if (ret != macaddr_t_len)
     {
-        LOG_INF("zms set mac Error!!!");
+        MY_LOG_INF("zms set mac Error!!!");
         return -1;
     }
     else
     {
-        LOG_INF("zms set mac OK!!!");
+        MY_LOG_INF("zms set mac OK!!!");
     }
 
     return 0;
@@ -697,12 +700,12 @@ int my_param_set_ble_tx_power(int8_t tx_power)
     ret = my_user_data_write(ZMS_ID_BLE_TX_POWER, &gConfigParam.ble_tx_power, tx_power_len);
     if (ret != tx_power_len)
     {
-        LOG_INF("zms set ble tx power Error!!!");
+        MY_LOG_INF("zms set ble tx power Error!!!");
         return -1;
     }
     else
     {
-        LOG_INF("zms set ble tx power OK: %d dBm", tx_power);
+        MY_LOG_INF("zms set ble tx power OK: %d dBm", tx_power);
     }
 
     return 0;
@@ -743,12 +746,12 @@ int my_param_set_ble_log_config(const BleLogConfig_t *config)
     ret = my_user_data_write(ZMS_ID_BLE_LOG_CONFIG, &gConfigParam.ble_log_config, config_len);
     if (ret != config_len)
     {
-        LOG_INF("zms set ble log config Error!!!");
+        MY_LOG_INF("zms set ble log config Error!!!");
         return -1;
     }
     else
     {
-        LOG_INF("zms set ble log config OK: global_en=%d", gConfigParam.ble_log_config.global_en);
+        MY_LOG_INF("zms set ble log config OK: global_en=%d", gConfigParam.ble_log_config.global_en);
     }
 
     return 0;

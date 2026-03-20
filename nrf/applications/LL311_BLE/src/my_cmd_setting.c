@@ -12,7 +12,7 @@
 **
 ** 日志输出规范（重要）:
 **   - 本模块所有日志统一使用 LOG_INF/LOG_ERR/LOG_WRN/LOG_DBG
-**   - 禁止使用 MY_LOG_INF/MY_LOG_ERR 可输出蓝牙日志宏
+**   - 禁止使用 MY_LOG_INF/MY_LOG_ERR/MY_LOG_WRN/MY_LOG_DBG 可输出蓝牙日志宏
 **
 ** 原因说明:
 **   1. 本模块为蓝牙指令处理模块，指令响应已通过 BLE 通道返回给 APP
@@ -24,6 +24,9 @@
 **   LOG_INF("BTLOG enabled");        // 正确 - 仅 RTT 输出
 **   MY_LOG_INF("BTLOG enabled");     // 错误 - 会触发蓝牙日志递归
 *********************************************************************/
+
+/* 必须在包含 my_comm.h 之前定义 BLE_LOG_MODULE_ID，避免与 my_ble_log.h 中的默认定义冲突 */
+#define BLE_LOG_MODULE_ID BLE_LOG_MOD_CMD
 
 #include "my_comm.h"
 

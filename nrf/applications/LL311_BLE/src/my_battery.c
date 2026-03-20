@@ -10,6 +10,9 @@
 **                 2. 电池状态、充电状态检测
 *********************************************************************/
 
+/* 必须在包含 my_comm.h 之前定义 BLE_LOG_MODULE_ID，避免与 my_ble_log.h 中的默认定义冲突 */
+#define BLE_LOG_MODULE_ID BLE_LOG_MOD_BATTERY
+
 #include "my_comm.h"
 
 LOG_MODULE_REGISTER(my_battery, LOG_LEVEL_INF);
@@ -114,7 +117,7 @@ int batt_adc_init(void)
 /* 电池使能：true=打开，false=关闭 */
 void batt_enable(bool on)
 {
-    LOG_INF("%s:%d", __func__, on);
+    MY_LOG_INF("%s:%d", __func__, on);
     gpio_pin_set_dt(&batt_pwr_en, on ? 1 : 0);
 }
 
@@ -131,7 +134,7 @@ static void batt_gpio_isr(const struct device *dev,
     {
         /* P1.7 触发：电池状态变化（充电中 / 充满） */
         level = gpio_pin_get_dt(&charge_state);
-        // LOG_INF("charge_state:%d", level);
+        // MY_LOG_INF("charge_state:%d", level);
         //TODO 发消息给ctrl去再次获取该引脚电平状态，以及消抖处理
     }
 
@@ -139,7 +142,7 @@ static void batt_gpio_isr(const struct device *dev,
     {
         /* P1.8 触发：充电检测变化（开始充电 / 停止充电） */
         level = gpio_pin_get_dt(&charge_det);
-        // LOG_INF("charge_det:%d", level);
+        // MY_LOG_INF("charge_det:%d", level);
         //TODO 发消息给ctrl去再次获取该引脚电平状态，以及消抖处理
     }
 }
@@ -202,22 +205,22 @@ void my_battery_updata_state()
     switch(g_batt_led_ctrl.state)
     {
         case BATT_EMPTY:
-            LOG_INF("battery empty");  // 电池电量为空
+            MY_LOG_INF("battery empty");  // 电池电量为空
             break;
         case BATT_LOW:
-            LOG_INF("battery low");    // 电池电量低
+            MY_LOG_INF("battery low");    // 电池电量低
             break;
         case BATT_NORMAL:
-            LOG_INF("battery normal"); // 电池电量正常
+            MY_LOG_INF("battery normal"); // 电池电量正常
             break;
         case BATT_FAIR:
-            LOG_INF("battery fair");   // 电池电量良好
+            MY_LOG_INF("battery fair");   // 电池电量良好
             break;
         case BATT_HIGH:
-            LOG_INF("battery high");  // 电池电量高
+            MY_LOG_INF("battery high");  // 电池电量高
             break;
         case BATT_FULL:
-            LOG_INF("battery full");   // 电池电量满
+            MY_LOG_INF("battery full");   // 电池电量满
             break;
         default:
             break;  // 处理未定义的状态
@@ -234,7 +237,7 @@ void my_battery_show()
 {
     if(g_charg_state != NO_CHARGING)
     {
-        LOG_INF("be charging");  // 设备正在充电，输出充电状态
+        MY_LOG_INF("be charging");  // 设备正在充电，输出充电状态
         return;  // 直接返回，不进行后续的电池状态检查
     }
 

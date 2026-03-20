@@ -12,7 +12,14 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260319"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260320"
+/* 软件版本:        V1.0
+** 完成日期:        2026.03.20
+** 作    者:        Harrison Wu (wuyujiao@jimiiot.com)
+** 修改内容:        配置功能模块日志输出，采用MY_LOG_XX替换LOG_XX
+*/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260319"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.03.13
 ** 作    者:        Harrison Wu (wuyujiao@jimiiot.com)

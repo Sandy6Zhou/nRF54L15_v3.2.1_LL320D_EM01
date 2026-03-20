@@ -11,6 +11,9 @@
 **                 3. 使用 ST 官方 STdC 驱动库
 *********************************************************************/
 
+/* 必须在包含 my_comm.h 之前定义 BLE_LOG_MODULE_ID，避免与 my_ble_log.h 中的默认定义冲突 */
+#define BLE_LOG_MODULE_ID BLE_LOG_MOD_SENSOR
+
 #include "my_comm.h"
 #include "lsm6dsv16x_reg.h"
 
@@ -228,7 +231,7 @@ LOOP:
     }
     else
     {
-        LOG_INF("read gsensor data fail");
+        MY_LOG_INF("read gsensor data fail");
         return ;
     }
 #endif
@@ -238,17 +241,17 @@ LOOP:
     {
         case STATE_STATIC:
             timer_interval = p_workmode->intelligent.stop_status_interval_sec;  // 静止状态：默认86400秒（24小时）
-            LOG_INF("Smart mode: STATIC state, interval = %d", timer_interval);
+            MY_LOG_INF("Smart mode: STATIC state, interval = %d", timer_interval);
             break;
 
         case STATE_LAND_TRANSPORT:
             timer_interval = p_workmode->intelligent.land_status_interval_sec;  // 陆运状态：默认15秒
-            LOG_INF("Smart mode: LAND TRANSPORT state, interval = %d", timer_interval);
+            MY_LOG_INF("Smart mode: LAND TRANSPORT state, interval = %d", timer_interval);
             break;
 
         case STATE_SEA_TRANSPORT:
             timer_interval = p_workmode->intelligent.sea_status_interval_sec;  // 海运状态：默认14400秒（4小时）
-            LOG_INF("Smart mode: SEA TRANSPORT state, interval = %d", timer_interval);
+            MY_LOG_INF("Smart mode: SEA TRANSPORT state, interval = %d", timer_interval);
             break;
 
         default:
@@ -298,7 +301,7 @@ static void my_gsensor_task(void *p1, void *p2, void *p3)
 
     MSG_S msg;
 
-    LOG_INF("G-Sensor thread started");
+    MY_LOG_INF("G-Sensor thread started");
 
     for (;;)
     {
@@ -316,26 +319,26 @@ static void my_gsensor_task(void *p1, void *p2, void *p3)
                     /* 读取加速度计数据 */
                     if (lsm6dsv16x_acceleration_raw_get(&lsm_ctx, acc_raw) == 0)
                     {
-                        LOG_INF("ACC: X=%6d, Y=%6d, Z=%6d", acc_raw[0], acc_raw[1], acc_raw[2]);
+                        MY_LOG_INF("ACC: X=%6d, Y=%6d, Z=%6d", acc_raw[0], acc_raw[1], acc_raw[2]);
                     }
                     else
                     {
-                        LOG_ERR("Failed to read accelerometer");
+                        MY_LOG_ERR("Failed to read accelerometer");
                     }
                     
                     /* 读取陀螺仪数据 */
                     if (lsm6dsv16x_angular_rate_raw_get(&lsm_ctx, gyro_raw) == 0)
                     {
-                        LOG_INF("GYR: X=%6d, Y=%6d, Z=%6d", gyro_raw[0], gyro_raw[1], gyro_raw[2]);
+                        MY_LOG_INF("GYR: X=%6d, Y=%6d, Z=%6d", gyro_raw[0], gyro_raw[1], gyro_raw[2]);
                     }
                     else
                     {
-                        LOG_ERR("Failed to read gyroscope");
+                        MY_LOG_ERR("Failed to read gyroscope");
                     }
                 }
                 else
                 {
-                    LOG_WRN("Sensor not ready");
+                    MY_LOG_WRN("Sensor not ready");
                 }
                 break;
             }
@@ -379,7 +382,7 @@ static bool lsm6dsv16x_check_id(void)
     {
         if (chip_id == MY_LSM6DSV16X_ID)
         {
-            LOG_INF("LSM6DSV16X identified ID: 0x%02X", chip_id);
+            MY_LOG_INF("LSM6DSV16X identified ID: 0x%02X", chip_id);
             return true;
         }
     }
@@ -395,7 +398,7 @@ int my_gsensor_pwr_on(bool on)
     if (g_gsensor_power_state == on)
     {
         /* 状态相同，无需操作 */
-        LOG_INF("GSENSOR Power: already %s", on ? "ON" : "OFF");
+        MY_LOG_INF("GSENSOR Power: already %s", on ? "ON" : "OFF");
         return 0;
     }
 
@@ -405,11 +408,11 @@ int my_gsensor_pwr_on(bool on)
     {
         /* 操作成功，更新状态 */
         g_gsensor_power_state = on;
-        LOG_INF("GSENSOR Power Control: %s", on ? "Power ON" : "Power OFF");
+        MY_LOG_INF("GSENSOR Power Control: %s", on ? "Power ON" : "Power OFF");
     }
     else
     {
-        LOG_ERR("GSENSOR Power Control failed (err %d)", err);
+        MY_LOG_ERR("GSENSOR Power Control failed (err %d)", err);
     }
 
     return err;
@@ -446,7 +449,7 @@ static void gsensor_gpio_isr(const struct device *dev,
     if (pins & BIT(gsen_int.pin))
     {
         level = gpio_pin_get_dt(&gsen_int);
-        // LOG_INF("gsen_int:%d", level);
+        // MY_LOG_INF("gsen_int:%d", level);
         //TODO 发消息给ctrl去再次获取该引脚电平状态，以及消抖处理
     }
 }
@@ -460,7 +463,7 @@ int my_lsm6dsv16x_init(void)
     if (lsm6dsv16x_check_id())
     {
         sensor_ready = true;
-        LOG_INF("GSENSOR identified as LSM6DSV16X");
+        MY_LOG_INF("GSENSOR identified as LSM6DSV16X");
 
         /* 初始化 LSM6DSV16X */
         lsm6dsv16x_reset_set(&lsm_ctx, LSM6DSV16X_GLOBAL_RST);
@@ -477,7 +480,7 @@ int my_lsm6dsv16x_init(void)
     }
     else
     {
-        LOG_ERR("LSM6DSV16X not detected");
+        MY_LOG_ERR("LSM6DSV16X not detected");
         return -ENODEV;
     }
     return 0;
@@ -492,13 +495,13 @@ int my_gsensor_init(k_tid_t *tid)
         !device_is_ready(gsen_int.port) ||
         !device_is_ready(gsensor_pwr_gpio.port))
     {
-        LOG_ERR("I2C device not ready");
+        MY_LOG_ERR("I2C device not ready");
         return -ENODEV;
     }
 
     if (!gpio_is_ready_dt(&gsensor_pwr_gpio))
     {
-        LOG_ERR("GSENSOR Power GPIO not ready");
+        MY_LOG_ERR("GSENSOR Power GPIO not ready");
         return -ENODEV;
     }
 
@@ -506,7 +509,7 @@ int my_gsensor_init(k_tid_t *tid)
     err = gpio_pin_configure_dt(&gsensor_pwr_gpio, GPIO_OUTPUT_ACTIVE);
     if (err)
     {
-        LOG_ERR("Failed to configure GSENSOR Power GPIO (err %d)", err);
+        MY_LOG_ERR("Failed to configure GSENSOR Power GPIO (err %d)", err);
         return err;
     }
     
@@ -514,13 +517,13 @@ int my_gsensor_init(k_tid_t *tid)
     err = gpio_pin_configure_dt(&gsen_int, GPIO_INPUT);
     if (err)
     {
-        LOG_ERR("Failed to configure GSENSOR interrupt GPIO input mode (err %d)", err);
+        MY_LOG_ERR("Failed to configure GSENSOR interrupt GPIO input mode (err %d)", err);
         return err;
     }
     err = gpio_pin_interrupt_configure_dt(&gsen_int, GPIO_INT_EDGE_RISING);
     if (err)
     {
-        LOG_ERR("Failed to configure GSENSOR Interrupt GPIO (err %d)", err);
+        MY_LOG_ERR("Failed to configure GSENSOR Interrupt GPIO (err %d)", err);
         return err;
     }
 
@@ -546,7 +549,7 @@ int my_gsensor_init(k_tid_t *tid)
     /* 6. 设置线程名称 */
     k_thread_name_set(*tid, "MY_GSENSOR");
 
-    LOG_INF("G-Sensor module initialized");
+    MY_LOG_INF("G-Sensor module initialized");
 
     return 0;
 }

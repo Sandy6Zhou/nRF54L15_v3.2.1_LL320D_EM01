@@ -9,6 +9,9 @@
 ** 功能描述:        1. 电机正反转、对应电源使能及检测中断
 *********************************************************************/
 
+/* 必须在包含 my_comm.h 之前定义 BLE_LOG_MODULE_ID，避免与 my_ble_log.h 中的默认定义冲突 */
+#define BLE_LOG_MODULE_ID BLE_LOG_MOD_MOTOR
+
 #include "my_comm.h"
 
 LOG_MODULE_REGISTER(my_motor, LOG_LEVEL_INF);

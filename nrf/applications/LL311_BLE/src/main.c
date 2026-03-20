@@ -7,6 +7,10 @@
 /** @file
  *  @brief Nordic UART Bridge Service (NUS) sample
  */
+
+/* 必须在包含 my_comm.h 之前定义 BLE_LOG_MODULE_ID，避免与 my_ble_log.h 中的默认定义冲突 */
+#define BLE_LOG_MODULE_ID BLE_LOG_MOD_MAIN
+
 #include "my_comm.h"
 
 DeviceWorkModeConfig g_workmode_config = {0};
@@ -58,7 +62,7 @@ void error(void)
 *********************************************************************/
 void my_system_reset(void)
 {
-    LOG_ERR("System reset");
+    MY_LOG_ERR("System reset");
     JM_SLEEP(K_SECONDS(1));
     sys_reboot(SYS_REBOOT_WARM);
 }
@@ -89,7 +93,7 @@ void my_init_msg_handler(module_type mod, struct k_msgq *msgq)
 {
     if (msgq == NULL)
     {
-        LOG_ERR("Invalid message queue (mod: %d)", mod);
+        MY_LOG_ERR("Invalid message queue (mod: %d)", mod);
         return;
     }
 
@@ -113,7 +117,7 @@ void my_send_msg(module_type src_mod_id, module_type dest_mod_id, uint32_t msg)
     if (destHdl == NULL)
     {
 #if 0 // NOTE: 在定时器回调中调用打印接口设备会死机
-        LOG_ERR("dest thread is not ready! dest_mod_id=%d msgid=%d", dest_mod_id, msg);
+        MY_LOG_ERR("dest thread is not ready! dest_mod_id=%d msgid=%d", dest_mod_id, msg);
 #endif
         return;
     }
@@ -137,7 +141,7 @@ void my_send_msg_data(module_type src_mod_id, module_type dest_mod_id, MSG_S *ms
     if (destHdl == NULL)
     {
 #if 0 // NOTE: 在定时器回调中调用打印接口设备会死机
-        LOG_ERR("dest thread is not ready!");
+        MY_LOG_ERR("dest thread is not ready!");
 #endif
         return;
     }
@@ -301,7 +305,7 @@ void switch_work_mode(MY_WORK_MODE mode)
 
     my_send_msg(MOD_MAIN, MOD_MAIN, MY_MSG_WORK_MODE_SWITCH);
 
-    LOG_INF("Work mode switch request sent: %d", g_workmode_config.current_mode);
+    MY_LOG_INF("Work mode switch request sent: %d", g_workmode_config.current_mode);
 }
 
 /*********************************************************************
@@ -402,7 +406,7 @@ void set_reset_lte_timer(void)
     timer_interval = calculate_remaining_seconds(g_workmode_config.long_battery.start_time,
                         g_workmode_config.long_battery.reporting_interval_min, current_time);
 
-    LOG_INF("current_time:%llu,timer_interval:%d", current_time, timer_interval);
+    MY_LOG_INF("current_time:%llu,timer_interval:%d", current_time, timer_interval);
 
     if (timer_interval == -1)
         return;
@@ -413,7 +417,7 @@ void set_reset_lte_timer(void)
         timer_interval += timer_interval_random;
     }
 
-    LOG_INF("timer_interval_random:%d", timer_interval_random);
+    MY_LOG_INF("timer_interval_random:%d", timer_interval_random);
 
     my_start_timer(MY_TIMER_LTE_POWER, timer_interval * 1000, false, awaken_lte_timer_callback);
 }
@@ -460,17 +464,17 @@ static void print_app_info(void)
     const macaddr_t *mac_addr = my_param_get_macaddr();
     const GsmImei_t *imei = my_param_get_imei();
 
-    LOG_INF("============================================");
-    LOG_INF("App Info:");
-    LOG_INF("  Version    : %s", SOFTWARE_VERSION);
-    LOG_INF("  BLE MAC    : %02X:%02X:%02X:%02X:%02X:%02X",
+    MY_LOG_INF("============================================");
+    MY_LOG_INF("App Info:");
+    MY_LOG_INF("  Version    : %s", SOFTWARE_VERSION);
+    MY_LOG_INF("  BLE MAC    : %02X:%02X:%02X:%02X:%02X:%02X",
             mac_addr->hex[0], mac_addr->hex[1], mac_addr->hex[2],
             mac_addr->hex[3], mac_addr->hex[4], mac_addr->hex[5]);
-    LOG_INF("  IMEI       : %c%c%c%c%c%c%c%c%c%c%c%c%c%c%c",
+    MY_LOG_INF("  IMEI       : %c%c%c%c%c%c%c%c%c%c%c%c%c%c%c",
             imei->hex[0], imei->hex[1], imei->hex[2], imei->hex[3], imei->hex[4],
             imei->hex[5], imei->hex[6], imei->hex[7], imei->hex[8], imei->hex[9],
             imei->hex[10], imei->hex[11], imei->hex[12], imei->hex[13], imei->hex[14]);
-    LOG_INF("============================================");
+    MY_LOG_INF("============================================");
 }
 
 /********************************************************************
@@ -500,7 +504,7 @@ int main(void)
     err = my_shell_init();
     if (err)
     {
-        LOG_ERR("Failed to initialize Shell module (err %d)", err);
+        MY_LOG_ERR("Failed to initialize Shell module (err %d)", err);
     }
 
     /* 初始化 BLE 核心模块 */
@@ -525,7 +529,7 @@ int main(void)
     err = my_lte_init(&my_lte_task_id);
     if (err)
     {
-        LOG_ERR("Failed to initialize LTE module (err %d)", err);
+        MY_LOG_ERR("Failed to initialize LTE module (err %d)", err);
         /* LTE 初始化失败可以选择不进入 error() 阻塞，视具体需求而定 */
     }
 
@@ -533,21 +537,21 @@ int main(void)
     err = my_gsensor_init(&my_gsensor_task_id);
     if (err)
     {
-        LOG_ERR("Failed to initialize G-Sensor (err %d)", err);
+        MY_LOG_ERR("Failed to initialize G-Sensor (err %d)", err);
     }
 
     /* 初始化 NFC 模块 */
     err = my_nfc_init(&my_nfc_task_id);
     if (err)
     {
-        LOG_ERR("Failed to initialize NFC (err %d)", err);
+        MY_LOG_ERR("Failed to initialize NFC (err %d)", err);
     }
 
     /* 初始化系统控制模块 (LED, Buzzer, Key) */
     err = my_ctrl_init(&my_ctrl_task_id);
     if (err)
     {
-        LOG_ERR("Failed to initialize Control module (err %d)", err);
+        MY_LOG_ERR("Failed to initialize Control module (err %d)", err);
     }
 
     /* 初始化自定义任务信息 */
@@ -568,24 +572,24 @@ int main(void)
             case MY_MSG_BLE_DATA_EVENT:
                 if (msg.pData && msg.DataLen > 0)
                 {
-                    LOG_INF("BLE Rx (len %d): %s", msg.DataLen, (char *)msg.pData);
+                    MY_LOG_INF("BLE Rx (len %d): %s", msg.DataLen, (char *)msg.pData);
                     LOG_HEXDUMP_INF(msg.pData, msg.DataLen, "BLE RAW");
                     MY_FREE_BUFFER(msg.pData);
                 }
                 break;
 
             case MY_MSG_NFC_CARD_EVENT:
-                LOG_INF("NFC event received, DataLen=%d, expected=%d", msg.DataLen, sizeof(struct nfc_card_info));
+                MY_LOG_INF("NFC event received, DataLen=%d, expected=%d", msg.DataLen, sizeof(struct nfc_card_info));
                 if (msg.pData && msg.DataLen == sizeof(struct nfc_card_info))
                 {
                     struct nfc_card_info *card = (struct nfc_card_info *)msg.pData;
-                    LOG_INF("NFC Card detected, type: %d", card->type);
-                    LOG_INF("NFC Card UID (%d bytes): %02X%02X%02X%02X", card->uid_len, card->uid[0], card->uid[1], card->uid[2], card->uid[3]);
+                    MY_LOG_INF("NFC Card detected, type: %d", card->type);
+                    MY_LOG_INF("NFC Card UID (%d bytes): %02X%02X%02X%02X", card->uid_len, card->uid[0], card->uid[1], card->uid[2], card->uid[3]);
                 }
                 break;
 
             case MY_MSG_CTRL_KEY_SHORT_PRESS:
-                LOG_INF("KEY EVENT: Short press detected");
+                MY_LOG_INF("KEY EVENT: Short press detected");
                 /* 启动 NFC 轮询 */
                 my_nfc_start_poll(30);
                 /* 短按唤醒后，显示电池状态，LED显示*/
@@ -596,38 +600,38 @@ int main(void)
                 if (g_workmode_config.current_mode == MY_MODE_SHUTDOWN)
                 {
                     /* 关机模式下长按唤醒 */
-                    LOG_INF("KEY EVENT: Long press detected in SHUTDOWN mode, waking up...");
+                    MY_LOG_INF("KEY EVENT: Long press detected in SHUTDOWN mode, waking up...");
                     g_workmode_config.current_mode = MY_MODE_SMART;
-                    LOG_INF("System waken up, entering SMART mode");
+                    MY_LOG_INF("System waken up, entering SMART mode");
                     handle_smart_mode();
                 }
                 else
                 {
-                    LOG_INF("KEY EVENT: Long press detected (2s)");
+                    MY_LOG_INF("KEY EVENT: Long press detected (2s)");
                 }
                 break;
 
             case MY_MSG_CTRL_LIGHT_SENSOR_DARK:
-                LOG_INF("Light sensor detected: DARK");
+                MY_LOG_INF("Light sensor detected: DARK");
                 break;
 
             case MY_MSG_CTRL_LIGHT_SENSOR_BRIGHT:
-                LOG_INF("Light sensor detected: BRIGHT");
+                MY_LOG_INF("Light sensor detected: BRIGHT");
                 break;
 
             case MY_MSG_CTRL_LOCK_PIN_INSERTED:
-                LOG_INF("Lock pin detected: INSERTED");
+                MY_LOG_INF("Lock pin detected: INSERTED");
                 break;
 
             case MY_MSG_CTRL_LOCK_PIN_DISCONNECTED:
-                LOG_INF("Lock pin detected: DISCONNECTED");
+                MY_LOG_INF("Lock pin detected: DISCONNECTED");
                 break;
 
             case MY_MSG_CTRL_SHUTDOWN_REQUEST:
-                LOG_INF("Shutdown request received, entering SHUTDOWN mode");
+                MY_LOG_INF("Shutdown request received, entering SHUTDOWN mode");
                 /* 切换到关机模式 */
                 g_workmode_config.current_mode = MY_MODE_SHUTDOWN;
-                LOG_INF("System shutdown complete. Press FUN_KEY for 2s to wakeup.");
+                MY_LOG_INF("System shutdown complete. Press FUN_KEY for 2s to wakeup.");
                 break;
 
             case MY_MSG_WORK_MODE_SWITCH:
@@ -635,27 +639,27 @@ int main(void)
                 switch (g_workmode_config.current_mode)
                 {
                     case MY_MODE_LONG_LIFE:
-                        LOG_INF("Switched to LONG_LIFE mode");
+                        MY_LOG_INF("Switched to LONG_LIFE mode");
                         handle_long_life_mode();
                         break;
 
                     case MY_MODE_SMART:
-                        LOG_INF("Switched to SMART mode");
+                        MY_LOG_INF("Switched to SMART mode");
                         handle_smart_mode();
                         break;
 
                     case MY_MODE_CONTINUOUS:
-                        LOG_INF("Switched to CONTINUOUS mode");
+                        MY_LOG_INF("Switched to CONTINUOUS mode");
                         handle_continuous_mode();
                         break;
 
                     case MY_MODE_SHUTDOWN:
-                        LOG_INF("System is in SHUTDOWN mode (ultra-low power)");
+                        MY_LOG_INF("System is in SHUTDOWN mode (ultra-low power)");
                         /* 关机模式下不执行任何操作 */
                         break;
 
                     default:
-                        LOG_INF("Switched to NORMAL mode");
+                        MY_LOG_INF("Switched to NORMAL mode");
                         break;
                 }
                 break;
@@ -665,15 +669,15 @@ int main(void)
                 break;
 
             case MY_MSG_DFU_START:
-                LOG_INF("DFU start received");
+                MY_LOG_INF("DFU start received");
                 break;
 
             case MY_MSG_DFU_TIMEOUT:
-                LOG_INF("DFU timeout received");
+                MY_LOG_INF("DFU timeout received");
                 break;
 
             case MY_MSG_DFU_COMPLETE:
-                LOG_INF("DFU complete received");
+                MY_LOG_INF("DFU complete received");
                 break;
 
             default:

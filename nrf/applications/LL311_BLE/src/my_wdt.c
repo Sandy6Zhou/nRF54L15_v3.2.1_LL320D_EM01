@@ -11,6 +11,9 @@
 **                 3. 支持各模块线程检活机制
 *********************************************************************/
 
+/* 必须在包含 my_comm.h 之前定义 BLE_LOG_MODULE_ID，避免与 my_ble_log.h 中的默认定义冲突 */
+#define BLE_LOG_MODULE_ID BLE_LOG_MOD_WDT
+
 #include "my_comm.h"
 #include <zephyr/drivers/watchdog.h>
 #include "my_wdt.h"
@@ -57,7 +60,7 @@ static void wdt_feed_timer_callback(void *p1)
     }
     else
     {
-        LOG_ERR("Thread watchdog check failed! alive_flags=0x%x, expected=0x%x", 
+        MY_LOG_ERR("Thread watchdog check failed! alive_flags=0x%x, expected=0x%x", 
                 thread_alive_flags, expected_flags);
         /* 不喂狗，让看门狗复位系统 */
     }
@@ -92,7 +95,7 @@ int my_wdt_init(void)
     /* 检查看门狗设备是否就绪 */
     if (!device_is_ready(wdt_dev))
     {
-        LOG_ERR("Watchdog device not ready");
+        MY_LOG_ERR("Watchdog device not ready");
         return -ENODEV;
     }
     
@@ -108,7 +111,7 @@ int my_wdt_init(void)
     wdt_channel_id = wdt_install_timeout(wdt_dev, &wdt_config);
     if (wdt_channel_id < 0)
     {
-        LOG_ERR("Failed to install watchdog timeout (err %d)", wdt_channel_id);
+        MY_LOG_ERR("Failed to install watchdog timeout (err %d)", wdt_channel_id);
         return wdt_channel_id;
     }
     
@@ -116,7 +119,7 @@ int my_wdt_init(void)
     err = wdt_setup(wdt_dev, WDT_OPT_PAUSE_HALTED_BY_DBG);
     if (err)
     {
-        LOG_ERR("Failed to setup watchdog (err %d)", err);
+        MY_LOG_ERR("Failed to setup watchdog (err %d)", err);
         return err;
     }
     
@@ -126,7 +129,7 @@ int my_wdt_init(void)
     /* 启动定时喂狗定时器（周期性） */
     my_start_timer(MY_TIMER_WDT_FEED, WDT_FEED_INTERVAL_MS, true, wdt_feed_timer_callback);
     
-    LOG_INF("Watchdog initialized (timeout=%dms, feed_interval=%dms)", 
+    MY_LOG_INF("Watchdog initialized (timeout=%dms, feed_interval=%dms)", 
             WDT_TIMEOUT_MS, WDT_FEED_INTERVAL_MS);
     
     return 0;

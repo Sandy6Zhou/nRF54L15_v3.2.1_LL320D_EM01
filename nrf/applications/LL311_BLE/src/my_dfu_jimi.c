@@ -19,6 +19,10 @@
 **                 优化效果：365KB 固件写入次数从 ~2920 次降至 ~365 次（约 8 倍提升）
 ** 注意事项：      1. dfu时不启用蓝牙日志，避免日志干扰DFU过程,只使用RTT日志
 *********************************************************************/
+
+/* 必须在包含 my_comm.h 之前定义 BLE_LOG_MODULE_ID，避免与 my_ble_log.h 中的默认定义冲突 */
+#define BLE_LOG_MODULE_ID BLE_LOG_MOD_DFU
+
 #include "my_comm.h"
 
 /* MCUboot 升级支持 - 使用 Zephyr DFU API 替代直接引用内部头文件 */

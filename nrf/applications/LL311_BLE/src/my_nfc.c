@@ -11,6 +11,9 @@
 **                 3. 初始化后进入 HPD 模式，等待启动轮询
 *********************************************************************/
 
+/* 必须在包含 my_comm.h 之前定义 BLE_LOG_MODULE_ID，避免与 my_ble_log.h 中的默认定义冲突 */
+#define BLE_LOG_MODULE_ID BLE_LOG_MOD_NFC
+
 #include "my_comm.h"
 #include "nfc_api.h"
 
@@ -86,8 +89,8 @@ static void my_nfc_card_detected_cb(nfc_card_type_t type,
                                     uint8_t *uid, uint8_t uid_len,
                                     uint8_t *data, uint8_t data_len)
 {
-    LOG_DBG("Card detected, type: %d", type);
-    LOG_DBG("UID: %02X%02X%02X%02X", uid[0], uid[1], uid[2], uid[3]);
+    MY_LOG_DBG("Card detected, type: %d", type);
+    MY_LOG_DBG("UID: %02X%02X%02X%02X", uid[0], uid[1], uid[2], uid[3]);
     nfc_ctx.card_present = true;
 
     /* 保存卡片信息 */
@@ -129,7 +132,7 @@ static void my_nfc_i2c_set_high_impedance(void)
         /* 设为输入模式，无上下拉，高阻态 */
         gpio_pin_configure(gpio_dev, NFC_I2C_SCL_PIN, GPIO_INPUT);
         gpio_pin_configure(gpio_dev, NFC_I2C_SDA_PIN, GPIO_INPUT);
-        LOG_DBG("I2C pins set to high impedance");
+        MY_LOG_DBG("I2C pins set to high impedance");
     }
 }
 
@@ -152,7 +155,7 @@ static void my_nfc_enter_hpd(void)
         nfc_api_enter_hpd();
         nfc_ctx.in_hpd_mode = true;
         nfc_ctx.is_working = false;
-        LOG_INF("NFC entered HPD mode (I2C high impedance)");
+        MY_LOG_INF("NFC entered HPD mode (I2C high impedance)");
     }
 }
 
@@ -170,7 +173,7 @@ static void my_nfc_i2c_restore(void)
     {
         /* 重新初始化 I2C 设备，恢复引脚控制 */
         /* Zephyr 会自动将引脚重新配置为 TWIM 功能 */
-        LOG_DBG("I2C bus restored");
+        MY_LOG_DBG("I2C bus restored");
     }
 }
 
@@ -190,7 +193,7 @@ static void my_nfc_exit_hpd(void)
 
         nfc_api_exit_hpd();
         nfc_ctx.in_hpd_mode = false;
-        LOG_INF("NFC exited HPD mode (I2C restored)");
+        MY_LOG_INF("NFC exited HPD mode (I2C restored)");
     }
 }
 
@@ -211,20 +214,20 @@ static void my_nfc_task(void *p1, void *p2, void *p3)
     nfc_result_t result;
     uint32_t timeout_ms;
 
-    LOG_INF("NFC thread started");
+    MY_LOG_INF("NFC thread started");
 
     /* 初始化 NFC API */
     result = nfc_api_init(my_nfc_card_detected_cb);
     if (result != NFC_SUCCESS)
     {
-        LOG_ERR("Failed to initialize NFC API: %d", result);
+        MY_LOG_ERR("Failed to initialize NFC API: %d", result);
         return;
     }
 
     /* 初始化定时器 */
     k_timer_init(&nfc_poll_timer, my_nfc_poll_timeout_handler, NULL);
 
-    LOG_INF("NFC API initialized successfully");
+    MY_LOG_INF("NFC API initialized successfully");
 
     /* 初始化状态：启动轮询（默认超时，读到卡或超时后进入 HPD） */
     nfc_ctx.is_working = false;
@@ -244,7 +247,7 @@ static void my_nfc_task(void *p1, void *p2, void *p3)
             case MY_MSG_NFC_START_POLL:
                 if (nfc_ctx.is_working)
                 {
-                    LOG_INF("NFC polling already running");
+                    MY_LOG_INF("NFC polling already running");
                     break;
                 }
                 /* 从消息中获取超时时间（秒） */
@@ -257,7 +260,7 @@ static void my_nfc_task(void *p1, void *p2, void *p3)
                     nfc_ctx.poll_timeout_s = NFC_DEFAULT_POLL_TIMEOUT_S;
                 }
                 timeout_ms = nfc_ctx.poll_timeout_s * 1000;
-                LOG_INF("Starting NFC polling for %d s", nfc_ctx.poll_timeout_s);
+                MY_LOG_INF("Starting NFC polling for %d s", nfc_ctx.poll_timeout_s);
                 nfc_ctx.is_working = true;
                 nfc_ctx.card_present = false;
                 my_nfc_exit_hpd();
@@ -270,13 +273,13 @@ static void my_nfc_task(void *p1, void *p2, void *p3)
                 {
                     break;
                 }
-                LOG_INF("Stopping NFC polling");
+                MY_LOG_INF("Stopping NFC polling");
                 k_timer_stop(&nfc_poll_timer);
                 my_nfc_enter_hpd();
                 break;
 
             case MY_MSG_NFC_POLL_TIMEOUT:
-                LOG_INF("NFC polling timeout, entering HPD mode");
+                MY_LOG_INF("NFC polling timeout, entering HPD mode");
                 my_nfc_enter_hpd();
                 break;
 
@@ -295,7 +298,7 @@ static void my_nfc_task(void *p1, void *p2, void *p3)
 *********************************************************************/
 int my_nfc_pwr_on(bool on)
 {
-    LOG_INF("NFC Power: %s", on ? "ON" : "OFF");
+    MY_LOG_INF("NFC Power: %s", on ? "ON" : "OFF");
     return gpio_pin_set_dt(&nfc_pwr_gpio, on ? 1 : 0);
 }
 
@@ -357,7 +360,7 @@ int my_nfc_init(k_tid_t *tid)
     /* 检查电源 GPIO */
     if (!gpio_is_ready_dt(&nfc_pwr_gpio))
     {
-        LOG_ERR("NFC Power GPIO not ready");
+        MY_LOG_ERR("NFC Power GPIO not ready");
         return -ENODEV;
     }
 
@@ -365,7 +368,7 @@ int my_nfc_init(k_tid_t *tid)
     err = gpio_pin_configure_dt(&nfc_pwr_gpio, GPIO_OUTPUT_ACTIVE);
     if (err)
     {
-        LOG_ERR("Failed to configure NFC Power GPIO: %d", err);
+        MY_LOG_ERR("Failed to configure NFC Power GPIO: %d", err);
         return err;
     }
 
@@ -386,6 +389,6 @@ int my_nfc_init(k_tid_t *tid)
 
     k_thread_name_set(*tid, "MY_NFC");
 
-    LOG_INF("NFC module initialized (via nfc_api)");
+    MY_LOG_INF("NFC module initialized (via nfc_api)");
     return 0;
 }

@@ -16,8 +16,8 @@
 **                 7. 蓝牙日志吞吐量有限，避免发送大量数据
 *********************************************************************/
 
-/* 定义蓝牙日志模块ID为OTHER模块 - 必须在包含my_comm.h之前定义 */
-#define BLE_LOG_MODULE_ID  BLE_LOG_MOD_OTHER
+/* 必须在包含 my_comm.h 之前定义 BLE_LOG_MODULE_ID，避免与 my_ble_log.h 中的默认定义冲突 */
+#define BLE_LOG_MODULE_ID BLE_LOG_MOD_BLE
 
 #include "my_comm.h"
 

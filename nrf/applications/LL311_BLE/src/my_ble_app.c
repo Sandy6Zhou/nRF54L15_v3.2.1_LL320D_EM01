@@ -11,6 +11,9 @@
 **                 3. DFU文件传输（基于几米自定义 BLE 3.0 DFU 协议解析(Jimi Iot 蓝牙通信协议V3.1.6_2026-3-5 6.4 OTA文件传输)）
 *********************************************************************/
 
+/* 必须在包含 my_comm.h 之前定义 BLE_LOG_MODULE_ID，避免与 my_ble_log.h 中的默认定义冲突 */
+#define BLE_LOG_MODULE_ID BLE_LOG_MOD_BLE
+
 #include "my_comm.h"
 
 LOG_MODULE_REGISTER(my_ble_app, LOG_LEVEL_INF);
@@ -67,7 +70,7 @@ void ble_log_disconnect_cleanup(void)
     /* 注意：不清空缓冲区索引和数据，让持有锁的任务自行处理
      * 原因：如果任务A持有锁时清空索引，会导致任务A操作缓冲区时数据不一致
      * 缓冲区会在 ble_log_send 检测到断开标志后，由持有者安全清空 
-     * 这里的日志输出要用 LOG_DBG 而不是 LOG_DBG 防止递归调用 */
+     * 这里的日志输出要用 LOG_DBG 而不是 MY_LOG_DBG 防止递归调用 */
 
     LOG_DBG("BLE log disconnect pending flag set");
 }
@@ -84,7 +87,7 @@ void ble_log_connect_init(void)
 {
     ble_log_disconnect_pending = false;
 
-    /* 日志输出要用 LOG_DBG 而不是 LOG_DBG 防止递归调用 */
+    /* 日志输出要用 LOG_DBG 而不是 MY_LOG_DBG 防止递归调用 */
     LOG_DBG("BLE log disconnect pending flag cleared");
 }
 
