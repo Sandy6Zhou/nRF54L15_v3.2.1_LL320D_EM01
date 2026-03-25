@@ -12,7 +12,16 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260324.1100"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260325"
+/* 软件版本:        V1.0
+** 完成日期:        2026.03.25
+** 作    者:        曹阳 (caoyang@jimiiot.com)
+** 修改内容:        1. 增加电池电压读取，转换为电量百分比，更新电池状态
+                    2. 修改正常状态下的电量指示灯闪烁逻辑，改为在回调中执行
+                    3. 删掉shell命令调试代码，改为直接改变外部电压测试
+*/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260324.1100"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.03.23
 ** 作    者:        周森达 (zhousenda@jimiiot.com)
@@ -35,7 +44,8 @@
 /* 软件版本:        V1.0
 ** 完成日期:        2026.03.23
 ** 作    者:        曹阳 (caoyang@jimiiot.com)
-** 修改内容:        增加充电状态电量指示灯根据电量指示灯闪烁功能
+** 修改内容:        1. 增加充电状态电量指示灯根据电量指示灯闪烁功能
+**                  2. 增加充电状态检测功能
 */
 
 // #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260320"

@@ -534,23 +534,6 @@ static int cmd_nfc_poll(const struct shell *shell, size_t argc, char **argv)
 }
 
 /********************************************************************
-**函数名称:  cmd_batt_stateconst
-**入口参数:  shell   ---        Shell 实例指针
-**           argc    ---        参数数量
-**           argv    ---        参数数组
-**出口参数:  无
-**函数功能:  命令：设置电池电量百分比，调试用
-**返 回 值:  0 表示成功
-*********************************************************************/
-static int cmd_batt_stateconst(struct shell *shell, size_t argc, char **argv)
-{
-    g_battery_val =atoi(argv[1]);
-    shell_print(shell, "battery val: %d", g_battery_val);
-
-    return 0;
-}
-
-/********************************************************************
 **函数名称：cmd_shutdown
 **入口参数：shell   ---        Shell 实例指针
 **           argc    ---        参数数量
@@ -937,7 +920,6 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_app,
     SHELL_CMD(AT_TEST, NULL, "Usage:app AT_TEST \"TEST xxxx(AT^GT_CM=xxxx)\"", shell_at_test),
     SHELL_CMD(nfc_poll, NULL, "NFC polling: app nfc_poll <start|stop>", cmd_nfc_poll),
     SHELL_CMD(shutdown, NULL, "Shutdown system (enter ultra-low power mode)", cmd_shutdown),
-    SHELL_CMD(batt_val, NULL, "battery state change", cmd_batt_stateconst),//手动改变电池状态，调试用
     SHELL_CMD(blog, NULL, "Send BLE log test message: app blog <message>", cmd_ble_log_test),
     SHELL_CMD(blogcfg, NULL, "BLE log config: app blogcfg <global|mod|level|show>", cmd_ble_log_config),
     SHELL_CMD(ble_test, NULL, "test", cmd_ble_test),

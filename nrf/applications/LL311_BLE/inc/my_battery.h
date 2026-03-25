@@ -53,7 +53,12 @@ typedef struct
     uint16_t time_count;          /* 时间计数器，用于控制 LED 闪烁和显示持续时间以及固定时间(10s)检测更新充电状态,定时器500ms循环*/
 } CHG_LED_Ctrl_S;
 
-extern int g_battery_val;//电池电量含量，0~100%，调试用
+//电池电压-电量映射结构体,用于存储电池电压值与对应电量百分比的映射关系,用于通过电池电压计算电量百分比.
+typedef struct
+{
+    int32_t mv;       /**< 电池电压值，单位为毫伏 (mV) */
+    int8_t percent;   /**< 对应的电池电量百分比，范围为 0-100 */
+} Batt_Volt_Percent_Map_S;
 
 int batt_read_mv(int32_t *mv);
 int ntc_read_raw(int16_t *raw);

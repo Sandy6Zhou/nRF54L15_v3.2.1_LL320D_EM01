@@ -35,7 +35,6 @@ LOG_MODULE_REGISTER(my_ctrl, LOG_LEVEL_INF);
 /* 重复刷卡判断时间阈值：60秒 */
 #define NFC_REPEAT_INTERVAL 60
 
-#define BATT_LED_TIMER_MS  5000  /**< 电池 LED 显示的总时间（毫秒），超过此时间后关闭所有 LED */
 /* 硬件设备树定义 */
 static const struct gpio_dt_spec fun_key = GPIO_DT_SPEC_GET(DT_ALIAS(fun_key), gpios);
 static const struct pwm_dt_spec buzzer = PWM_DT_SPEC_GET(DT_ALIAS(buzzer_pwm));
@@ -912,7 +911,7 @@ static int leds_init(void)
 *********************************************************************/
 void my_ctrl_led_process(MY_LED_ID led_id, MY_LED_CTRL_CMD led_cmd)
 {
-    MY_LOG_INF("my_led:%d cmd:%d", led_id, led_cmd);
+    // MY_LOG_INF("my_led:%d cmd:%d", led_id, led_cmd);
     // 根据 LED 操作命令执行不同的操作
     switch (led_cmd)
     {
@@ -986,93 +985,6 @@ static void lock_led_set(bool on)
     gpio_pin_set_dt(&lock_led, on ? 1 : 0);
 }
 
-/*********************************************************************
-**函数名称:  my_battery_show_led
-**入口参数:  led_ctrl    --  指向电池状态检查结构体的指针
-**出口参数:  无
-**函数功能:  根据电池状态检查结构体中的状态和时间计数器，控制不同 LED 的亮灭状态，以直观显示电池电量。
-*********************************************************************/
-void my_battery_show_led(Batt_LED_Ctrl_S* led_ctrl)
-{
-    // 参数有效性检查
-    if (led_ctrl == NULL)
-        return;
-
-    // 根据电池状态控制 LED 显示
-    switch(led_ctrl->state)
-    {
-        case BATT_EMPTY:  // 电池电量为空
-            // LED1 每10个时间单位闪烁一次（亮3个单位，灭7个单位）
-            if ((led_ctrl->time_count - 1) % 10 == 0)
-            {
-                batt_led_set_level(1);
-            }
-            else if ((led_ctrl->time_count - 1) % 10 == 3)
-            {
-                batt_led_set_level(0);
-            }
-            break;
-
-        case BATT_LOW:  // 电池电量低
-            // LED1 常亮
-            if ((led_ctrl->time_count - 1)== 0)
-            {
-                batt_led_set_level(1);
-            }
-            break;
-
-        case BATT_NORMAL:  // 电池电量正常
-            // LED1 常亮，LED2 闪烁
-            if ((led_ctrl->time_count - 1) % 10 == 0)
-            {
-                batt_led_set_level(2);
-            }
-            else if ((led_ctrl->time_count - 1) % 10 == 3)
-            {
-                batt_led_set_level(1);
-            }
-            break;
-
-        case BATT_FAIR:  // 电池电量良好
-            // LED1 和 LED2 常亮
-            if ((led_ctrl->time_count - 1) == 0)
-            {
-                batt_led_set_level(2);
-            }
-            break;
-
-        case BATT_HIGH:  // 电池电量高
-            // LED1 和 LED2 常亮，LED3 闪烁
-            if ((led_ctrl->time_count - 1) % 10 == 0)
-            {
-                batt_led_set_level(3);
-            }
-            else if ((led_ctrl->time_count - 1) % 10 == 3)
-            {
-                batt_led_set_level(2);
-            }
-            break;
-
-        case BATT_FULL:  // 电池电量满
-            // 所有 LED 常亮
-            if((led_ctrl->time_count - 1) == 0)
-            {
-                batt_led_set_level(3);
-            }
-            break;
-
-        default:  // 处理未定义的状态
-            break;
-    }
-
-    // 当时间计数器超过阈值时，关闭所有 LED 并停止定时器
-    if(led_ctrl->time_count > BATT_LED_TIMER_MS/100)
-    {
-        batt_led_set_level(0);
-        k_timer_stop(led_ctrl->timer);  // 停止LED控制定时器
-    }
-}
-
 /********************************************************************
 **函数名称:  my_ctrl_task
 **入口参数:  p1, p2, p3   ---   线程参数（未使用）
@@ -1099,12 +1011,12 @@ static void my_ctrl_task(void *p1, void *p2, void *p3)
 
         switch (msg.msgID)
         {
-            case MY_MSG_SHOW_BATTERY:
-                my_battery_show_led((Batt_LED_Ctrl_S*)msg.pData);//显示电池状态LED
-                break;
-
             case MY_MSG_SHOW_CHARG:
                 my_battery_show_chgled();//显示充电状态LED
+                break;
+
+            case MY_MSG_UPDATE_BATTERY:
+                my_battery_update_state();//更新电池状态
                 break;
 
             case MY_MSG_CTRL_OPENLOCKING:
