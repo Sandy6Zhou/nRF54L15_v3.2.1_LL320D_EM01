@@ -50,6 +50,9 @@
 #include <zephyr/storage/flash_map.h>
 #include <zephyr/fs/zms.h>
 
+/* Zephyr 设备管理 */
+#include <zephyr/pm/device.h>
+
 /* Zephyr shell */
 #include <zephyr/shell/shell.h>
 
@@ -194,5 +197,6 @@ typedef enum
 #include "my_cmd_setting.h"
 #include "my_dfu_jimi.h"
 #include "my_ble_log.h"
+#include "my_pm.h"
 
 #endif /* _MY_COMMON_H_ */

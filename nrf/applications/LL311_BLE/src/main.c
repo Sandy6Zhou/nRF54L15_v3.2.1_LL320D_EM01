@@ -500,6 +500,9 @@ int main(void)
     /* 获取当前线程 ID 并保存 */
     my_main_task_id = k_current_get();
 
+    /* 初始化电源管理子系统（必须在其他模块之前） */
+    my_pm_init();
+
     /* 初始化 Shell 模块 */
     err = my_shell_init();
     if (err)

@@ -39,6 +39,7 @@ target_sources(app PRIVATE
   src/my_ble_app.c
   src/my_ble_log.c
   src/my_dfu_jimi.c
+  src/my_pm.c
 )
 
 # NORDIC SDK APP END

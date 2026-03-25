@@ -12,7 +12,15 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260323"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260324.1100"
+/* 软件版本:        V1.0
+** 完成日期:        2026.03.23
+** 作    者:        周森达 (zhousenda@jimiiot.com)
+** 修改内容:        1.增加电源管理框架(my_pm.c/my_pm.h),提供统一的电源管理接口
+**                 2. 添加“低功耗实施方案.md”文档
+*/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260323"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.03.23
 ** 作    者:        周森达 (zhousenda@jimiiot.com)
