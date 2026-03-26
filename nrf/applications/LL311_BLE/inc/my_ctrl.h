@@ -25,6 +25,32 @@ struct my_buzzer_note
 
 typedef enum
 {
+    /* 指令控制类型 (BUZZER 指令) */
+    BUZZER_STOP = 0,             // 0: 停止蜂鸣器
+    BUZZER_CONTINUOUS_ALARM,     // 1: 持续报警 (200ms ON, 500ms OFF, 不停止)
+    BUZZER_UNLOCK_SUCCESS,       // 2: 成功提示音 (500ms ON)/解锁成功提示: 长鸣 500ms
+    BUZZER_FAIL_TONE,            // 3: 失败提示音 (200ms ON, 200ms OFF, 响3声)
+    BUZZER_ERROR_TONE,           // 4: 异常提示音 (100ms ON, 100ms OFF, 持续1s)
+    BUZZER_GENERAL_ALARM,        // 5: 一般报警音 (200ms ON, 300ms OFF, 持续30s)
+
+    BUZZER_EVENT_LOCK_SUCCESS = 6,          // 上锁成功提示: 短鸣2次, 每次100ms, 间隔300ms
+    BUZZER_EVENT_LOCK_FAIL,             // 上锁/解锁失败提示(滑块异常): 3次长鸣, 每次1000ms, 间隔500ms
+    BUZZER_EVENT_UNAUTHORIZED,          // 未授权提示: NFC/蓝牙上锁/解锁未授权, 5次短鸣, 每次100ms, 间隔100ms
+    BUZZER_EVENT_NFC_ACTIVATE,          // NFC激活提示: 蜂鸣器提示 100ms
+} MY_BUZZER_MODE;
+
+extern int g_buzzer_mode;
+
+typedef struct {
+    int tick;          // 当前计数（单位：100ms）
+    int on_time;       // 响多久（单位：tick）
+    int off_time;      // 停多久
+    int repeat;        // 剩余次数（0表示无限;>0指定次数）
+    uint8_t state;     // 0=关，1=开
+} BUZZER_Ctrl_S;
+
+typedef enum
+{
     CLOSE_LED,   /* 关闭 LED */
     OPEN_LED,    /* 打开 LED */
     TOGGLE_LED,  /* 切换 LED 状态 */

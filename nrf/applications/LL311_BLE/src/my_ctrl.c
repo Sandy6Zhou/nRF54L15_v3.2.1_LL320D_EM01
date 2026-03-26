@@ -92,6 +92,9 @@ typedef struct {
     time_t last_swipe_time;     /* 最近一次刷卡时间戳 */
 } NfcCardCache;
 
+static BUZZER_Ctrl_S g_buzzer_ctrl = { 0 };
+int g_buzzer_mode = 0;//蜂鸣器状态，默认stop
+
 /* 定时器回调前向声明 */
 static void key_timer_handler(struct k_timer *timer);
 static void light_sensor_timer_handler(struct k_timer *timer);
@@ -112,6 +115,8 @@ static int8_t current_card_index = -1;
 static NfcCardCache g_nfc_card_cache[NFC_CACHE_MAX_NUM] = {0};
 /* 自动上锁定时器，用于锁销插入后的自动上锁计时 */
 struct k_timer auto_lock_timer;
+//蜂鸣器100ms定时器
+struct k_timer buzzer_timer;
 
 /********************************************************************
 **函数名称:  find_card_in_cache
@@ -832,6 +837,19 @@ void my_ctrl_stop_buzzer(void)
 }
 
 /********************************************************************
+**函数名称:  my_ctrl_start_buzzer
+**入口参数:  无
+**出口参数:  无
+**函数功能:  开启蜂鸣器发声
+**返 回 值:  无
+**功能描述:  将 PWM 占空比设为 50，开启蜂鸣器(当前脉宽暂时设置250000,由于开机响的时候设置了周期，此值为周期一半)
+*********************************************************************/
+void my_ctrl_start_buzzer(void)
+{
+    pwm_set_pulse_dt(&buzzer, 250000);
+}
+
+/********************************************************************
 **函数名称:  my_ctrl_buzzer_play_tone
 **入口参数:  freq_hz       ---   频率(Hz)，0 表示停止
 **           duration_ms   ---   持续时间(ms)，0 表示持续发声
@@ -1129,6 +1147,166 @@ void my_lock_led_set_mode(MY_LOCK_LED_MODE mode)
     }
 }
 
+/**
+********************************************************************
+**函数名称：  g_buzzer_ctrl_config
+**入口参数：  on_time   - 蜂鸣器单次“响”的持续时间 (单位: 100ms tick数)
+**           off_time  - 蜂鸣器单次“停”的持续时间 (单位: 100ms tick数)
+**           repeat    - 重复次数 (0: 无限循环; >0: 指定次数)
+**出口参数:  无
+**函数功能:  配置蜂鸣器控制结构体的基本参数
+**返 回 值:  无
+**功能描述:  将传入的时间参数和重复次数保存到全局控制结构体,repeat是重复次数，如果
+            持续X秒，计算方式repeat = X*10/(on_time+off_time)
+********************************************************************
+*/
+void g_buzzer_ctrl_config(int on_time, int off_time, int repeat)
+{
+    g_buzzer_ctrl.on_time = on_time;
+    g_buzzer_ctrl.off_time = off_time;
+    g_buzzer_ctrl.repeat = repeat;
+    //启动蜂鸣器，状态为1
+    g_buzzer_ctrl.state = 1;
+    g_buzzer_ctrl.tick = 0;
+}
+
+/**
+********************************************************************
+**函数名称:  my_buzzer_play
+**入口参数:  buzzer_mode - 蜂鸣器音效类型枚举值 (MY_BUZZER_MODE)
+**出口参数:  无
+**函数功能:  根据传入的类型选择对应的蜂鸣器音效模式并启动
+**返 回 值:  无
+**功能描述:  1. 解析 buzzer_type，调用 config 函数设置对应的响/停时间及重复次数。
+**           2. 发送开启蜂鸣器消息 (MY_MSG_CTRL_BUZZER_ON)。
+**           3. 重置内部状态机 (state=1, tick=0)。
+**           4. 重启定时器 buzzer_timer，设置为每 100ms 触发一次中断。
+**注意事项:  时间单位统一为 100ms。定时器周期固定为 100ms。
+********************************************************************
+*/
+void my_buzzer_play(int buzzer_mode)
+{
+    MY_LOG_INF("buzzer_mode = %d", buzzer_mode);
+    switch(buzzer_mode)
+    {
+        case BUZZER_STOP:
+            //定时器在运行就停止定时器
+            if (k_timer_remaining_get(&buzzer_timer) != 0)
+            {
+                k_timer_stop(&buzzer_timer);
+            }
+            my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_CTRL_BUZZER_OFF);
+            return;
+
+        case BUZZER_CONTINUOUS_ALARM:
+            //持续报警：响200ms, 停500ms
+            g_buzzer_ctrl_config(2, 5, 0);
+            break;
+
+        case BUZZER_UNLOCK_SUCCESS:
+            //解锁成功：响500ms, 不停顿, 仅播放一次
+            g_buzzer_ctrl_config(5, 0, 1);
+            break;
+
+        case BUZZER_FAIL_TONE:
+            //失败提示：响200ms, 停200ms, 重复3次
+            g_buzzer_ctrl_config(2, 2, 3);
+            break;
+
+        case BUZZER_ERROR_TONE:
+            //异常提示：响100ms, 停100ms, 重复5次
+            g_buzzer_ctrl_config(1, 1, 5);
+            break;
+
+        case BUZZER_GENERAL_ALARM:
+            //一般报警：响200ms, 停300ms, 重复60次 (30秒)
+            g_buzzer_ctrl_config(2, 3, 60);
+            break;
+
+        case BUZZER_EVENT_LOCK_SUCCESS:
+            //上锁成功：响100ms, 停300ms, 重复2次
+            g_buzzer_ctrl_config(1, 3, 2);
+            break;
+
+        case BUZZER_EVENT_LOCK_FAIL:
+            //上锁/解锁失败：响1000ms, 停500ms, 重复3次
+            g_buzzer_ctrl_config(10, 5, 3);
+            break;
+
+        case BUZZER_EVENT_UNAUTHORIZED:
+            // 未授权提示：响100ms, 停100ms, 重复5次
+            g_buzzer_ctrl_config(1, 1, 5);
+            break;
+
+        case BUZZER_EVENT_NFC_ACTIVATE:
+            //NFC激活：响100ms, 无停顿, 仅播放一次
+            g_buzzer_ctrl_config(1, 0, 1);//提示100ms
+            break;
+    }
+
+    my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_CTRL_BUZZER_ON);
+
+    if (k_timer_remaining_get(&buzzer_timer) != 0)
+    {
+        k_timer_stop(&buzzer_timer);
+    }
+    //初始化计数器
+    k_timer_start(&buzzer_timer, K_MSEC(100), K_MSEC(100));
+}
+
+/**
+********************************************************************
+**函数名称:  buzzer_timer_handler
+**入口参数:  timer - 定时器对象指针 (未使用)
+**出口参数:  无
+**函数功能:  蜂鸣器时序控制中断回调函数 (每100ms触发一次)
+**返 回 值:  无
+**功能描述:  实现蜂鸣器的“响-停-响”节奏控制状态机。
+**           1. 累加 tick 计数 (每个tick代表100ms)。
+**           2. 根据当前 state (1:响, 0:停) 判断是否达到设定时间。
+**           3. 状态切换时发送开/关消息，并重置 tick。
+**           4. 在“响”转“停”时递减 repeat 计数，若为0则停止定时器。
+**注意事项:  此函数运行在中断上下文或高优先级线程中，应避免耗时操作。
+********************************************************************
+*/
+static void buzzer_timer_handler(struct k_timer *timer)
+{
+    ARG_UNUSED(timer);
+
+    g_buzzer_ctrl.tick++;
+
+    if (g_buzzer_ctrl.state)
+    {
+        // 当前是“响”（判断是否等于响多久的时间）
+        if (g_buzzer_ctrl.tick >= g_buzzer_ctrl.on_time)
+        {
+            //达到响多久即可关闭蜂鸣器
+            my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_CTRL_BUZZER_OFF);
+            g_buzzer_ctrl.state = 0;
+            g_buzzer_ctrl.tick = 0;
+
+            //重复次数--，为0即可关闭定时器
+            if (g_buzzer_ctrl.repeat > 0)
+            {
+                g_buzzer_ctrl.repeat--;
+                if (g_buzzer_ctrl.repeat == 0)
+                    k_timer_stop(&buzzer_timer);
+            }
+        }
+    }
+    else
+    {
+        // 当前是“关”
+        if (g_buzzer_ctrl.tick >= g_buzzer_ctrl.off_time)
+        {
+            my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_CTRL_BUZZER_ON);
+            g_buzzer_ctrl.state = 1;
+            g_buzzer_ctrl.tick = 0;
+        }
+    }
+
+}
+
 /********************************************************************
 **函数名称:  my_ctrl_task
 **入口参数:  p1, p2, p3   ---   线程参数（未使用）
@@ -1183,6 +1361,18 @@ static void my_ctrl_task(void *p1, void *p2, void *p3)
                 MY_LOG_INF("Lock pin detected: DISCONNECTED");
                 break;
 
+            case MY_MSG_CTRL_BUZZER_MODE:
+                my_buzzer_play(g_buzzer_mode);
+               break;
+
+            case MY_MSG_CTRL_BUZZER_ON:
+                my_ctrl_start_buzzer();
+                break;
+
+            case MY_MSG_CTRL_BUZZER_OFF:
+                my_ctrl_stop_buzzer();
+                break;
+
             default:
                 break;
         }
@@ -1233,6 +1423,8 @@ int my_ctrl_init(k_tid_t *tid)
 
     /* 启动时响一声提示音 */
     my_ctrl_buzzer_play_tone(2000, 100);
+
+    k_timer_init(&buzzer_timer, buzzer_timer_handler, NULL);
 
     MY_LOG_INF("Control module initialized");
     return 0;

@@ -127,7 +127,9 @@ typedef enum
     MY_MSG_SYS_REBOOT, // 10
     MY_MSG_BLE_DATA_EVENT,
     MY_MSG_CTRL_LED,    /* LED 控制消息 */
-    MY_MSG_CTRL_BUZZER, /* 蜂鸣器控制消息 */
+    MY_MSG_CTRL_BUZZER_MODE, /* 蜂鸣器控制消息 */
+    MY_MSG_CTRL_BUZZER_ON,
+    MY_MSG_CTRL_BUZZER_OFF,
     MY_MSG_WORK_MODE_SWITCH,
     MY_MSG_SHOW_CHARG, // 充电状态显示LED消息
     MY_MSG_UPDATE_BATTERY, // 更新电池状态消息
