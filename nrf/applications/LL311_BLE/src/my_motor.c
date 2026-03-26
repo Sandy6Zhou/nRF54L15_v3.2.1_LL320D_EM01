@@ -161,6 +161,8 @@ static void openlock_posdet_timer_handler(struct k_timer *timer)
         {
             /* 电机停止 */
             my_send_msg(MOD_MAIN, MOD_CTRL, MY_MSG_CTRL_STOPLOCK);
+            /* 开锁后闪烁LED 18秒 */
+            my_lock_led_msg_send(LOCK_LED_UNLOCK);
             // MY_MSG_CTRL_OPENLOCKED:先发送消息通知MAIN线程，再经过LTE线程上报开锁状态成功
         }
     }
@@ -190,6 +192,8 @@ static void closelock_posdet_timer_handler(struct k_timer *timer)
         {
             /* 电机停止 */
             my_send_msg(MOD_MAIN, MOD_CTRL, MY_MSG_CTRL_STOPLOCK);
+            /* 关锁后关闭LED */
+            my_lock_led_msg_send(LOCK_LED_CLOSE);
             // TODO MY_MSG_CTRL_CLOSELOCKED:发送消息给LTE线程上报关锁状态成功
         }
         else

@@ -15,10 +15,17 @@
 #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260326"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.03.26
+** 作    者:        曹阳 (caoyang@jimiiot.com)
+** 修改内容:        增加nfc启动，上锁中，解锁中，解锁成功后LED闪烁功能
+
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260326"
+/* 软件版本:        V1.0
+** 完成日期:        2026.03.26
 ** 作    者:        吴楚庆 (wuchuqing@jimiiot.com)
 ** 修改内容:        1.增加封装蜂鸣器报警类型接口
 */
 
+//#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260326"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.03.26
 ** 作    者:        周森达 (zhousenda@jimiiot.com)

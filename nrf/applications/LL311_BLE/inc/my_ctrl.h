@@ -139,4 +139,12 @@ void handle_nfc_card_event(uint8_t *card_id, uint8_t id_len);
 *********************************************************************/
 void my_lock_led_set_mode(MY_LOCK_LED_MODE mode);
 
+/*********************************************************************
+**函数名称:  my_lock_led_msg_send
+**入口参数:  mode  ---        LED 显示模式，使用 MY_LOCK_LED_MODE 枚举类型
+**出口参数:  无
+**函数功能:  用于发送锁 LED 控制消息到控制模块，设置锁 LED 的显示模式
+*********************************************************************/
+void my_lock_led_msg_send(MY_LOCK_LED_MODE mode);
+
 #endif /* _MY_CTRL_H_ */

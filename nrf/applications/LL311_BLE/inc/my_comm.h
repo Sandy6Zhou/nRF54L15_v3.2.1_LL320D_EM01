@@ -133,6 +133,7 @@ typedef enum
     MY_MSG_WORK_MODE_SWITCH,
     MY_MSG_SHOW_CHARG, // 充电状态显示LED消息
     MY_MSG_UPDATE_BATTERY, // 更新电池状态消息
+    MY_MSG_CTRL_LOCK_LED, // 锁LED控制消息
 
 
 

@@ -67,11 +67,9 @@ static void my_nfc_poll_timeout_handler(struct k_timer *timer)
     ARG_UNUSED(timer);
 
     /* 发送超时消息到 NFC 线程，避免在中断中执行睡眠操作 */
-    MSG_S msg;
-    msg.msgID = MY_MSG_NFC_POLL_TIMEOUT;
-    msg.pData = NULL;
-    msg.DataLen = 0;
-    my_send_msg_data(MOD_NFC, MOD_NFC, &msg);
+    my_send_msg(MOD_NFC, MOD_NFC, MY_MSG_NFC_POLL_TIMEOUT);
+    /* 轮询超时后关闭LED */
+    my_lock_led_msg_send(LOCK_LED_CLOSE);
 }
 
 /********************************************************************
@@ -265,6 +263,8 @@ static void my_nfc_task(void *p1, void *p2, void *p3)
                 nfc_ctx.card_present = false;
                 my_nfc_exit_hpd();
                 nfc_api_poll_start();
+                /* 开始轮询后闪烁LED*/
+                my_lock_led_msg_send(LOCK_LED_NFC_START);
                 k_timer_start(&nfc_poll_timer, K_MSEC(timeout_ms), K_NO_WAIT);
                 break;
 
@@ -325,6 +325,7 @@ int my_nfc_start_poll(uint32_t timeout_s)
     msg.DataLen = sizeof(uint32_t);
 
     my_send_msg_data(MOD_NFC, MOD_NFC, &msg);
+
     return 0;
 }
 

@@ -1147,6 +1147,25 @@ void my_lock_led_set_mode(MY_LOCK_LED_MODE mode)
     }
 }
 
+/*********************************************************************
+**函数名称:  my_lock_led_msg_send
+**入口参数:  mode  ---        LED 显示模式，使用 MY_LOCK_LED_MODE 枚举类型
+**出口参数:  无
+**函数功能:  用于发送锁 LED 控制消息到控制模块，设置锁 LED 的显示模式
+*********************************************************************/
+void my_lock_led_msg_send(MY_LOCK_LED_MODE mode)
+{
+    MSG_S msg;  // 消息结构体，用于发送 LED 控制消息
+    static MY_LOCK_LED_MODE led_mode;  // 静态存储 LED 模式，确保消息处理时数据有效
+
+    led_mode = mode;  // 存储 LED 模式
+
+    msg.msgID = MY_MSG_CTRL_LOCK_LED;  // 设置消息 ID 为锁 LED 控制消息
+    msg.pData = &led_mode;  // 设置消息数据为 LED 模式的地址
+
+    my_send_msg_data(MOD_CTRL, MOD_CTRL, &msg);  // 发送消息到控制模块
+}
+
 /**
 ********************************************************************
 **函数名称：  g_buzzer_ctrl_config
@@ -1343,10 +1362,14 @@ static void my_ctrl_task(void *p1, void *p2, void *p3)
 
             case MY_MSG_CTRL_OPENLOCKING:
                 req_open_lock_action();
+                /* 开锁中闪烁LED */
+                my_lock_led_set_mode(LOCK_LED_LOCKED);
                 break;
 
             case MY_MSG_CTRL_CLOSELOCKING:
                 req_close_lock_action();
+                /* 关锁中闪烁LED */
+                my_lock_led_set_mode(LOCK_LED_LOCKED);
                 break;
 
             case MY_MSG_CTRL_STOPLOCK:
@@ -1359,6 +1382,10 @@ static void my_ctrl_task(void *p1, void *p2, void *p3)
 
             case MY_MSG_CTRL_LOCK_PIN_DISCONNECTED:
                 MY_LOG_INF("Lock pin detected: DISCONNECTED");
+                break;
+
+            case MY_MSG_CTRL_LOCK_LED:
+                my_lock_led_set_mode(*(MY_LOCK_LED_MODE *)msg.pData);
                 break;
 
             case MY_MSG_CTRL_BUZZER_MODE:
