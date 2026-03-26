@@ -38,6 +38,14 @@ typedef enum
     BATT_LED3,  /**< 电池 LED 3 */
 } MY_LED_ID;
 
+typedef enum
+{
+    LOCK_LED_CLOSE,              /**< 关闭锁 LED 模式 */
+    LOCK_LED_NFC_START,          /**< NFC 启动模式，LED 以 200ms 亮、500ms 灭的频率闪烁*/
+    LOCK_LED_LOCKED,   /**< 解锁中和上锁中模式，LED 以 200ms 亮、200ms 灭的频率持续闪烁 */
+    LOCK_LED_UNLOCK,             /**< 已解锁模式，LED 以 500ms 亮、1000ms 灭的频率闪烁，持续 18 秒 */
+} MY_LOCK_LED_MODE;
+
 /* --- 接口函数 --- */
 
 /********************************************************************
@@ -95,4 +103,14 @@ int batt_led_set_level(uint8_t level);
 **返 回 值:  无
 *********************************************************************/
 void handle_nfc_card_event(uint8_t *card_id, uint8_t id_len);
+
+/*********************************************************************
+**函数名称:  my_lock_led_set_mode
+**入口参数:  mode  ---        LED 显示模式，使用 MY_LOCK_LED_MODE 枚举类型
+**出口参数:  无
+**函数功能:  该函数根据传入的模式参数，设置锁 LED 的不同显示模式，
+**          包括关闭、NFC启动、解锁中和上锁中和已解锁模式。
+*********************************************************************/
+void my_lock_led_set_mode(MY_LOCK_LED_MODE mode);
+
 #endif /* _MY_CTRL_H_ */

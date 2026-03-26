@@ -132,7 +132,7 @@ static void batt_timer_handler(struct k_timer *timer)
     g_batt_led_ctrl.time_count++;  // 增加电池状态时间计数器
 
     // 当时间计数器超过阈值时，关闭所有 LED 并停止定时器
-    if(g_batt_led_ctrl.time_count > BATT_LED_TIMER_MS/100)
+    if(g_batt_led_ctrl.time_count >= BATT_LED_TIMER_MS / 100)
     {
         batt_led_set_level(0);  // 关闭所有LED
         k_timer_stop(g_batt_led_ctrl.timer);  // 停止LED控制定时器

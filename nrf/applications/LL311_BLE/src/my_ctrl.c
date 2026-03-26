@@ -71,6 +71,20 @@ static struct
     bool debouncing;            /* 消抖中标志 */
 } lock_pin_ctrl;
 
+/**
+ * @brief 锁 LED 控制结构体
+ * 
+ * 用于控制锁 LED 的闪烁模式，包含定时器和闪烁参数
+ */
+static struct
+{
+    struct k_timer timer;       /**< LED 控制定时器，用于定时控制 LED 亮灭 */
+    uint16_t on_ms;             /**< LED 点亮的时间（单位：100毫秒） */
+    uint16_t period_ms;         /**< LED 闪烁的周期（单位：100毫秒） */
+    uint32_t duration_ms;       /**< LED 闪烁的总持续时间（单位：100毫秒），0表示持续闪烁 */
+    uint32_t timer_count;       /**< 定时器计数，用于跟踪闪烁状态 */
+}s_lock_led_ctrl;
+
 /* NFC刷卡记录缓存结构体 */
 typedef struct {
     uint8_t card_id[16];        /* 存储NFC卡号（根据实际卡号长度调整） */
@@ -82,6 +96,7 @@ typedef struct {
 static void key_timer_handler(struct k_timer *timer);
 static void light_sensor_timer_handler(struct k_timer *timer);
 static void lock_pin_timer_handler(struct k_timer *timer);
+static void lock_led_timer_handler(struct k_timer *timer);
 
 /* 消息队列定义 */
 K_MSGQ_DEFINE(my_ctrl_msgq, sizeof(MSG_S), 10, 4);
@@ -898,6 +913,8 @@ static int leds_init(void)
         return ret;
     }
 
+     k_timer_init(&s_lock_led_ctrl.timer, lock_led_timer_handler, NULL);
+
     return 0;
 }
 
@@ -981,8 +998,116 @@ int batt_led_set_level(uint8_t level)
 *********************************************************************/
 static void lock_led_set(bool on)
 {
-    MY_LOG_INF("%s:%d", __func__, on);
+    //MY_LOG_INF("%s:%d", __func__, on);
     gpio_pin_set_dt(&lock_led, on ? 1 : 0);
+}
+
+/*********************************************************************
+**函数名称:  my_battery_show_chgled
+**入口参数:  timer  ---        输入，定时器句柄（未使用）
+**出口参数:  无
+**函数功能:  作为锁 LED 控制定时器的回调函数，用于控制锁 LED 的闪烁模式，
+**           根据配置的参数实现不同的闪烁效果，包括持续闪烁和指定时间后停止闪烁两种模式。
+*********************************************************************/
+static void lock_led_timer_handler(struct k_timer *timer)
+{
+    // 根据定时器计数和配置的参数控制 LED 点亮和熄灭
+    if (s_lock_led_ctrl.timer_count % s_lock_led_ctrl.period_ms == 0)
+    {
+        lock_led_set(true);  // 周期开始时点亮 LED
+    }
+    else if (s_lock_led_ctrl.timer_count % s_lock_led_ctrl.period_ms == s_lock_led_ctrl.on_ms)
+    {
+        lock_led_set(false);  // 点亮指定时间后熄灭 LED
+    }
+
+    s_lock_led_ctrl.timer_count++;  // 增加定时器计数
+
+    // 处理持续闪烁模式（duration_ms 为 0）
+    if (s_lock_led_ctrl.duration_ms == 0)
+    {
+        // 当计数达到周期时，重置计数，实现持续闪烁
+        if (s_lock_led_ctrl.timer_count >= s_lock_led_ctrl.period_ms)
+        {
+            s_lock_led_ctrl.timer_count = 0;
+        }
+    }
+    else
+    {
+        // 处理指定时间后停止闪烁模式
+        if (s_lock_led_ctrl.timer_count >= s_lock_led_ctrl.duration_ms)
+        {
+            k_timer_stop(&s_lock_led_ctrl.timer);  // 停止定时器
+            lock_led_set(false);  // 熄灭 LED
+        }
+    }
+}
+
+/*********************************************************************
+**函数名称:  my_lock_led_ctrl_start
+**入口参数:  on_ms  ---        LED 点亮的时间（毫秒）
+**           off_ms ---        LED 熄灭的时间（毫秒）
+**           duration_ms ---        LED 闪烁的总持续时间（毫秒），0 表示持续闪烁
+**出口参数:  无
+**函数功能:  用于启动锁 LED 的闪烁控制，根据传入的参数配置 LED 的闪烁模式。
+**           可以设置 LED 点亮时间、熄灭时间和总持续时间。
+**           函数将传入的时间必须为100的倍数，因为定时器的周期是 100 毫秒。
+**           当 on_ms 为 0 时，函数会关闭 LED 并停止定时器。
+**           当 off_ms为0时，LED会常亮。
+**           当 duration_ms为0时，LED会持续闪烁。
+*********************************************************************/
+void my_lock_led_ctrl_start(uint16_t on_ms, uint16_t off_ms, uint32_t duration_ms)
+{
+    if (on_ms == 0)
+    {
+        k_timer_stop(&s_lock_led_ctrl.timer);  // 停止 LED 控制定时器
+        lock_led_set(false);  // 关闭 LED
+    }
+    else
+    {
+        s_lock_led_ctrl.on_ms = on_ms / 100;  // 将点亮时间转换为 100 毫秒为单位
+        s_lock_led_ctrl.period_ms = (on_ms+off_ms) / 100;  // 计算闪烁周期并转换为 100 毫秒为单位
+        s_lock_led_ctrl.duration_ms = duration_ms / 100;  // 将总持续时间转换为 100 毫秒为单位
+        s_lock_led_ctrl.timer_count = 0;  // 重置定时器计数
+        k_timer_start(&s_lock_led_ctrl.timer, K_MSEC(0), K_MSEC(100));  // 启动定时器，立即执行一次，然后 100 毫秒循环执行
+    }
+}
+
+/*********************************************************************
+**函数名称:  my_lock_led_set_mode
+**入口参数:  mode  ---        LED 显示模式，使用 MY_LOCK_LED_MODE 枚举类型
+**出口参数:  无
+**函数功能:  该函数根据传入的模式参数，设置锁 LED 的不同显示模式，
+**          包括关闭、NFC启动、解锁中和上锁中和已解锁模式。
+*********************************************************************/
+void my_lock_led_set_mode(MY_LOCK_LED_MODE mode)
+{
+    switch (mode)
+    {
+        case LOCK_LED_CLOSE:
+            // 关闭 LED 模式
+            my_lock_led_ctrl_start(0, 0, 0);  // 传入 on_ms=0，关闭 LED
+            break;
+
+        case LOCK_LED_NFC_START:
+            // NFC 启动模式，LED 以 200ms 亮、500ms 灭的频率闪烁
+            my_lock_led_ctrl_start(200, 500, 0);
+            break;
+
+        case LOCK_LED_LOCKED:
+            // 解锁中和上锁中模式，LED 以 200ms 亮、200ms 灭的频率持续闪烁
+            my_lock_led_ctrl_start(200, 200, 0);  // duration_ms=0，表示持续闪烁
+            break;
+
+        case LOCK_LED_UNLOCK:
+            // 已解锁模式，LED 以 500ms 亮、1000ms 灭的频率闪烁，持续 18 秒
+            my_lock_led_ctrl_start(500, 1000, 18000);
+            break;
+
+        default:
+            // 处理未定义的模式
+            break;
+    }
 }
 
 /********************************************************************
