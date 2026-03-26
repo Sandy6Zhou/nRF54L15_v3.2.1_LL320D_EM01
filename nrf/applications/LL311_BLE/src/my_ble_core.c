@@ -266,7 +266,7 @@ static void custom_char_ccc_cfg_changed(const struct bt_gatt_attr *attr,
     {
         ble_data_send_enable[GOOGLE_ADV_TYPE] = true;
         ble_data_send_enable[APPLE_ADV_TYPE] = true;
-    } 
+    }
     else
     {
         ble_data_send_enable[GOOGLE_ADV_TYPE] = false;
@@ -727,7 +727,7 @@ static void recycled_cb(void)
 **函数功能:  BLE服务器发送通知函数，处理GATT通知数据发送
 **返 回 值:  无
 *********************************************************************
-**注意事项:  
+**注意事项:
 **           1. 本函数内不允许调用任何可能触发BLE发送的日志函数，避免递归调用
 **           2. 禁用MY_LOG_INF、MY_LOG_WRN、MY_LOG_ERR、MY_LOG_DBG
 **           3. 日志输出只允许调用LOG_INF、LOG_WRN、LOG_ERR、LOG_DBG、LOG_HEXDUMP_INF
@@ -820,13 +820,13 @@ bool ble_is_data_channel_ready(void)
     {
         return false;
     }
-    
+
     /* 检查CCC通知是否已使能（APP已订阅通知） */
     if (!ble_data_send_enable[GOOGLE_ADV_TYPE] && !ble_data_send_enable[APPLE_ADV_TYPE])
     {
         return false;
     }
-    
+
     return true;
 }
 

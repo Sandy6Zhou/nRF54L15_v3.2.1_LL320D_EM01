@@ -108,9 +108,9 @@ uint8_t hex2ascii(uint8_t digit);
 void hex2hexstr(uint8_t *hex, uint16_t hex_len, uint8_t *str, uint16_t str_len);
 /********************************************************************
 **函数名称:  string_check_is_number
-**入口参数:  flag: flag & 1 允许字符串中包含'+'或'-', flag & 2 允许字符串中包含'.', flag & 4 数字不允许大于7或小于1, str: 传入的字符串
+**入口参数:  flag: flag & 1 允许字符串中包含'+'或'-', flag & 2 允许字符串中包含'.', 其余标志只允许纯数字
 **出口参数:  无
-**函数功能:  检测字符串是不是全是数字组成
+**函数功能:  检测字符串是不是由数字及符号组成
 **返 回 值:  返回有效的字符数
 *********************************************************************/
 uint8_t string_check_is_number(uint8_t flag, const char* str);

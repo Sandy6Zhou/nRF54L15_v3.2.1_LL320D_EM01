@@ -20,7 +20,7 @@
 #define MY_MAIN_TASK_STACK_SIZE    4 * 1024 // 先改为4K，未来开发过程中不够再调整
 #define MY_BLE_TASK_STACK_SIZE     4 * 1024 // 2K测试空间不够，暂修改为4K
 #define MY_CTRL_TASK_STACK_SIZE    1 * 1024 // 先改为4K，未来开发过程中不够再调整
-#define MY_LTE_TASK_STACK_SIZE     8 * 1024 
+#define MY_LTE_TASK_STACK_SIZE     8 * 1024
 #define MY_NFC_TASK_STACK_SIZE     4 * 1024 // 先改为4K，未来开发过程中不够再调整
 #define MY_GSENSOR_TASK_STACK_SIZE 4 * 1024 // 先改为4K，未来开发过程中不够再调整
 
@@ -107,8 +107,8 @@ typedef struct
     uint8_t remalm_mode;        /* 报警上报方式: 0-GPRS, 1-GPRS+SMS, 2-GPRS+SMS+CALL */
 
     /* LOCKPINCYT 指令配置 */
-    uint8_t lockpincy_report;   /* 锁销非法拔除上报方式: 0-不上报, 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL */
-    uint8_t lockpincy_buzzer;   /* 锁销非法拔除蜂鸣器报警方式: 0-不报警, 1-报警30s, 2-持续报警 */
+    uint8_t lockpincyt_report;   /* 锁销非法拔除上报方式: 0-不上报, 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL */
+    uint8_t lockpincyt_buzzer;   /* 锁销非法拔除蜂鸣器报警方式: 0-不报警, 1-报警30s, 2-持续报警 */
 
     /* LOCKERR 指令配置 */
     uint8_t lockerr_report;     /* 锁状态异常上报方式: 0-不上报, 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL */
@@ -186,6 +186,9 @@ typedef struct
     /* NFCAUTH 指令配置 */
     NfcAuthCard nfcauth_cards[10];      /* NFC卡权限数组，最多10张卡 */
     uint8_t     nfcauth_card_count;     /* 已授权卡数量 */
+
+    /* BKEY_SET/BKEY_RESET 指令配置 */
+    char        bt_key[7];              /* 蓝牙解锁密钥，6位数字 + 结束符 */
 
 } DeviceCmdConfig;
 

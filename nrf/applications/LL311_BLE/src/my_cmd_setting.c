@@ -38,13 +38,13 @@ DeviceCmdConfig g_device_cmd_config = {
     .remalm_sw = 0,                    /* 默认关闭 */
     .remalm_mode = 0,                  /* 默认GPRS */
 
-    /* LOCKPINCY 指令默认配置 */
-    .lockpincy_report = 0,             /* 默认不上报 */
-    .lockpincy_buzzer = 0,             /* 默认不报警 */
+    /* LOCKPINCYT 指令默认配置 */
+    .lockpincyt_report = 1,             /* 默认GPRS */
+    .lockpincyt_buzzer = 1,             /* 默认报警30s */
 
     /* LOCKERR 指令默认配置 */
     .lockerr_report = 1,               /* 默认GPRS */
-    .lockerr_buzzer = 0,               /* 默认不报警 */
+    .lockerr_buzzer = 1,               /* 默认报警30s */
 
     /* PINSTAT 指令默认配置 */
     .pinstat_report = 0,               /* 默认不上报 */
@@ -118,10 +118,13 @@ DeviceCmdConfig g_device_cmd_config = {
     /* NFCAUTH 指令默认配置 */
     .nfcauth_card_count = 0,         /* 默认0张卡 */
 
+    /* BKEY 指令默认配置 */
+    .bt_key = "000000",              /* 默认密钥 */
+
 };
 
 static int remalm_cmd_handler(at_cmd_struc* msg);
-static int lockpincy_cmd_handler(at_cmd_struc* msg);
+static int lockpincyt_cmd_handler(at_cmd_struc* msg);
 static int lockerr_cmd_handler(at_cmd_struc* msg);
 static int pinstat_cmd_handler(at_cmd_struc* msg);
 static int lockstat_cmd_handler(at_cmd_struc* msg);
@@ -141,11 +144,12 @@ static int buzzer_cmd_handler(at_cmd_struc* msg);
 static int ncftrig_cmd_handler(at_cmd_struc* msg);
 static int nfcauth_cmd_handler(at_cmd_struc* msg);
 static int btlog_cmd_handler(at_cmd_struc* msg);
+static int bkey_cmd_handler(at_cmd_struc* msg);
 
 static const at_cmd_attr_t at_cmd_attr_table[] =
 {
     {"REMALM",         remalm_cmd_handler},
-    {"LOCKPINCYT",     lockpincy_cmd_handler},
+    {"LOCKPINCYT",     lockpincyt_cmd_handler},
     {"LOCKERR",        lockerr_cmd_handler},
     {"PINSTAT",        pinstat_cmd_handler},
     {"LOCKSTAT",       lockstat_cmd_handler},
@@ -165,6 +169,8 @@ static const at_cmd_attr_t at_cmd_attr_table[] =
     {"NCFTRIG",        ncftrig_cmd_handler},
     {"NFCAUTH",        nfcauth_cmd_handler},
     {"BTLOG",          btlog_cmd_handler},
+    {"BKEY_SET",       bkey_cmd_handler},
+    {"BKEY_RESET",     bkey_cmd_handler},
 };
 
 /*********************************************************************
@@ -527,7 +533,7 @@ param_invalid:
 }
 
 /********************************************************************
-**函数名称:  lockpincy_cmd_handler
+**函数名称:  lockpincyt_cmd_handler
 **入口参数:  msg      ---        AT指令结构体指针
 **出口参数:  msg->resp_msg  ---  响应消息
 **           msg->resp_length --- 响应长度
@@ -537,7 +543,7 @@ param_invalid:
 **           [Buzzer] - 蜂鸣器报警方式: 0-不报警, 1-报警30s, 2-持续报警
 **返 回 值:  BLE数据类型
 *********************************************************************/
-static int lockpincy_cmd_handler(at_cmd_struc* msg)
+static int lockpincyt_cmd_handler(at_cmd_struc* msg)
 {
     uint16_t remaining;
     int report_value;
@@ -570,16 +576,16 @@ static int lockpincy_cmd_handler(at_cmd_struc* msg)
     }
 
     /* 所有参数验证通过,统一赋值 */
-    g_device_cmd_config.lockpincy_report = (uint8_t)report_value;
-    g_device_cmd_config.lockpincy_buzzer = (uint8_t)buzzer_value;
+    g_device_cmd_config.lockpincyt_report = (uint8_t)report_value;
+    g_device_cmd_config.lockpincyt_buzzer = (uint8_t)buzzer_value;
 
     LOG_INF("%s=>%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2]);
 
     /* 生成成功响应 */
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
     LOG_INF("LOCKPINCYT: Report=%d, Buzzer=%d",
-           g_device_cmd_config.lockpincy_report,
-           g_device_cmd_config.lockpincy_buzzer);
+           g_device_cmd_config.lockpincyt_report,
+           g_device_cmd_config.lockpincyt_buzzer);
 
     //TODO 具体逻辑处理
 
@@ -1952,7 +1958,7 @@ static int nfcauth_cmd_handler(at_cmd_struc* msg)
             {
                 unlock_times = atoi(msg->parm[8]);
                 // 仅允许 unlock_times 为 -1 或 1~999
-                if (!(unlock_times == -1 || (unlock_times >= 1 && unlock_times <= 999))) 
+                if (!(unlock_times == -1 || (unlock_times >= 1 && unlock_times <= 999)))
                 {
                     LOG_INF("%s=>invalid unlock_times param: %s", __func__, msg->parm[8]);
                     goto param_invalid;
@@ -2287,6 +2293,114 @@ static int btlog_cmd_handler(at_cmd_struc* msg)
 
 param_invalid:
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_BTLOG_FAIL");
+    return BLE_DATA_TYPE_AT_CMD;
+}
+
+/*********************************************************************
+**函数名称:  bkey_cmd_handler
+**入口参数:  msg      ---        AT指令结构体指针
+**出口参数:  msg->resp_msg  ---  响应消息
+**           msg->resp_length --- 响应长度
+**函数功能:  处理BKEY_SET/BKEY_RESET指令：设置/重置蓝牙解锁密钥
+**指令格式:  BKEY_SET,[Old key],[New key]#  - 修改密钥
+**           BKEY_RESET#                    - 重置为默认密钥
+**参数说明:  [Old key] - 当前密钥，6位数字（默认000000）
+**           [New key] - 新密钥，6位数字，不可与当前密钥相同
+**返 回 值:  BLE数据类型
+*********************************************************************/
+static int bkey_cmd_handler(at_cmd_struc* msg)
+{
+    uint16_t remaining;
+    uint8_t i;
+    uint8_t digit_len;
+    const char *default_key = "000000";
+
+    remaining = sizeof(msg->resp_msg);
+
+    /* 判断指令类型 */
+    if (strcmp(msg->parm[0], "BKEY_RESET") == 0)
+    {
+        /* BKEY_RESET# - 重置为默认密钥 */
+        if (msg->parm_count != 0)
+        {
+            LOG_INF("%s=>BKEY_RESET param count error: %d", __func__, msg->parm_count);
+            msg->resp_length = snprintf(msg->resp_msg, remaining, "Key reset failed. Invalid param.");
+            return BLE_DATA_TYPE_AT_CMD;
+        }
+
+        strcpy(g_device_cmd_config.bt_key, default_key);
+        LOG_INF("%s=>RESET to default key", __func__);
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "Key reset success.");
+        return BLE_DATA_TYPE_AT_CMD;
+    }
+    else if (strcmp(msg->parm[0], "BKEY_SET") == 0)
+    {
+        /* BKEY_SET,[Old key],[New key]# - 修改密钥 */
+        if (msg->parm_count != 2)
+        {
+            LOG_INF("%s=>param count error: %d", __func__, msg->parm_count);
+            msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_BKEY_SET_FAIL");
+            return BLE_DATA_TYPE_AT_CMD;
+        }
+
+        /* 验证旧密钥长度是否为6位数字 */
+        if (strlen(msg->parm[1]) != 6)
+        {
+            LOG_INF("%s=>old key length error: %s", __func__, msg->parm[1]);
+            goto invalid_key;
+        }
+
+        digit_len = string_check_is_number(0, msg->parm[1]);
+        if (digit_len != 6)
+        {
+            LOG_INF("%s=>old key format error: %s", __func__, msg->parm[1]);
+            goto invalid_key;
+        }
+
+        /* 验证新密钥长度是否为6位数字 */
+        if (strlen(msg->parm[2]) != 6)
+        {
+            LOG_INF("%s=>new key length error: %s", __func__, msg->parm[2]);
+            goto invalid_key;
+        }
+        digit_len = string_check_is_number(0, msg->parm[2]);
+        if (digit_len != 6)
+        {
+            LOG_INF("%s=>new key format error: %s", __func__, msg->parm[2]);
+            goto invalid_key;
+        }
+
+        /* 验证旧密钥是否正确 */
+        if (strcmp(g_device_cmd_config.bt_key, msg->parm[1]) != 0)
+        {
+            LOG_INF("%s=>old key mismatch", __func__);
+            goto invalid_key;
+        }
+
+        /* 验证新密钥是否与旧密钥相同 */
+        if (strcmp(msg->parm[1], msg->parm[2]) == 0)
+        {
+            LOG_INF("%s=>new key same as old key", __func__);
+            msg->resp_length = snprintf(msg->resp_msg, remaining, "Key update failed. New key must be different.");
+            return BLE_DATA_TYPE_AT_CMD;
+        }
+
+        /* 更新密钥 */
+        strcpy(g_device_cmd_config.bt_key, msg->parm[2]);
+        LOG_INF("%s=>key updated:%s", __func__, g_device_cmd_config.bt_key);
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "Key update success.");
+        return BLE_DATA_TYPE_AT_CMD;
+    }
+
+    /* 无效指令 */
+    LOG_INF("%s=>invalid cmd: %s", __func__, msg->parm[0]);
+
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_BKEY_FAIL");
+    return BLE_DATA_TYPE_AT_CMD;
+
+invalid_key:
+    /* TODO: 蜂鸣器未授权提示音 */
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Key update failed. Invalid key.");
     return BLE_DATA_TYPE_AT_CMD;
 }
 

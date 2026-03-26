@@ -577,6 +577,25 @@ static void lock_pin_timer_handler(struct k_timer *timer)
         {
             my_send_msg(MOD_CTRL, MOD_CTRL, msgID);
         }
+        else
+        {
+            /* 锁销被拔出时,检测到锁是关闭状态 */
+            if (get_closelock_state())
+            {
+                // MY_LOG_INF("The locking pin was illegally pulled out.");
+                // TODO 锁销非法拔出上报,直接发消息给LTE线程,由4G判断是否要上报
+
+                /* 蜂鸣器报警 */
+                if (g_device_cmd_config.lockpincyt_buzzer == 1)
+                {
+                    // TODO 发消息到ctrl线程,报警30s
+                }
+                else if (g_device_cmd_config.lockpincyt_buzzer == 2)
+                {
+                    // TODO 发消息到ctrl线程,持续报警直到收到关闭蜂鸣器报警指令
+                }
+            }
+        }
     }
 
     lock_pin_ctrl.debouncing = false;

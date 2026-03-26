@@ -45,6 +45,8 @@ static struct k_timer motor_timeout_timer;
 static lock_posdet openlock_posdet;
 /* 关锁位置检测结构，用于检测关锁限位状态 */
 static lock_posdet closelock_posdet;
+/* 开锁状态标志，true表示正在开锁 */
+static bool s_bOpenLockingState = false;
 
 /* 电源控制：1 = 打开，0 = 关闭 */
 void motor_power_set(bool on)
@@ -62,6 +64,8 @@ void motor_power_set(bool on)
 *********************************************************************/
 void req_open_lock_action(void)
 {
+    /* 标记正在开锁中 */
+    s_bOpenLockingState = true;
     k_timer_stop(&motor_timeout_timer);
 
     MY_LOG_INF("%s:run", __func__);
@@ -98,6 +102,8 @@ void req_close_lock_action(void)
 *********************************************************************/
 void stop_lock_action(void)
 {
+    /* 清空开锁中的状态 */
+    s_bOpenLockingState = false;
     k_timer_stop(&motor_timeout_timer);
 
     MY_LOG_INF("%s:run", __func__);
@@ -186,9 +192,43 @@ static void closelock_posdet_timer_handler(struct k_timer *timer)
             my_send_msg(MOD_MAIN, MOD_CTRL, MY_MSG_CTRL_STOPLOCK);
             // TODO MY_MSG_CTRL_CLOSELOCKED:发送消息给LTE线程上报关锁状态成功
         }
+        else
+        {
+            /* 非法解锁:没执行开锁动作,关锁的限位检测却断开(锁没有完全关掉) */
+            if (!s_bOpenLockingState)
+            {
+                // TODO 非法解锁上报,直接发消息给LTE线程,由4G判断是否要上报
+
+                /* 蜂鸣器报警方式 */
+                if (g_device_cmd_config.lockerr_buzzer == 1)
+                {
+                    // TODO 发消息到ctrl线程,报警30s
+                }
+                else if (g_device_cmd_config.lockerr_buzzer == 2)
+                {
+                    // TODO 发消息到ctrl线程,持续报警直到收到关闭蜂鸣器报警指令
+                }
+            }
+
+            /* 清空开锁中的状态 */
+            s_bOpenLockingState = false;
+        }
     }
 
     closelock_posdet.debouncing = false;
+}
+
+/********************************************************************
+**函数名称:  get_closelock_state
+**入口参数:  无
+**出口参数:  无
+**函数功能:  获取关锁限位状态
+**返 回 值:  true  ---        关锁到位（限位检测到）
+            false ---        未关锁到位
+*********************************************************************/
+bool get_closelock_state(void)
+{
+    return closelock_posdet.state;
 }
 
 static void motor_pos_isr(const struct device *dev,
@@ -206,7 +246,7 @@ static void motor_pos_isr(const struct device *dev,
 
     if (pins & BIT(motor_pos_b.pin))
     {
-        /* 下降沿触发，调用关锁处理函数 */
+        /* 边沿触发，调用关锁处理函数 */
         lock_posdet_edge_handler(CLOSE_LOCK);
     }
 }
@@ -264,8 +304,8 @@ int motor_gpio_init(void)
     /* 配置中断为下降沿触发 */
     ret = gpio_pin_interrupt_configure_dt(&motor_pos_a, GPIO_INT_EDGE_FALLING);
     if (ret) return ret;
-
-    ret = gpio_pin_interrupt_configure_dt(&motor_pos_b, GPIO_INT_EDGE_FALLING);
+    /* 配置中断为边沿触发 */
+    ret = gpio_pin_interrupt_configure_dt(&motor_pos_b, GPIO_INT_EDGE_BOTH);
     if (ret) return ret;
 
     /* 初始化开锁检测定时器和状态 */

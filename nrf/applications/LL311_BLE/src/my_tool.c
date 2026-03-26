@@ -62,7 +62,7 @@ time_t my_get_system_time_sec(void)
 **           interval_min   --  上报间隔，单位：分钟（必须大于0）
 **           utc_timestamp  --  当前UTC时间戳，单位：秒（从1970-01-01 00:00:00 UTC起）
 **出口参数:  无
-**函数功能:  计算当前UTC时间到最近上报时间点的剩余秒数,支持跨天处理  
+**函数功能:  计算当前UTC时间到最近上报时间点的剩余秒数,支持跨天处理
 **返 回 值:  成功返回剩余秒数，失败返回-1（参数不合法）
 *********************************************************************/
 int calculate_remaining_seconds(const char *start_time, int interval_min, long long utc_timestamp)
@@ -135,7 +135,7 @@ int calculate_remaining_seconds(const char *start_time, int interval_min, long l
     {
         /* 场景1：当前时间在起始时间之前 → 最近的就是起始时间 */
         remaining_seconds = base_seconds - current_seconds_of_day;
-    } 
+    }
     else
     {
         /* 计算从起始时间到当前时间的间隔数（向下取整） */
@@ -147,7 +147,7 @@ int calculate_remaining_seconds(const char *start_time, int interval_min, long l
         {
             /* 当天内有上报点 */
             remaining_seconds = (int)(next_point - current_seconds_of_day);
-        } 
+        }
         else
         {
             /* 跨天：下一个上报点是次日的base_seconds */
@@ -412,9 +412,9 @@ void hex2hexstr(uint8_t *hex, uint16_t hex_len, uint8_t *str, uint16_t str_len)
 
 /********************************************************************
 **函数名称:  string_check_is_number
-**入口参数:  flag: flag & 1 允许字符串中包含'+'或'-', flag & 2 允许字符串中包含'.', flag & 4 数字不允许大于7或小于1, str: 传入的字符串
+**入口参数:  flag: flag & 1 允许字符串中包含'+'或'-', flag & 2 允许字符串中包含'.', 其余标志只允许纯数字
 **出口参数:  无
-**函数功能:  检测字符串是不是全是数字组成
+**函数功能:  检测字符串是不是由数字及符号组成
 **返 回 值:  返回有效的字符数
 *********************************************************************/
 uint8_t string_check_is_number(uint8_t flag, const char* str)
@@ -640,7 +640,7 @@ int parse_coordinate_value(const char *coord_str, int is_latitude, int32_t *valu
     }
 
     len = strlen(coord_str);
-    
+
     /* 空字符串直接标记这个值无效 */
     if (len == 0)
     {
