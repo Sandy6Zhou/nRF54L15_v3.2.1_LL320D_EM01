@@ -1652,10 +1652,12 @@ static int led_cmd_handler(at_cmd_struc* msg)
     if (strcmp(msg->parm[1], "ON") == 0)
     {
         display_value = 1;
+        my_send_msg(MOD_BLE, MOD_CTRL, MY_MSG_OPEN_LED_SHOW);
     }
     else if (strcmp(msg->parm[1], "OFF") == 0)
     {
         display_value = 0;
+        my_send_msg(MOD_BLE, MOD_CTRL, MY_MSG_CLOSE_LED_SHOW);
     }
     else
     {

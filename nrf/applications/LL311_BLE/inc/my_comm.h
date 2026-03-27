@@ -134,6 +134,8 @@ typedef enum
     MY_MSG_SHOW_CHARG, // 充电状态显示LED消息
     MY_MSG_UPDATE_BATTERY, // 更新电池状态消息
     MY_MSG_CTRL_LOCK_LED, // 锁LED控制消息
+    MY_MSG_CLOSE_LED_SHOW, // 关闭所有LED显示功能消息
+    MY_MSG_OPEN_LED_SHOW, // 打开所有LED显示功能消息
 
 
 
@@ -155,6 +157,7 @@ typedef enum
     MY_MSG_NFC_STOP_POLL,    /* 停止NFC轮询 */
     MY_MSG_NFC_CARD_EVENT,   /* NFC卡片事件 */
     MY_MSG_NFC_POLL_TIMEOUT, /* NFC轮询超时 */
+    MY_MSG_NFC_LED_SHOW,     /* NFC启动LED 显示 */
 
     /* CTRL处理程序消息 */
     MY_MSG_CTRL_KEY_SHORT_PRESS,       /* 按键短按事件 */

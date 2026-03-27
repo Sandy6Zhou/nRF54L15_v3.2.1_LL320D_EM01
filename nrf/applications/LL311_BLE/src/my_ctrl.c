@@ -1119,11 +1119,15 @@ void my_lock_led_ctrl_start(uint16_t on_ms, uint16_t off_ms, uint32_t duration_m
     }
     else
     {
-        s_lock_led_ctrl.on_ms = on_ms / 100;  // 将点亮时间转换为 100 毫秒为单位
-        s_lock_led_ctrl.period_ms = (on_ms+off_ms) / 100;  // 计算闪烁周期并转换为 100 毫秒为单位
-        s_lock_led_ctrl.duration_ms = duration_ms / 100;  // 将总持续时间转换为 100 毫秒为单位
-        s_lock_led_ctrl.timer_count = 0;  // 重置定时器计数
-        k_timer_start(&s_lock_led_ctrl.timer, K_MSEC(0), K_MSEC(100));  // 启动定时器，立即执行一次，然后 100 毫秒循环执行
+        // 检查 LED 显示功能是否启用
+        if (g_device_cmd_config.led_display == 1)
+        {
+            s_lock_led_ctrl.on_ms = on_ms / 100;  // 将点亮时间转换为 100 毫秒为单位
+            s_lock_led_ctrl.period_ms = (on_ms+off_ms) / 100;  // 计算闪烁周期并转换为 100 毫秒为单位
+            s_lock_led_ctrl.duration_ms = duration_ms / 100;  // 将总持续时间转换为 100 毫秒为单位
+            s_lock_led_ctrl.timer_count = 0;  // 重置定时器计数
+            k_timer_start(&s_lock_led_ctrl.timer, K_MSEC(0), K_MSEC(100));  // 启动定时器，立即执行一次，然后 100 毫秒循环执行
+        }
     }
 }
 
@@ -1416,6 +1420,21 @@ static void my_ctrl_task(void *p1, void *p2, void *p3)
 
             case MY_MSG_CTRL_LOCK_LED:
                 my_lock_led_set_mode(*(MY_LOCK_LED_MODE *)msg.pData);
+                break;
+
+            case MY_MSG_CLOSE_LED_SHOW:
+                /* 关闭所有LED显示功能 */
+                k_timer_stop(&s_lock_led_ctrl.timer);
+                k_timer_stop(g_chg_led_ctrl.timer);
+                k_timer_stop(g_batt_led_ctrl.timer);
+                batt_led_set_level(0);//关闭电池LED
+                lock_led_set(false);//关闭锁LED
+                break;
+
+            case MY_MSG_OPEN_LED_SHOW:
+                /* 打开所有LED显示功能 */
+                my_battery_show_chgled();//检测是否是充电状态显示充电状态LED
+                my_send_msg(MOD_CTRL, MOD_NFC, MY_MSG_NFC_LED_SHOW);//发送NFC启动LED 显示消息
                 break;
 
             case MY_MSG_CTRL_BUZZER_MODE:

@@ -60,6 +60,12 @@ typedef struct
     int8_t percent;   /**< 对应的电池电量百分比，范围为 0-100 */
 } Batt_Volt_Percent_Map_S;
 
+// 正常状态LED控制结构体，包含定时器、电池状态和计数器
+extern Batt_LED_Ctrl_S g_batt_led_ctrl;
+
+// 充电状态LED控制结构体，包含定时器、充电电池状态和计数器
+extern CHG_LED_Ctrl_S g_chg_led_ctrl;
+
 int batt_read_mv(int32_t *mv);
 int ntc_read_raw(int16_t *raw);
 int batt_adc_init(void);

@@ -275,12 +275,21 @@ static void my_nfc_task(void *p1, void *p2, void *p3)
                 }
                 MY_LOG_INF("Stopping NFC polling");
                 k_timer_stop(&nfc_poll_timer);
+                my_lock_led_msg_send(LOCK_LED_CLOSE);
                 my_nfc_enter_hpd();
                 break;
 
             case MY_MSG_NFC_POLL_TIMEOUT:
                 MY_LOG_INF("NFC polling timeout, entering HPD mode");
                 my_nfc_enter_hpd();
+                break;
+
+            case MY_MSG_NFC_LED_SHOW:
+                if (nfc_ctx.is_working)
+                {
+                    my_lock_led_msg_send(LOCK_LED_NFC_START);
+                    MY_LOG_INF("NFC polling already running");
+                }
                 break;
 
             default:

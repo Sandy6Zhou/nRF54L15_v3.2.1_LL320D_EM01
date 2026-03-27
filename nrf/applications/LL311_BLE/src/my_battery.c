@@ -134,8 +134,8 @@ static void batt_timer_handler(struct k_timer *timer)
     // 当时间计数器超过阈值时，关闭所有 LED 并停止定时器
     if(g_batt_led_ctrl.time_count >= BATT_LED_TIMER_MS / 100)
     {
-        batt_led_set_level(0);  // 关闭所有LED
         k_timer_stop(g_batt_led_ctrl.timer);  // 停止LED控制定时器
+        batt_led_set_level(0);  // 关闭所有LED
     }
 }
 
@@ -234,9 +234,13 @@ void my_battery_show_chgled()
         }
 
         my_battery_update_state();      // 更新电池状态
-        g_chg_led_ctrl.time_count = 0;  // 重置充电LED控制定时器的时间计数
-        // 启动充电LED控制定时器，立即执行一次，然后以 CHG_CTRL_LED_MS 为周期重复执行
-        k_timer_start(g_chg_led_ctrl.timer, K_MSEC(0), K_MSEC(CHG_CTRL_LED_MS));
+        // 检查 LED 显示功能是否启用
+        if (g_device_cmd_config.led_display == 1)
+        {
+            g_chg_led_ctrl.time_count = 0;  // 重置充电LED控制定时器的时间计数
+            // 启动充电LED控制定时器，立即执行一次，然后以 CHG_CTRL_LED_MS 为周期重复执行
+            k_timer_start(g_chg_led_ctrl.timer, K_MSEC(0), K_MSEC(CHG_CTRL_LED_MS));
+        }
 
         // 检查正常情况下的电池状态LED控制定时器是否正在运行
         if (k_timer_remaining_get(g_batt_led_ctrl.timer) != 0)
@@ -247,10 +251,10 @@ void my_battery_show_chgled()
     }
     else
     {
+        k_timer_stop(g_chg_led_ctrl.timer);  // 停止充电LED控制定时器
         g_charg_state = NO_CHARGING;  // 设置充电状态为未充电
         batt_enable(true);  // 启用电池电源
         batt_led_set_level(0);  // 关闭所有电池LED
-        k_timer_stop(g_chg_led_ctrl.timer);  // 停止充电LED控制定时器
         LOG_INF("The charger is not plugged in.");
     }
 }
@@ -709,8 +713,12 @@ void my_battery_show()
         return;  // 直接返回，不进行后续的电池状态检查
     }
 
-    //当按键重复按下时，重新开始定时器
-    g_batt_led_ctrl.time_count = 0;  // 重置时间计数器
-    // 启动电池状态LED控制定时器，立即执行一次，然后以 100ms 为周期重复执行
-    k_timer_start(g_batt_led_ctrl.timer, K_MSEC(0), K_MSEC(BATT_TIMER_MS));
+    // 检查 LED 显示功能是否启用
+    if (g_device_cmd_config.led_display == 1)
+    {
+        //当按键重复按下时，重新开始定时器
+        g_batt_led_ctrl.time_count = 0;  // 重置时间计数器
+        // 启动电池状态LED控制定时器，立即执行一次，然后以 100ms 为周期重复执行
+        k_timer_start(g_batt_led_ctrl.timer, K_MSEC(0), K_MSEC(BATT_TIMER_MS));
+    }
 }
