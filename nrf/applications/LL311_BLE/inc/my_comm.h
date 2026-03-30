@@ -101,6 +101,22 @@ typedef enum
     MAX_MY_MOD_TYPE, // 最大模块类型
 } module_type;
 
+/* ========== 告警类型枚举 ========== */
+typedef enum
+{
+    ALARM_OPEN = 0,         // 拆壳告警
+    ALARM_ILLEGALUNLOCK,    // 非法解锁告警
+    ALARM_LOCK,             // 锁状态告警
+    ALARM_MOTION,           // 运动状态告警
+    ALARM_BATT,             // 电池状态告警
+    ALARM_CHARGE,           // 充电状态告警
+    ALARM_IMPACT,           // 撞击检测告警
+    ALARM_SEPARATE,         // 蓝牙分离告警
+    ALARM_NFC,              // NFC告警
+    ALARM_CUT,              // 剪线告警
+    ALARM_OTHER,            // 其他类型告警
+} alarm_type_t;
+
 /* ========== 定时器相关定义 ========== */
 typedef enum
 {
@@ -183,6 +199,8 @@ typedef enum
     MY_MSG_CTRL_OPENLOCKED,     /* 已开锁 */
     MY_MSG_CTRL_CLOSELOCKED,    /* 已关锁 */
     MY_MSG_BLE_LOCK_RESULT,     /* 蓝牙开/关锁结果通知消息 */
+
+    MY_MSG_LTE_BLE_DATA,        /* 蓝牙指令数据 */
 } MY_MAIN_TASK_MSG;
 
 /* ========== 集中引用所有模块头文件 ========== */

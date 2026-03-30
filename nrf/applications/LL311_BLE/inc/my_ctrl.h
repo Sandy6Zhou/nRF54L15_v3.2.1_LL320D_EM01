@@ -157,7 +157,18 @@ void my_lock_led_msg_send(MY_LOCK_LED_MODE mode);
             false ---        锁销未插入
 *********************************************************************/
 bool get_lockpin_insert_state(void);
+
 void my_set_buzzer_mode(int buzzer_mode);
 
+/********************************************************************
+**函数名称:  send_alarm_message_to_lte
+**入口参数:  alarm_type    ---    告警类型枚举(输入)
+**          additional_info   ---    附加信息字符串指针(输入，可为NULL)
+**出口参数:  无
+**函数功能:  发送告警消息到LTE模块
+**返回值:    无
+**注意事项:  函数内部动态分配内存，由LTE任务负责释放
+*********************************************************************/
+void send_alarm_message_to_lte(alarm_type_t alarm_type, const char *additional_info);
 
 #endif /* _MY_CTRL_H_ */

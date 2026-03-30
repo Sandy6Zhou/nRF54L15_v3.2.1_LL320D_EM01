@@ -17,6 +17,23 @@
 /* LTE 模块 UART 缓冲区大小 */
 #define LTE_UART_BUF_SIZE 256
 
+/* 消息队列项数据结构 */
+typedef struct {
+    char *msg_content;          /* 消息内容字符串 */
+    uint16_t msg_len;           /* 消息长度 */
+} lte_pending_msg_t;
+
+/* 循环缓冲区用于存储排队的LTE消息 */
+#define LTE_MSG_QUEUE_SIZE    10  /* 可排队的最大消息数 */
+
+typedef struct {
+    lte_pending_msg_t queue[LTE_MSG_QUEUE_SIZE];  /* 消息的循环缓冲区 */
+    uint8_t head;                                 /* 最旧消息的索引 */
+    uint8_t tail;                                 /* 下一个空槽的索引 */
+    uint8_t count;                                /* 当前队列中的消息数 */
+    struct k_mutex queue_mutex;                   /* 线程安全访问的互斥锁 */
+} lte_msg_queue_t;
+
 /********************************************************************
 **函数名称:  my_lte_init
 **入口参数:  tid      ---        指向线程 ID 变量的指针
@@ -35,6 +52,15 @@ int my_lte_init(k_tid_t *tid);
 **返 回 值:  0 表示成功，其他表示失败
 *********************************************************************/
 int my_lte_uart_send(const uint8_t *data, uint16_t len);
+
+/********************************************************************
+**函数名称:  get_lte_power_state
+**入口参数:  无
+**出口参数:  无
+**函数功能:  获取LTE模块电源状态
+**返 回 值:  true:电源打开，false:电源关闭
+*********************************************************************/
+bool get_lte_power_state(void);
 
 /********************************************************************
 **函数名称:  my_lte_pwr_on

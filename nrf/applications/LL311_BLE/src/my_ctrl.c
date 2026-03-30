@@ -119,6 +119,109 @@ struct k_timer auto_lock_timer;
 struct k_timer buzzer_timer;
 
 /********************************************************************
+**函数名称:  send_alarm_message_to_lte
+**入口参数:  alarm_type    ---    告警类型枚举(输入)
+**          additional_info   ---    附加信息字符串指针(输入，可为NULL)
+**出口参数:  无
+**函数功能:  发送告警消息到LTE模块
+**返回值:    无
+**注意事项:  函数内部动态分配内存，由LTE任务负责释放
+*********************************************************************/
+void send_alarm_message_to_lte(alarm_type_t alarm_type, const char *additional_info)
+{
+    const char *alarm_str;
+    MSG_S msg;
+    char alarm_msg[64] = {0};
+    char *p_alarm_msg;
+    int n_msg_len;
+
+    // 检查LTE模块电源状态,如果关闭则先开启
+    if (!get_lte_power_state())
+    {
+        my_send_msg(MOD_CTRL, MOD_LTE, MY_MSG_LTE_PWRON);
+    }
+
+    // 根据告警类型映射字符串
+    switch(alarm_type)
+    {
+        case ALARM_OPEN:
+            alarm_str = "OPEN";
+            break;
+
+        case ALARM_ILLEGALUNLOCK:
+            alarm_str = "ILLEGALUNLOCK";
+            break;
+
+        case ALARM_LOCK:
+            alarm_str = "LOCK";
+            break;
+
+        case ALARM_MOTION:
+            alarm_str = "MOTION";
+            break;
+
+        case ALARM_BATT:
+            alarm_str = "BATT";
+            break;
+
+        case ALARM_CHARGE:
+            alarm_str = "CHARGE";
+            break;
+
+        case ALARM_IMPACT:
+            alarm_str = "IMPACT";
+            break;
+
+        case ALARM_SEPARATE:
+            alarm_str = "SEPARATE";
+            break;
+
+        case ALARM_NFC:
+            alarm_str = "NFC";
+            break;
+
+        case ALARM_CUT:
+            alarm_str = "CUT";
+            break;
+
+        default:
+            MY_LOG_ERR("unknown alarm type");
+            return;
+    }
+
+    // 构建告警消息字符串
+    if(additional_info != NULL && strlen(additional_info) > 0)
+    {
+        // 包含附加信息的格式："BLE+ALARM=<告警类型>,<时间戳>,<附加信息>"
+        snprintf(alarm_msg, sizeof(alarm_msg), "BLE+ALARM=%s,%lld,%s\r\n", alarm_str, my_get_system_time_sec(), additional_info);
+    }
+    else
+    {
+        // 不包含附加信息的格式："BLE+ALARM=<告警类型>,<时间戳>"
+        snprintf(alarm_msg, sizeof(alarm_msg), "BLE+ALARM=%s,%lld\r\n", alarm_str, my_get_system_time_sec());
+    }
+
+    n_msg_len = strlen(alarm_msg);
+
+    // 动态分配内存存储告警消息
+    MY_MALLOC_BUFFER(p_alarm_msg, n_msg_len + 1);
+    if(p_alarm_msg == NULL)
+    {
+        MY_LOG_ERR("Failed to allocate memory for alarm message");
+        return;
+    }
+
+    memcpy(p_alarm_msg, alarm_msg, n_msg_len);
+    p_alarm_msg[n_msg_len] = '\0';  // 确保字符串终止
+
+    // 构建消息结构体并发送给LTE模块
+    msg.msgID = MY_MSG_LTE_BLE_DATA;
+    msg.pData = p_alarm_msg;
+    msg.DataLen = n_msg_len;
+    my_send_msg_data(MOD_CTRL, MOD_LTE, &msg);
+}
+
+/********************************************************************
 **函数名称:  find_card_in_cache
 **入口参数:  card_id    ---        输入，待查找的NFC卡号指针
             id_len     ---        输入，卡号长度
@@ -599,7 +702,7 @@ static void lock_pin_timer_handler(struct k_timer *timer)
             {
                 if (g_device_cmd_config.pinstat_trigger == PINSTAT_TRIGGER_MODE_INSERT || g_device_cmd_config.pinstat_trigger == PINSTAT_TRIGGER_MODE_BOTH)
                 {
-                    
+
                     my_send_msg(MOD_CTRL, MOD_LTE, MY_MSG_LTE_PWRON);
                     // TODO 直接发消息给LTE线程,由4G判断是否要上报
                 }

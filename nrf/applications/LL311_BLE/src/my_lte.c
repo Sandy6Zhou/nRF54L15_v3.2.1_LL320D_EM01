@@ -47,6 +47,11 @@ static const struct device *lte_uart_dev = DEVICE_DT_GET(LTE_UART_NODE);
 #define LTE_PWR_CTRL_NODE DT_ALIAS(lte_pwr_ctrl)
 static const struct gpio_dt_spec lte_pwr_gpio = GPIO_DT_SPEC_GET(LTE_PWR_CTRL_NODE, gpios);
 
+// 定义一个串口发送状态信号量，初始值为1(表示UART空闲)
+static struct k_sem s_TxDoneSem;
+/* LTE缓存消息队列 */
+static lte_msg_queue_t g_lte_msg_queue = {0};
+
 /* UART驱动层使用的接收双缓冲 */
 static uint8_t lte_rx_buf_1[LTE_UART_BUF_SIZE];
 static uint8_t lte_rx_buf_2[LTE_UART_BUF_SIZE];
@@ -74,6 +79,164 @@ CMD_STRUC AT_CMD_INNER[] = {
 
     {0, NULL,        NULL,                      NULL}
 };
+
+/********************************************************************
+ * 函数名称: my_lte_msg_queue_init
+ * 入口参数: 无
+ * 出口参数: 无
+ * 函数功能: 初始化LTE缓存消息队列，包括互斥锁和队列索引
+ * 返回值: 0 --- 成功
+ * 注意事项: 必须在使用消息队列前调用此函数进行初始化
+ ********************************************************************/
+static int my_lte_msg_queue_init(void)
+{
+    k_mutex_init(&g_lte_msg_queue.queue_mutex);
+
+    g_lte_msg_queue.head = 0;
+    g_lte_msg_queue.tail = 0;
+    g_lte_msg_queue.count = 0;
+
+    return 0;
+}
+
+/********************************************************************
+ * 函数名称: my_lte_enqueue_msg
+ * 入口参数: msg_content  ---        消息内容指针(输入)
+ *           msg_len      ---        消息长度(输入)
+ * 出口参数: 无
+ * 函数功能: 将消息加入LTE消息队列，队列满时移除最旧消息
+ * 返回值: 0 --- 成功
+ *         -EINVAL --- 参数无效
+ *         -ENOMEM --- 内存分配失败
+ * 注意事项: 函数内部会为消息内容动态分配内存，调用者需确保消息有效
+ ********************************************************************/
+static int my_lte_enqueue_msg(const char *msg_content, uint16_t msg_len)
+{
+    int ret = 0;
+    char *new_msg = NULL;
+
+    if (msg_content == NULL || msg_len == 0)
+    {
+        return -EINVAL;
+    }
+
+    k_mutex_lock(&g_lte_msg_queue.queue_mutex, K_FOREVER);
+
+    // 如果队列已满，移除最旧的消息（head位置）
+    if (g_lte_msg_queue.count >= LTE_MSG_QUEUE_SIZE)
+    {
+        // 释放最旧消息的内存
+        if (g_lte_msg_queue.queue[g_lte_msg_queue.head].msg_content != NULL)
+        {
+            MY_LOG_INF("Release old message: %s", g_lte_msg_queue.queue[g_lte_msg_queue.head].msg_content);
+            MY_FREE_BUFFER(g_lte_msg_queue.queue[g_lte_msg_queue.head].msg_content);
+            g_lte_msg_queue.queue[g_lte_msg_queue.head].msg_content = NULL;
+        }
+
+        // 移动head指针，移除最旧元素
+        g_lte_msg_queue.head = (g_lte_msg_queue.head + 1) % LTE_MSG_QUEUE_SIZE;
+        g_lte_msg_queue.count--;
+    }
+
+    // 为新消息内容分配内存并复制
+    MY_MALLOC_BUFFER(new_msg, msg_len + 1);
+    if (new_msg == NULL)
+    {
+        ret = -ENOMEM;
+        goto exit;
+    }
+
+    memcpy(new_msg, msg_content, msg_len);
+    new_msg[msg_len] = '\0';  // 确保字符串终止
+
+    // 存储到队列尾部
+    g_lte_msg_queue.queue[g_lte_msg_queue.tail].msg_content = new_msg;
+    g_lte_msg_queue.queue[g_lte_msg_queue.tail].msg_len = msg_len;
+
+    // MY_LOG_INF("Enqueue message: %s", g_lte_msg_queue.queue[g_lte_msg_queue.tail].msg_content);
+
+    // 更新队列指针
+    g_lte_msg_queue.tail = (g_lte_msg_queue.tail + 1) % LTE_MSG_QUEUE_SIZE;
+    g_lte_msg_queue.count++;
+
+exit:
+    k_mutex_unlock(&g_lte_msg_queue.queue_mutex);
+    return ret;
+}
+
+/********************************************************************
+ * 函数名称: my_lte_process_queued_msgs
+ * 入口参数: 无
+ * 出口参数: 无
+ * 函数功能: 处理队列中所有排队的消息，发送到LTE模块并释放内存
+ * 返回值: 无
+ * 注意事项: 函数会清空队列中所有消息，调用时需确保LTE模块已就绪
+ ********************************************************************/
+static void my_lte_process_queued_msgs(void)
+{
+    lte_pending_msg_t *pending_msg;
+
+    k_mutex_lock(&g_lte_msg_queue.queue_mutex, K_FOREVER);
+
+    // 遍历并发送所有排队的消息
+    while (g_lte_msg_queue.count > 0)
+    {
+        pending_msg = &g_lte_msg_queue.queue[g_lte_msg_queue.head];
+
+        // 直接发送到LTE模块，不修改消息内容
+        if (pending_msg->msg_content != NULL)
+        {
+            // 直接发送原始消息内容
+            my_lte_uart_send((uint8_t*)pending_msg->msg_content, pending_msg->msg_len);
+        }
+
+        // 清理分配的内存
+        if (pending_msg->msg_content != NULL)
+        {
+            MY_FREE_BUFFER(pending_msg->msg_content);
+            pending_msg->msg_content = NULL;
+        }
+
+        // 移动队列头部指针
+        g_lte_msg_queue.head = (g_lte_msg_queue.head + 1) % LTE_MSG_QUEUE_SIZE;
+        g_lte_msg_queue.count--;
+    }
+
+    k_mutex_unlock(&g_lte_msg_queue.queue_mutex);
+}
+
+/********************************************************************
+ * 函数名称: my_lte_send_msg
+ * 入口参数: msg_content  ---        消息内容指针(输入)
+ *           msg_len      ---        消息长度(输入)
+ * 出口参数: 无
+ * 函数功能: LTE消息发送统一入口，根据模块状态选择直接发送或排队
+ * 返回值: 0 --- 成功
+ *         -EINVAL --- 参数无效
+ *         -ENOMEM --- 内存分配失败
+ * 注意事项: LTE未就绪时消息会被加入队列，需调用process函数处理
+ ********************************************************************/
+static int my_lte_send_msg(const char *msg_content, uint16_t msg_len)
+{
+    if (msg_content == NULL || msg_len == 0)
+    {
+        return -EINVAL;
+    }
+
+    // 检查LTE模块是否就绪
+    if (g_bLteReady)
+    {
+        // MY_LOG_INF("send uart message: %s", msg_content);
+
+        // LTE已就绪，直接发送原始消息
+        return my_lte_uart_send((uint8_t*)msg_content, msg_len);
+    }
+    else
+    {
+        // LTE未就绪，将消息排队等待
+        return my_lte_enqueue_msg(msg_content, msg_len);
+    }
+}
 
 /********************************************************************
 **函数名称:  my_lte_task
@@ -132,6 +295,17 @@ static void my_lte_task(void *p1, void *p2, void *p3)
             }
                 break;
 
+            case MY_MSG_LTE_BLE_DATA:
+                // 使用统一的消息发送接口
+                my_lte_send_msg((const char*)msg.pData, msg.DataLen);
+                // 释放动态分配的内存
+                if(msg.pData != NULL)
+                {
+                    MY_FREE_BUFFER(msg.pData);
+                    msg.pData = NULL;
+                }
+                break;
+
             default:
                 break;
         }
@@ -154,11 +328,14 @@ static void lte_uart_cb(const struct device *dev, struct uart_event *evt, void *
     switch (evt->type)
     {
         case UART_TX_DONE:
-            MY_LOG_DBG("LTE UART TX Done");
+            // MY_LOG_INF("LTE UART TX Done");
+
+            // 传输完成，释放信号量
+            k_sem_give(&s_TxDoneSem);
             break;
 
         case UART_RX_RDY:
-            MY_LOG_DBG("LTE UART RX Ready, len: %d", evt->data.rx.len);
+            // MY_LOG_INF("LTE UART RX Ready, len: %d", evt->data.rx.len);
 #if 0
             /* 串口回环测试：将收到的数据直接原样发回 */
             my_lte_uart_send(&evt->data.rx.buf[evt->data.rx.offset], evt->data.rx.len);
@@ -213,7 +390,22 @@ int my_lte_uart_send(const uint8_t *data, uint16_t len)
 
     if (!g_bLteReady) return -1;
 
+    // 等待上一次传输完成,等待时间基本忽略不计
+    k_sem_take(&s_TxDoneSem, K_FOREVER);
+
     return uart_tx(lte_uart_dev, data, len, SYS_FOREVER_MS);
+}
+
+/********************************************************************
+**函数名称:  get_lte_power_state
+**入口参数:  无
+**出口参数:  无
+**函数功能:  获取LTE模块电源状态
+**返 回 值:  true:电源打开，false:电源关闭
+*********************************************************************/
+bool get_lte_power_state(void)
+{
+    return g_lte_power_state;
 }
 
 /********************************************************************
@@ -658,6 +850,10 @@ static int my_lte_handle_power_on(char *data)
 {
     g_bLteReady = 1;
 
+    // TODO 4G完成开机逻辑处理
+    // 处理任何排队的消息
+    my_lte_process_queued_msgs();
+
     return 0;
 }
 
@@ -992,6 +1188,9 @@ int my_lte_init(k_tid_t *tid)
     // 初始化串口接收循环缓冲区
     my_rb_init(&g_lte_rb, g_lte_rb_buf, LTE_UART_RB_SIZE);
 
+    // 初始值为1(表示UART空闲)
+    k_sem_init(&s_TxDoneSem, 1, 1);
+
     /* 设置 UART 异步回调 */
     err = uart_callback_set(lte_uart_dev, lte_uart_cb, NULL);
     if (err)
@@ -1010,6 +1209,9 @@ int my_lte_init(k_tid_t *tid)
 
     /* 初始化消息队列 */
     my_init_msg_handler(MOD_LTE, &my_lte_msgq);
+
+    /* 初始化LTE缓存消息队列, 用于存储BLE指令数据 */
+    my_lte_msg_queue_init();
 
     /* 启动 LTE 线程 */
     *tid = k_thread_create(&my_lte_task_data, my_lte_task_stack,

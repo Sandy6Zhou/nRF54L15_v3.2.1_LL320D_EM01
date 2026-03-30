@@ -12,11 +12,21 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260327"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260330"
+/* 软件版本:        V1.0
+** 完成日期:        2026.03.30
+** 作    者:        周森达 (zhousenda@jimiiot.com)
+** 修改内容:        1.新增告警类型枚举、统一告警上报接口
+**                 2.新增UART发送完成信号量，保证串口发送串行不冲突
+**                 3.实现LTE缓存消息循环队列(最多缓存10条)
+*/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260327"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.03.27
 ** 作    者:        曹阳 (caoyang@jimiiot.com)
 ** 修改内容:        增加CBMT#和VERSION#查询命令
+*/
 
 //#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260327"
 /* 软件版本:        V1.0
@@ -24,12 +34,14 @@
 ** 作    者:        吴楚庆 (wuchuqing@jimiiot.com)
 ** 修改内容:        1.补充509版本日志信息：完善拆壳检测、剪线检测的处理逻辑，待上报接口实现，按接口形式处理如何上报
 **                 2.增加命令触发方式，上报方式等枚举
+*/
 
 //#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260327"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.03.27
 ** 作    者:        吴楚庆 (wuchuqing@jimiiot.com)
 ** 修改内容:        1.完善拆壳检测、剪线检测的处理逻辑，待上报接口实现，按接口形式处理如何上报
+*/
 
 //#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260327"
 /* 软件版本:        V1.0
@@ -37,30 +49,35 @@
 ** 作    者:        曹阳 (caoyang@jimiiot.com)
 ** 修改内容:        1.增加隐藏指示灯的功能
 **                  2.将之前代码先关闭灯再关闭定时器的操作改为先关闭定时器再关闭灯
+*/
 
 // #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260326"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.03.26
 ** 作    者:        吴楚庆 (wuchuqing@jimiiot.com)
 ** 修改内容:        1.适配蜂鸣器逻辑，再相关处增加提示音
+*/
 
 // #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260326"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.03.26
 ** 作    者:        周森达 (zhousenda@jimiiot.com)
 ** 修改内容:        1.增加蓝牙指令上锁/解锁相关功能
+*/
 
 // #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260326"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.03.26
 ** 作    者:        周森达 (zhousenda@jimiiot.com)
 ** 修改内容:        1.删除多余的空格
+*/
 
 // #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260326"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.03.26
 ** 作    者:        曹阳 (caoyang@jimiiot.com)
 ** 修改内容:        增加nfc启动，上锁中，解锁中，解锁成功后LED闪烁功能
+*/
 
 // #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260326"
 /* 软件版本:        V1.0
