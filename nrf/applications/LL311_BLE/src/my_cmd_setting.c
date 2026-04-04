@@ -30,6 +30,9 @@
 
 #include "my_comm.h"
 
+#define LTE_CMD_BUF_SIZE CMD_STRING_LENGTH_MAX          /* LTE透传最大命令字符串长度 */
+#define LTE_SEND_BUF_LEN (CMD_STRING_LENGTH_MAX + 20)  /* LTE最大发送缓冲区长度 */
+
 LOG_MODULE_REGISTER(my_cmd_setting, LOG_LEVEL_INF);
 
 /* 全局指令配置变量定义 */
@@ -178,6 +181,235 @@ static const at_cmd_attr_t at_cmd_attr_table[] =
     {"BLOCK",          block_cmd_handler},
     {"VERSION",        version_cmd_handler},
 };
+
+static const char* lte_cmd_attr_table[] =
+{
+    "MILEAGE",
+    "TRIP",
+    "BOOTLOC",
+    "SF",
+    "GFENCE",
+    "APN",
+    "HBT",
+    "SERVER",
+    "SIMPRI",
+};
+
+/*********************************************************************
+**函数名称:  lte_send_command
+**入口参数:  cmd_name     --  命令名称
+**           param        --  命令参数（可选，NULL 表示无参数）
+**出口参数:  无
+**函数功能:  用于构建并发送 LTE 命令到 LTE 模块，支持带参数和不带参数的命令。
+**           命令格式：BLE+命令名称[=参数]
+**返 回 值:  0 表示成功，-1 表示失败（模式非法）
+*********************************************************************/
+int lte_send_command(const char *cmd_name, const char *param)
+{
+    char *p_msg = NULL;  // 动态分配的消息内存
+    MSG_S msg;  // 消息结构体
+
+    // 检查LTE模块电源状态,如果关闭则先开启
+    if (!get_lte_power_state())
+    {
+        my_send_msg(MOD_CTRL, MOD_LTE, MY_MSG_LTE_PWRON);  // 发送开启 LTE 电源的消息
+    }
+
+    // 动态分配内存存储告警消息
+    MY_MALLOC_BUFFER(p_msg, LTE_SEND_BUF_LEN);  // 分配内存，加 1 用于存储终止符
+    if(p_msg == NULL)  // 内存分配失败
+    {
+        MY_LOG_ERR("Failed to allocate memory for LTE command message");  // 输出错误信息
+        return -1;  // 退出函数
+    }
+
+    if (param && strlen(param) > 0)  // 有参数的情况
+    {
+        snprintf(p_msg, LTE_SEND_BUF_LEN, "BLE+%s=%s\r\n", cmd_name, param);  // 构建带参数的命令
+    }
+    else  // 无参数的情况
+    {
+        snprintf(p_msg, LTE_SEND_BUF_LEN, "BLE+%s\r\n", cmd_name);  // 构建不带参数的命令
+    }
+
+   // 构建消息结构体并发送给LTE模块
+    msg.msgID = MY_MSG_LTE_BLE_DATA;  // 设置消息 ID 为 LTE BLE 数据消息
+    msg.pData = p_msg;  // 设置消息数据为命令字符串
+    msg.DataLen = strlen(p_msg);  // 设置消息长度
+    my_send_msg_data(MOD_CTRL, MOD_LTE, &msg);  // 发送消息到 LTE 模块
+
+    return 0;  // 返回成功
+}
+
+//TODO: 不知道指令透传数据参数检查是否需要，后续再看
+#if 0
+
+static bool validate_lte_cmd_params(at_cmd_struc* msg)
+{
+    // 根据命令名称验证参数
+    if (strcmp(msg->parm[0], "MILEAGE") == 0)
+    {
+        if (msg->parm_count != 2)
+        {
+            LOG_ERR("MILEAGE command requires exactly 2 parameter");
+            return false;
+        }
+    }
+    else if (strcmp(msg->parm[0], "TRIP") == 0)
+    {
+        if (msg->parm_count != 1)
+        {
+            LOG_ERR("TRIP command requires exactly 1 parameter");
+            return false;
+        }
+    }
+    else if (strcmp(msg->parm[0], "BOOTLOC") == 0)
+    {
+        if (msg->parm_count != 1)
+        {
+            LOG_ERR("BOOTLOC command requires exactly 1 parameter");
+            return false;
+        }
+    }
+    else if (strcmp(msg->parm[0], "SF") == 0)
+    {
+        if (msg->parm_count != 3)
+        {
+            LOG_ERR("SF command requires exactly 3 parameter");
+            return false;
+        }
+    }
+    else if (strcmp(msg->parm[0], "GFENCE") == 0)
+    {
+        if (msg->parm_count != 8)
+        {
+            LOG_ERR("GFENCE command requires exactly 8 parameter");
+            return false;
+        }
+    }
+    else if (strcmp(msg->parm[0], "APN") == 0)
+    {
+        if (msg->parm_count == 0)
+        {
+            LOG_ERR("APN command requires more than 0 parameter");
+            return false;
+        }
+    }
+    else if (strcmp(msg->parm[0], "HBT") == 0)
+    {
+        if (msg->parm_count != 2)
+        {
+            LOG_ERR("HBT command requires exactly 2 parameter");
+            return false;
+        }
+    }
+    else if (strcmp(msg->parm[0], "SERVER") == 0)
+    {
+         if (msg->parm_count == 0)
+        {
+            LOG_ERR("SERVER command requires more than 0 parameter");
+            return false;
+        }
+    }
+    else if (strcmp(msg->parm[0], "SIMPRI") == 0)
+    {
+        // SIMPRI 命令需要 1 个参数（SIM 卡优先级）
+        if (msg->parm_count != 1)
+        {
+            LOG_ERR("SIMPRI command requires exactly 1 parameter");
+            return false;
+        }
+    }
+
+    return true;
+}
+
+#endif
+
+/*********************************************************************
+**函数名称:  lte_cmd_handler
+**入口参数:  msg     --  AT命令消息结构体指针
+**出口参数:  无
+**函数功能:  LTE透传命令处理
+**返 回 值:  BLE_DATA_TYPE_AT_CMD 表示返回AT命令类型的数据
+*********************************************************************/
+static int lte_cmd_handler(at_cmd_struc* msg)
+{
+    char* lte_cmd_msg = NULL;    // LTE命令消息缓冲区
+    uint16_t remaining;            // 响应消息缓冲区的剩余空间
+    int offset = 0;             // 命令消息偏移量，用于追加参数
+    int ret = -1;                  // 函数返回值，默认为-1表示失败
+
+    // 动态分配内存存储告警消息
+    MY_MALLOC_BUFFER(lte_cmd_msg, LTE_CMD_BUF_SIZE);  // 分配内存，加 1 用于存储终止符
+    if(lte_cmd_msg == NULL)  // 内存分配失败
+    {
+        MY_LOG_ERR("Failed to allocate memory for LTE command message");  // 输出错误信息
+        return -1;  // 退出函数
+    }
+
+    remaining = sizeof(msg->resp_msg);  // 计算响应消息缓冲区的大小
+
+    LOG_INF("%s=>%s", __func__, msg->parm[0]);  // 输出函数名和命令名
+
+#if 0
+    // 参数判断逻辑（暂时注释掉）
+    if (!validate_lte_cmd_params(msg))
+    {
+        // 参数验证失败，生成错误响应
+        ret = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+        if (ret > 0 && ret < remaining)
+        {
+            msg->resp_length = ret;
+        }
+        LOG_INF("LTE command parameter validation failed");
+        return BLE_DATA_TYPE_AT_CMD;
+    }
+#endif
+
+    // 构建LTE命令消息，透传命令头
+    offset = snprintf(lte_cmd_msg, LTE_CMD_BUF_SIZE, "%s", msg->parm[0]);
+
+    // 追加命令参数
+    for (int i = 0; i < msg->parm_count; i++)
+    {
+        offset += snprintf(lte_cmd_msg + offset, LTE_CMD_BUF_SIZE, ",%s", msg->parm[i+1]);
+    }
+
+    // 追加命令结束符
+    snprintf(lte_cmd_msg + offset, LTE_CMD_BUF_SIZE, "#");
+
+    // 发送LTE命令
+    ret = lte_send_command("CMD", lte_cmd_msg);
+
+    // 释放动态分配的内存
+    if(lte_cmd_msg != NULL)
+    {
+        MY_FREE_BUFFER(lte_cmd_msg);
+        lte_cmd_msg = NULL;
+    }
+
+    // 检查命令发送是否成功
+    if(ret < 0)
+    {
+        MY_LOG_ERR("Failed to allocate memory for LTE command message");
+        snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+        return BLE_DATA_TYPE_AT_CMD;
+    }
+
+    // 生成成功响应消息
+    ret = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
+
+    // 检查响应消息是否生成成功
+    if (ret > 0 && ret < remaining)
+    {
+        msg->resp_length = ret;  // 设置响应消息的长度
+        LOG_INF("RETURN_%s_OK", msg->parm[0]);
+    }
+
+    // TODO: 后续修改回传数据
+    return BLE_DATA_TYPE_AT_CMD;
+}
 
 /*********************************************************************
 **函数名称:  set_work_mode
@@ -454,7 +686,7 @@ uint16_t at_recv_cmd_handler(at_cmd_struc *at_cmd_msg)
         LOG_INF("recv_cmd:par_num=%d,%s", at_cmd_msg->parm_count, at_cmd_msg->parm[PARM_1]);
     }
 #endif
-    // 匹配指令并执行对应处理函数
+    // 遍历 AT 命令表，查找匹配的命令
     for (index = 0; index < AT_CMD_TABLE_TOTAL; index++)
     {
         if (strcmp(at_cmd_attr_table[index].cmd_str, at_cmd_msg->parm[PARM_1]) == 0)
@@ -462,8 +694,18 @@ uint16_t at_recv_cmd_handler(at_cmd_struc *at_cmd_msg)
             if (at_cmd_attr_table[index].cmd_func != NULL)
             {
                 cmd_type = at_cmd_attr_table[index].cmd_func(at_cmd_msg);
+                return cmd_type;
             }
-            break;
+        }
+    }
+
+    // 遍历 LTE 命令表，查找匹配的命令
+    for (index = 0; index < LTE_CMD_TABLE_TOTAL; index++)
+    {
+        if (strcmp(lte_cmd_attr_table[index], at_cmd_msg->parm[PARM_1]) == 0)
+        {
+            cmd_type = lte_cmd_handler(at_cmd_msg);
+            return cmd_type;
         }
     }
     return cmd_type;
@@ -1655,11 +1897,13 @@ static int led_cmd_handler(at_cmd_struc* msg)
     if (strcmp(msg->parm[1], "ON") == 0)
     {
         display_value = 1;
+        lte_send_command(msg->parm[1], "1");
         my_send_msg(MOD_BLE, MOD_CTRL, MY_MSG_OPEN_LED_SHOW);
     }
     else if (strcmp(msg->parm[1], "OFF") == 0)
     {
         display_value = 0;
+        lte_send_command(msg->parm[1], "0");
         my_send_msg(MOD_BLE, MOD_CTRL, MY_MSG_CLOSE_LED_SHOW);
     }
     else

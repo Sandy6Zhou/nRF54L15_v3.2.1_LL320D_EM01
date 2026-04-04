@@ -11,6 +11,7 @@
 #define _MY_CMD_SETTING_H_
 
 #define AT_CMD_TABLE_TOTAL (sizeof(at_cmd_attr_table)/sizeof(at_cmd_attr_t))
+#define LTE_CMD_TABLE_TOTAL (sizeof(lte_cmd_attr_table)/sizeof(char*))
 
 #define RESP_STRING_LENGTH_MAX              BLE_SVC_RX_MAX_LEN
 #define CMD_STRING_LENGTH_MAX               128                 //暂定可接收cmd缓冲区大小

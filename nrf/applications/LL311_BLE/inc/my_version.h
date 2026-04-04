@@ -12,7 +12,15 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260330"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260401"
+/* 软件版本:        V1.0
+** 完成日期:        2026.04.01
+** 作    者:        曹阳 (caoyang@jimiiot.com)
+** 修改内容:        1.增加类似BLE+[命令]=[参数]的统一接口
+**                  2.增加指令透传统一接口。
+*/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260330"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.03.30
 ** 作    者:        周森达 (zhousenda@jimiiot.com)
