@@ -690,13 +690,11 @@ int at_cmd_str_analyse(char *str_data, char **tar_data, int limit, char startCha
 uint16_t at_recv_cmd_handler(at_cmd_struc *at_cmd_msg)
 {
     char *data_ptr, split_ch = ',';
-    uint8_t  cmd_Len, par_len;
+    uint8_t par_len;
     uint16_t cmd_type = 0;
     uint8_t index;
 
     data_ptr = at_cmd_msg->rcv_msg;
-    cmd_Len = strlen(data_ptr);
-    data_ptr[cmd_Len] = '\0';
 
     // 解析AT指令参数
     par_len = at_cmd_str_analyse(data_ptr, at_cmd_msg->parm, PARM_MAX, NULL, "#", split_ch);
@@ -747,7 +745,8 @@ uint16_t at_recv_cmd_handler(at_cmd_struc *at_cmd_msg)
 **           index      ---        匹配到卡号的索引
 **出口参数:  at_cmd_msg中更新响应消息内容和响应长度
 **函数功能:  执行NFC联动指令
-**返回值:    成功返回处理函数返回的BLE数据类型，未匹配指令或处理失败返回0
+**返回值:    成功返回处理函数返回的BLE数据类型，未匹配指令或命令解析失败返回0
+**          返回非0不代表命令执行成功，具体看对应的执行函数resp_msg回复
 *********************************************************************/
 uint16_t run_nfc_cmd(char *card_id, uint8_t *index)
 {
@@ -759,7 +758,7 @@ uint16_t run_nfc_cmd(char *card_id, uint8_t *index)
     //遍历匹配卡号
     for (i = 0; i < g_device_cmd_config.nfctrig_table.count; i++)
     {
-        /* 内容匹配 */
+        /* 卡号匹配 */
         if (strcmp(g_device_cmd_config.nfctrig_table.nfctrig_rule[i].nfctrig_nfc_no, card_id) == 0)
         {
             found = 1;
@@ -781,6 +780,33 @@ uint16_t run_nfc_cmd(char *card_id, uint8_t *index)
     return cmd_type;
 }
 
+/********************************************************************
+**函数名称:  run_lte_cmd
+**入口参数:  at_cmd_msg      ---   指令结构体指针，包含接收的指令和响应存储区域(输入/输出)  
+**出口参数:  at_cmd_msg中更新响应消息内容和响应长度
+**函数功能:  执行LTE+CMD指令中的command
+**返回值:    未匹配指令或命令解析失败返回0
+**          返回非0不代表command执行成功，具体看对应的执行函数resp_msg回复
+*********************************************************************/
+uint16_t run_lte_cmd(at_cmd_struc *at_cmd_msg)
+{
+    
+    uint16_t cmd_type = 0;
+
+    MY_LOG_INF("at_cmd_msg->rcv_msg:%s", at_cmd_msg->rcv_msg);
+    MY_LOG_INF("at_cmd_msg->rcv_msglen:%d", strlen(at_cmd_msg->rcv_msg));
+
+    //执行命令
+    cmd_type = at_recv_cmd_handler(at_cmd_msg);
+
+    if (!cmd_type)
+    {
+        //构造回复(命令无效)
+        sprintf(at_cmd_msg->resp_msg, "Invalid command parameter");
+    }
+
+    return cmd_type;
+}
 
 /********************************************************************
 **函数名称:  remalm_cmd_handler
@@ -1981,7 +2007,7 @@ param_invalid:
 ** 函数功能:  处理 NFCTRIG 指令，实现 NFC 卡号与执行指令的关联功能
 **
 ** 指令格式说明:
-** 1. 添加/设置: NFCTRIG,ADD,[NFC NO.],[Command]#
+** 1. 添加/设置: NFCTRIG,ADD,[NFC NO.],"[Command]"#
 **    - 功能: 绑定卡号与指令。
 ** 2. 查询:     NFCTRIG,CHECK# 
 **    - 功能: 查询当前所有已绑定的规则。
@@ -2049,7 +2075,8 @@ static int nfctrig_cmd_handler(at_cmd_struc* msg)
         if (g_device_cmd_config.nfctrig_table.count >= NFCTRIG_MAX_RULES)
         {
             LOG_INF("table full");
-            goto param_invalid;
+            msg->resp_length = snprintf(msg->resp_msg, remaining, "Card limit reached. Please delete before adding.");
+            return BLE_DATA_TYPE_AT_CMD;
         }
 
         /* 2. 查重 */
@@ -2058,8 +2085,9 @@ static int nfctrig_cmd_handler(at_cmd_struc* msg)
             //比较卡号
             if (strcmp((char*)g_device_cmd_config.nfctrig_table.nfctrig_rule[i].nfctrig_nfc_no, msg->parm[2]) == 0)
             {
-                LOG_INF("NFC already exists");
-                goto param_invalid;
+                LOG_INF("The card number already exists.Please delete it before setting again.");
+                msg->resp_length = snprintf(msg->resp_msg, remaining, "The card number already exists.Please delete it before setting again.");
+                return BLE_DATA_TYPE_AT_CMD;
             }
         }
             /* 3. 插入 */
@@ -2077,7 +2105,7 @@ static int nfctrig_cmd_handler(at_cmd_struc* msg)
             g_device_cmd_config.nfctrig_table.nfctrig_rule[index].nfctrig_command);
 
         /* 生成成功响应 */
-        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_%s_OK", msg->parm[0], msg->parm[1]);
         return BLE_DATA_TYPE_AT_CMD;
 
     }
@@ -2164,7 +2192,7 @@ static int nfctrig_cmd_handler(at_cmd_struc* msg)
             if (found)
             {
                 LOG_INF("%s=>DEL,%s", __func__, msg->parm[2]);
-                msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_NFCTRIG %s Delete Success.", msg->parm[2]);
+                msg->resp_length = snprintf(msg->resp_msg, remaining, "NFCTRIG %s Delete Success.", msg->parm[2]);
                 return BLE_DATA_TYPE_AT_CMD;
             }
             else
@@ -2384,7 +2412,8 @@ static int nfcauth_cmd_handler(at_cmd_struc* msg)
             if (g_device_cmd_config.nfcauth_card_count >= 10)
             {
                 LOG_INF("%s=>card list full", __func__);
-                goto param_invalid;
+                msg->resp_length = snprintf(msg->resp_msg, remaining, "Card limit reached. Please delete before adding.");
+                return BLE_DATA_TYPE_AT_CMD;
             }
             index = g_device_cmd_config.nfcauth_card_count;
             g_device_cmd_config.nfcauth_card_count++;
@@ -2465,7 +2494,8 @@ static int nfcauth_cmd_handler(at_cmd_struc* msg)
             if (g_device_cmd_config.nfcauth_card_count >= 10)
             {
                 LOG_INF("%s=>card list full", __func__);
-                goto param_invalid;
+                msg->resp_length = snprintf(msg->resp_msg, remaining, "Card limit reached. Please delete before adding.");
+                return BLE_DATA_TYPE_AT_CMD;
             }
             index = g_device_cmd_config.nfcauth_card_count;
             g_device_cmd_config.nfcauth_card_count++;
@@ -2503,7 +2533,7 @@ static int nfcauth_cmd_handler(at_cmd_struc* msg)
             memset(g_device_cmd_config.nfcauth_cards, 0, sizeof(g_device_cmd_config.nfcauth_cards));
             g_device_cmd_config.nfcauth_card_count = 0;
             LOG_INF("%s=>DEL ALL", __func__);
-            msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_NFC Delete ALL Success.");
+            msg->resp_length = snprintf(msg->resp_msg, remaining, "NFC Delete ALL Success.");
             return BLE_DATA_TYPE_AT_CMD;
         }
         /* 删除指定卡号 */
@@ -2533,7 +2563,7 @@ static int nfcauth_cmd_handler(at_cmd_struc* msg)
             if (found)
             {
                 LOG_INF("%s=>DEL,%s", __func__, msg->parm[2]);
-                msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_NFC %s Delete Success.", msg->parm[2]);
+                msg->resp_length = snprintf(msg->resp_msg, remaining, "NFC %s Delete Success.", msg->parm[2]);
                 return BLE_DATA_TYPE_AT_CMD;
             }
             else
@@ -2549,7 +2579,6 @@ static int nfcauth_cmd_handler(at_cmd_struc* msg)
         /* 查询所有已设置卡号列表 */
         if (msg->parm_count == 1)
         {
-            temp_len = snprintf(temp_buf, sizeof(temp_buf), "RETURN_");
             for (i = 0; i < g_device_cmd_config.nfcauth_card_count; i++)
             {
                 if (i == g_device_cmd_config.nfcauth_card_count - 1)

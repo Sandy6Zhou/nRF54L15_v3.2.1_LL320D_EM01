@@ -353,36 +353,31 @@ static int is_need_location_upload(const uint8_t *card_id, uint8_t id_len)
 /********************************************************************
 **函数名称:  nfc_card_detected
 **入口参数:  card_id     ---        输入，NFC卡号指针
-            id_len      ---        输入，卡号长度
             card_index  ---        输出，匹配的授权卡片索引
 **出口参数:  card_index  ---        输出，存储匹配的授权卡片索引
 **函数功能:  检测NFC卡片是否有效，验证卡片ID、时间范围、解锁次数等条件
 **返 回 值:  -1表示验证失败，1表示需要位置验证，0表示验证通过
 *********************************************************************/
-int nfc_card_detected(uint8_t *card_id, uint8_t id_len, uint8_t *card_index)
+int nfc_card_detected(uint8_t *card_id, uint8_t *card_index)
 {
     uint8_t i;
     int time_check_result;
     time_t current_time;
     NfcAuthCard *current_card;
-    char card_id_str[33];
 
     /* 初始化当前卡片索引为无效值 */
     current_card_index = -1;
 
     /* 检查输入参数有效性 */
-    if (card_id == NULL || id_len == 0)
+    if (card_id == NULL)
     {
         return -1;
     }
 
-    /* 将二进制卡号转换为十六进制字符串，以与配置中的字符串格式匹配 */
-    hex2hexstr(card_id, id_len, (uint8_t *)card_id_str, sizeof(card_id_str));
-
     /* 遍历所有授权卡片 */
     for (i = 0; i < g_device_cmd_config.nfcauth_card_count; i++)
     {
-        if (strcmp(card_id_str, g_device_cmd_config.nfcauth_cards[i].nfc_no) == 0)
+        if (strcmp(card_id, g_device_cmd_config.nfcauth_cards[i].nfc_no) == 0)
         {
             /* 记录匹配的卡片索引 */
             current_card_index = i;
@@ -462,24 +457,29 @@ void handle_nfc_card_event(uint8_t *card_id, uint8_t id_len)
 {
     int ret;
     uint8_t card_index = 0;
+    char card_id_str[33] = {0}; 
 
     /* 重复刷卡缓存记录检查 */
     ret = is_need_location_upload(card_id, id_len);
     if (ret == 0)
     {
-        MY_LOG_INF("repeated swiping of the card id:%s", card_id);
+        MY_LOG_INF("repeated swiping of the card id:%s", card_id_str);
         return ;
     }
 
+    /* 将二进制卡号转换为十六进制字符串，以与配置中的字符串格式匹配 */
+    hex2hexstr(card_id, id_len, (uint8_t *)card_id_str, sizeof(card_id_str));
+
     //执行NFC联动指令
-    ret = run_nfc_cmd(card_id, &card_index);
+    ret = run_nfc_cmd(card_id_str, &card_index);
     if (ret)
     {
-        MY_LOG_INF("Command executed success: cmd_type:%d; command:%s", ret, g_device_cmd_config.nfctrig_table.nfctrig_rule[card_index].nfctrig_command);
+        //命令匹配成功，具体执行结果看命令响应
+        MY_LOG_INF("Command matched success: cmd_type:%d; command:%s", ret, g_device_cmd_config.nfctrig_table.nfctrig_rule[card_index].nfctrig_command);
     }
     else
     {
-        MY_LOG_INF("Command executed fail: cmd_type:%d", ret);
+        MY_LOG_INF("Command not matched or failed to parse: cmd_type:%d; card_id:%s", ret, card_id_str);
     }
 
     card_index = 0;
@@ -487,7 +487,7 @@ void handle_nfc_card_event(uint8_t *card_id, uint8_t id_len)
     // TODO 4G就绪后发送NFC刷卡事件：BLE+ALARM=<告警类型>(NFC),< 时间戳 >,< 附加信息 >(NFC卡号)
     my_send_msg(MOD_CTRL, MOD_LTE, MY_MSG_LTE_PWRON);
 
-    ret = nfc_card_detected(card_id, id_len, &card_index);
+    ret = nfc_card_detected(card_id_str, &card_index);
     /* 符合开锁规则 */
     if (ret == 0)
     {

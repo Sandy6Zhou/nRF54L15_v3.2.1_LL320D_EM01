@@ -21,14 +21,11 @@ char LTE_PWRON[] = "LTE+PWRON=";
 char LTE_BTSET[] = "LTE+BTSET=";
 char LTE_NTCSET[] = "LTE+NTCSET=";
 char LTE_TIME[] = "LTE+TIME=";
-char LTE_NFCAUTH[] = "LTE+NFCAUTH=";
-char LTE_NFCTRIG[] = "LTE+NFCTRIG=";
 char LTE_TRANSMIT[] = "LTE+TRANSMIT=";
 char LTE_LOCK[] = "LTE+LOCK=";
-char LTE_BUZZER[] = "LTE+BUZZER=";
-char LTE_LED[] = "LTE+LED=";
 char LTE_FOTA[] = "LTE+FOTA=";
 char LTE_STATE[] = "LTE+STATE=";
+char LTE_CMD[] = "LTE+CMD=";
 
 /* LTE电源状态跟踪 */
 static bool g_lte_power_state = false;  // false=关闭, true=开启
@@ -46,6 +43,10 @@ static const struct device *lte_uart_dev = DEVICE_DT_GET(LTE_UART_NODE);
 
 #define LTE_PWR_CTRL_NODE DT_ALIAS(lte_pwr_ctrl)
 static const struct gpio_dt_spec lte_pwr_gpio = GPIO_DT_SPEC_GET(LTE_PWR_CTRL_NODE, gpios);
+
+/* 接收LTE+CMD响应回复缓冲区大小 */
+#define LTE_CMD_RESPBUF_SIZE 1024
+char g_lte_cmd_resp_buf[LTE_CMD_RESPBUF_SIZE] = {0};
 
 // 定义一个串口发送状态信号量，初始值为1(表示UART空闲)
 static struct k_sem s_TxDoneSem;
@@ -934,44 +935,6 @@ static int my_lte_handle_ntc_set(char *data)
 }
 
 /*
-LTE+NFCAUTH=SET,<NFC.NO>,<OP>,<LAT>,<LON>,<半径>,<startTime>,<endTime>,<Unlock Times>
-LTE+NFCAUTH=PSET,<NFC.NO>
-LTE+NFCAUTH=DEL,ALL
-LTE+NFCAUTH=DEL,<NFC.NO>
-LTE+NFCAUTH=CHECK,<NFC.NO>
-*/
-static int my_lte_handle_nfc_auth(char *data)
-{
-    char cmd_name[16] = {0};
-    char val_buff[16] = {0};
-
-    my_get_str_at_pos(data, 0, ',', cmd_name, sizeof(cmd_name));
-
-    if (CMD_EQUAL(cmd_name, "SET"))
-    {
-    }
-    else if (CMD_EQUAL(cmd_name, "PSET"))
-    {
-    }
-    else if (CMD_EQUAL(cmd_name, "DEL"))
-    {
-    }
-    else if (CMD_EQUAL(cmd_name, "CHECK"))
-    {
-    }
-
-    return 0;
-}
-
-/*
- * LTE+NFCTRIG=<联动卡号>,<Command>
- */
-static int my_lte_handle_nfc_trig(char *data)
-{
-    return 0;
-}
-
-/*
 0: 开锁
 LTE+LOCK=0,<Time>,<Delay>
 
@@ -1009,18 +972,70 @@ static int my_lte_handle_transmit(char *data)
     return 0;
 }
 
-static int my_lte_handle_buzzer(char *data)
-{
-    return 0;
-}
-
-static int my_lte_handle_led(char *data)
-{
-    return 0;
-}
-
 static int my_lte_handle_fota(char *data)
 {
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  my_lte_handle_cmd
+**入口参数:  data      ---   接收4G的数据
+**函数功能:  执行LTE+CMD=<号码>,<指令内容>,并根据指令内容的执行回复对应的结果给4G模块
+**            <指令内容>与通过蓝牙指令下发下来的内容一致，按照相关指令格式填写即可
+**          如:LTE+CMD=111,VERSION/LTE+CMD=111,VERSION#/末尾加不加#都可以
+**          LTE+CMD=111,NFCTRIG,ADD,1234456789,
+**          "NFCAUTH,SET,88040FBE99050B,+22277120,13516763,999900,2603200000,2603201200,1"
+*********************************************************************/
+static int my_lte_handle_cmd(char *data)
+{
+
+    at_cmd_struc at_cmd_msg = {0};
+    int len = 0;
+    char id[16] = {0};
+    MSG_S msg;
+    char *resp_msg;
+
+    memset(g_lte_cmd_resp_buf, 0, sizeof(g_lte_cmd_resp_buf));
+
+    //后续有参数
+    if (my_get_str_at_pos(data, 0, ',', id, sizeof(id)))
+    {
+        MY_LOG_INF("data: %s;len: %d", data, strlen(data));
+        //指向command部分的起始位置
+        strcpy(at_cmd_msg.rcv_msg, data + strlen(id) + 1); // +1跳过逗号
+
+        //执行指令内容
+        run_lte_cmd(&at_cmd_msg);
+
+        // 拼接回复消息
+        snprintf(g_lte_cmd_resp_buf, LTE_CMD_RESPBUF_SIZE, "LTE+CMD=%s,%s\r\n", id, at_cmd_msg.resp_msg);
+        g_lte_cmd_resp_buf[LTE_CMD_RESPBUF_SIZE - 1] = '\0'; // 确保字符串终止
+    }
+    else
+    {
+        sprintf(g_lte_cmd_resp_buf,"LTE+CMD=%s,Missing command parameter\r\n", id);
+    }
+
+    MY_LOG_INF("lte handle cmd resp: %s", g_lte_cmd_resp_buf);
+
+    // 动态分配内存存储回复消息
+    len = strlen(g_lte_cmd_resp_buf);
+    MY_MALLOC_BUFFER(resp_msg, len + 1);
+    if(resp_msg == NULL)
+    {
+        MY_LOG_ERR("resp_msg malloc failed");
+        return 0;
+    }
+
+    memcpy(resp_msg, g_lte_cmd_resp_buf, len);
+    resp_msg[len] = '\0';  // 确保字符串终止
+
+    // 构建消息结构体并发送给LTE模块
+    msg.msgID = MY_MSG_LTE_BLE_DATA;
+    msg.pData = resp_msg;
+    msg.DataLen = len;
+    my_send_msg_data(MOD_LTE,MOD_LTE, &msg);
+    
     return 0;
 }
 
@@ -1063,16 +1078,6 @@ int my_lte_parse_cmd(char *cmd, int cmd_len)
         ret = my_lte_handle_ntc_set(p + strlen(LTE_NTCSET));
         goto END;
     }
-    else if (CMD_MATCHED(cmd, LTE_NFCAUTH))
-    {
-        ret = my_lte_handle_nfc_auth(p + strlen(LTE_NFCAUTH));
-        goto END;
-    }
-    else if (CMD_MATCHED(cmd, LTE_NFCTRIG))
-    {
-        ret = my_lte_handle_nfc_trig(p + strlen(LTE_NFCTRIG));
-        goto END;
-    }
     else if (CMD_MATCHED(cmd, LTE_LOCK))
     {
         ret = my_lte_handle_lock(p + strlen(LTE_LOCK));
@@ -1083,19 +1088,14 @@ int my_lte_parse_cmd(char *cmd, int cmd_len)
         ret = my_lte_handle_transmit(p + strlen(LTE_TRANSMIT));
         goto END;
     }
-    else if (CMD_MATCHED(cmd, LTE_BUZZER))
-    {
-        ret = my_lte_handle_buzzer(p + strlen(LTE_BUZZER));
-        goto END;
-    }
-    else if (CMD_MATCHED(cmd, LTE_LED))
-    {
-        ret = my_lte_handle_led(p + strlen(LTE_LED));
-        goto END;
-    }
     else if (CMD_MATCHED(cmd, LTE_FOTA))
     {
         ret = my_lte_handle_fota(p + strlen(LTE_FOTA));
+        goto END;
+    }
+    else if (CMD_MATCHED(cmd, LTE_CMD))
+    {
+        ret = my_lte_handle_cmd(p + strlen(LTE_CMD));
         goto END;
     }
 
