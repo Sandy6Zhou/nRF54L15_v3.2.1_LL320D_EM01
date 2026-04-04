@@ -208,4 +208,28 @@ time_t time_str_to_timestamp(const char *time_str);
 **           2. 比较当前时间戳是否在起止时间戳之间
 *********************************************************************/
 int is_time_in_range(const char *start_time, const char *end_time, time_t current_ts);
+
+/********************************************************************
+**函数名称:  my_clock_get_time
+**入口参数:  t - 指向 tm 结构体的指针，用于存储转换后的时间信息
+**出口参数:  无
+**功能描述:  获取当前系统时间并转换为 tm 结构体格式
+**返 回 值:  无
+*********************************************************************/
+void my_clock_get_time(struct tm *t);
+
+/********************************************************************
+**函数名称:  custom_timestamp_formatter
+**入口参数:  output 日志输出结构体指针
+**           timestamp 原始时间戳值（未使用，保留为兼容接口）
+**           printer 时间戳打印函数指针
+**出口参数:  无
+**函数功能:  通过调用 my_clock_get_time() 获取当前系统时间，
+**           然后将其格式化为 "[YYYY-MM-DD HH:MM:SS] " 格式的字符串，
+**           最后通过传入的 printer 函数将格式化后的时间戳输出到日志系统。
+**返 回 值:  打印的字符数
+*********************************************************************/
+int custom_timestamp_formatter(const struct log_output *output, const log_timestamp_t timestamp,
+                               const log_timestamp_printer_t printer);
+
 #endif

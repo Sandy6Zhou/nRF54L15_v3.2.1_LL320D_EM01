@@ -12,7 +12,14 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260401"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260402"
+/* 软件版本:        V1.0
+** 完成日期:        2026.04.02
+** 作    者:        曹阳 (caoyang@jimiiot.com)
+** 修改内容:        增加与4G进行时间同步，更改系统时间和日志时间戳
+*/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260401"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.04.02
 ** 作    者:        吴楚庆 (wuchuqing@jimiiot.com)

@@ -489,6 +489,9 @@ int main(void)
     int err = 0;
     MSG_S msg;
 
+    // 设置自定义日志时间戳格式化函数
+    log_custom_timestamp_set(custom_timestamp_formatter);
+
     my_param_load_config();
 
     psa_crypto_init();  // PSA库初始化

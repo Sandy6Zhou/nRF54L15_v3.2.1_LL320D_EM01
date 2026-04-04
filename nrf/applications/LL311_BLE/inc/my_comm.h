@@ -42,6 +42,7 @@
 
 /* Zephyr系统功能 */
 #include <zephyr/logging/log.h>
+#include <zephyr/logging/log_output_custom.h>
 #include <zephyr/settings/settings.h>
 #include <zephyr/sys/reboot.h>
 #include <zephyr/sys/util.h>

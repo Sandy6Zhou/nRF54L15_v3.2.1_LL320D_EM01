@@ -914,6 +914,9 @@ static int my_lte_handle_time(char *data)
     my_get_str_at_pos(data, 0, ',', utc_seconds, sizeof(utc_seconds));
     my_get_str_at_pos(data, 1, ',', zone_in_min, sizeof(zone_in_min));
 
+    // 设置系统时间
+    my_set_system_time(atoll(utc_seconds));
+
     return 0;
 }
 

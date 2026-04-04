@@ -963,3 +963,48 @@ int is_time_in_range(const char *start_time, const char *end_time, time_t curren
         return 0;
     }
 }
+
+/********************************************************************
+**函数名称:  my_clock_get_time
+**入口参数:  t - 指向 tm 结构体的指针，用于存储转换后的时间信息
+**出口参数:  无
+**功能描述:  获取当前系统时间并转换为 tm 结构体格式
+**返 回 值:  无
+*********************************************************************/
+void my_clock_get_time(struct tm *t)
+{
+    time_t unix_time;  // 存储 Unix 时间戳
+
+    // 获取当前系统时间的 Unix 时间戳（秒）
+    unix_time = my_get_system_time_sec();
+
+    // 将 Unix 时间戳转换为 UTC 时间的 tm 结构体格式
+    gmtime_r(&unix_time, t);
+}
+
+/********************************************************************
+**函数名称:  custom_timestamp_formatter
+**入口参数:  output 日志输出结构体指针
+**           timestamp 原始时间戳值（未使用，保留为兼容接口）
+**           printer 时间戳打印函数指针
+**出口参数:  无
+**函数功能:  通过调用 my_clock_get_time() 获取当前系统时间，
+**           然后将其格式化为 "[YYYY-MM-DD HH:MM:SS] " 格式的字符串，
+**           最后通过传入的 printer 函数将格式化后的时间戳输出到日志系统。
+**返 回 值:  打印的字符数
+*********************************************************************/
+int custom_timestamp_formatter(const struct log_output *output,
+                               const log_timestamp_t timestamp,
+                               const log_timestamp_printer_t printer)
+{
+    struct tm t;  // 存储时间信息的结构体
+
+    // 获取当前系统时间并转换为 tm 结构体格式
+    my_clock_get_time(&t);
+
+    // 格式化时间戳为 "[YYYY-MM-DD HH:MM:SS] " 格式并打印
+    // 注意：tm_year 需要加上 1900，tm_mon 需要加上 1（因为 tm_mon 范围是 0-11）
+    return printer(output, "[%04d-%02d-%02d %02d:%02d:%02d] ",
+                  t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
+                  t.tm_hour, t.tm_min, t.tm_sec);
+}
