@@ -430,11 +430,12 @@ uint8_t nfc_reader_a_anticoll(uint8_t cascade_level)
         memcpy(PICC_A.UID + (cascade_level * 4), inbuf, 4);
         PICC_A.BCC[cascade_level] = inbuf[4];
 
-        /* 校验BCC */
+        /* 校验BCC: UID[0] ^ UID[1] ^ UID[2] ^ UID[3] ^ BCC 应该等于 0 */
         if ((PICC_A.UID[cascade_level * 4] ^
              PICC_A.UID[cascade_level * 4 + 1] ^
              PICC_A.UID[cascade_level * 4 + 2] ^
-             PICC_A.UID[cascade_level * 4 + 3]) != PICC_A.BCC[cascade_level])
+             PICC_A.UID[cascade_level * 4 + 3] ^
+             PICC_A.BCC[cascade_level]) != 0)
         {
             result = FM175XX_COMM_ERR;
         }
@@ -584,6 +585,42 @@ uint8_t nfc_reader_a_card_activate(void)
         if (result != FM175XX_SUCCESS)
         {
             return result;
+        }
+    }
+
+    /* 重组UID: 处理级联标志0x88
+     * 4字节UID: 直接返回 UID[0-3]
+     * 7字节UID: 第一级包含0x88，需要重组为 UID[1-3] + UID[4-6]
+     * 10字节UID: 类似处理
+     */
+    if (cascade_level == 2 && PICC_A.UID[0] == 0x88)
+    {
+        /* 7字节UID: 移除级联标志，左移重组
+         * 原: 88 XX YY ZZ | AA BB CC DD
+         * 后: XX YY ZZ AA BB CC DD
+         */
+        PICC_A.UID[0] = PICC_A.UID[1];
+        PICC_A.UID[1] = PICC_A.UID[2];
+        PICC_A.UID[2] = PICC_A.UID[3];
+        PICC_A.UID[3] = PICC_A.UID[4];
+        PICC_A.UID[4] = PICC_A.UID[5];
+        PICC_A.UID[5] = PICC_A.UID[6];
+        PICC_A.UID[6] = PICC_A.UID[7];
+        LOG_DBG("7-byte UID reassembled, CT removed");
+    }
+    else if (cascade_level == 3)
+    {
+        /* 10字节UID: 需要处理两个级联标志 */
+        if (PICC_A.UID[0] == 0x88)
+        {
+            /* 第一级有级联标志 */
+            memmove(&PICC_A.UID[0], &PICC_A.UID[1], 11); /* 左移1字节 */
+            if (PICC_A.UID[3] == 0x88)
+            {
+                /* 第二级也有级联标志 */
+                memmove(&PICC_A.UID[3], &PICC_A.UID[4], 7); /* 再左移1字节 */
+            }
+            LOG_DBG("10-byte UID reassembled, CT removed");
         }
     }
 

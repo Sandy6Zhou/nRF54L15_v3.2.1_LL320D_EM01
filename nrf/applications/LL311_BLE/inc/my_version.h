@@ -12,7 +12,16 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260401"
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260401"
+/* 软件版本:        V1.0
+** 完成日期:        2026.04.01
+** 作    者:        Harrison Wu (wuyujiao@jimiiot.com)
+** 修改内容:        1.修正NFC BCC校验问题；
+**                 2.修正NFC 7字节及10字节多级联将级联标志处理为UUID的问题
+**                 3.在main中将NFC的UUID打印改为LOG_HEXDUMP_INF.
+*/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260401"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.04.01
 ** 作    者:        Harrison Wu (wuyujiao@jimiiot.com)
