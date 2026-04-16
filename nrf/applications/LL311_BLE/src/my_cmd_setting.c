@@ -41,7 +41,7 @@ DeviceCmdConfig g_device_cmd_config =
     // 设备工作模式配置
     .workmode_config =
     {
-        .current_mode = MY_MODE_SHUTDOWN,
+        .current_mode = MY_MODE_SMART,
         .long_battery =
         {
             .reporting_interval_min = 240,
@@ -1459,6 +1459,12 @@ param_invalid:
     return BLE_DATA_TYPE_AT_CMD;
 }
 
+void shutdown_timeout_timer(void *param)
+{
+    // 关机定时器到期，发送关机消息
+       my_send_msg(MOD_MAIN, MOD_MAIN, MY_MSG_SHUTDOWN);
+}
+
 /********************************************************************
 **函数名称:  pwsave_cmd_handler
 **入口参数:  msg      ---        AT指令结构体指针
@@ -1487,7 +1493,9 @@ static int pwsave_cmd_handler(at_cmd_struc* msg)
             /* 根据指令说明，立即回复 "Poweroff OK" */
             msg->resp_length = snprintf(msg->resp_msg, remaining, "Poweroff OK");
 
-            //TODO 具体逻辑处理
+            // 启动关机定时器，让蓝牙接收到回复，10毫秒后触发关机
+            my_start_timer(MY_TIMER_SHUTDOWN, 10, false, shutdown_timeout_timer);
+
             LOG_INF("PWRSAVE: Device will enter low-power transport state");
         }
         else

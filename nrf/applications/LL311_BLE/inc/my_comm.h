@@ -149,6 +149,7 @@ typedef enum
     MY_TIMER_TEST,           // 1
     // MY_TIMER_WDT_FEED,       /* 看门狗喂狗定时器 */
     MY_TIMER_LTE_POWER,      // LTE电源控制定时器
+    MY_TIMER_SHUTDOWN,       // 关机定时器
 
     MY_TIMER_MAX_ID,
 } MY_E_TIMER;
@@ -224,6 +225,8 @@ typedef enum
     MY_MSG_BLE_LOCK_RESULT,     /* 蓝牙开/关锁结果通知消息 */
 
     MY_MSG_LTE_BLE_DATA,        /* 蓝牙指令数据 */
+
+    MY_MSG_SHUTDOWN,            /* 关机消息 */
 } MY_MAIN_TASK_MSG;
 
 /* ========== 集中引用所有模块头文件 ========== */

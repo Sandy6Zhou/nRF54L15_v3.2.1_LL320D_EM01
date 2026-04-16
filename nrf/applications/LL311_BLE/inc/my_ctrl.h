@@ -171,4 +171,17 @@ void my_set_buzzer_mode(int buzzer_mode);
 *********************************************************************/
 void send_alarm_message_to_lte(alarm_type_t alarm_type, const char *additional_info);
 
+/********************************************************************
+**函数名称:  go_to_system_off
+**入口参数:  无
+**出口参数:  无
+**函数功能:  进入系统深度休眠
+**返 回 值:  无
+**功能描述:  1. 清除 RESETREAS 避免立即唤醒
+**           2. 配置唤醒引脚
+**           3. 延迟 2 秒确保日志输出
+**           4. 进入 System OFF 模式
+*********************************************************************/
+void go_to_system_off(void);
+
 #endif /* _MY_CTRL_H_ */

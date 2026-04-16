@@ -294,9 +294,6 @@ void switch_work_mode(MY_WORK_MODE mode)
         return;
     }
 
-    /* 切换工作模式 */
-    g_device_cmd_config.workmode_config.current_mode = mode;
-
     // 根据工作模式设置对应的开机原因
     switch (mode)
     {
@@ -312,12 +309,18 @@ void switch_work_mode(MY_WORK_MODE mode)
             boot_reason = LTE_BOOT_REASON_SMART;
             break;
 
+        case MY_MODE_SHUTDOWN:
+            go_to_system_off();
+            return;
+
         default:
             boot_reason = LTE_BOOT_REASON_RESERVED;
             break;
     }
     set_lte_boot_reason(boot_reason);
 
+    /* 切换工作模式 */
+    g_device_cmd_config.workmode_config.current_mode = mode;
     my_send_msg(MOD_MAIN, MOD_MAIN, MY_MSG_WORK_MODE_SWITCH);
 
     snprintf(buf, sizeof(buf), "%d", mode);
@@ -665,6 +668,14 @@ int main(void)
 
             case MY_MSG_DFU_COMPLETE:
                 MY_LOG_INF("DFU complete received");
+                break;
+
+            case MY_MSG_SHUTDOWN:
+                if (g_device_cmd_config.pwsave_sw == 1)
+                {
+                    g_device_cmd_config.pwsave_sw = 0; // 低功耗运输状态关闭
+                    switch_work_mode(MY_MODE_SHUTDOWN); // 切换到关机模式
+                }
                 break;
 
             default:

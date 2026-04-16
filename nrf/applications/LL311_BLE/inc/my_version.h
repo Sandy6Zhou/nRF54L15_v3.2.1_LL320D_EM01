@@ -12,7 +12,15 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260408"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260410"
+/* 软件版本:        V1.0
+** 完成日期:        2026.04.10
+** 作    者:        曹阳 (caoyang@jimiiot.com)
+** 修改内容:        1.增加PWRSAVE,ON#指令的实现，发送该指令设备关机，系统进入深度睡眠模式。
+**                  2.添加按键唤醒功能，按键按下后，系统退出深度睡眠模式。
+***/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260408"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.04.08
 ** 作    者:        曹阳 (caoyang@jimiiot.com)

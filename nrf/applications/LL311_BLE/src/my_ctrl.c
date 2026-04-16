@@ -21,7 +21,6 @@
 /* 注册控制模块日志 */
 LOG_MODULE_REGISTER(my_ctrl, LOG_LEVEL_INF);
 
-#define WAKEUP_PIN_PSEL  4   /* P0.4 -> PSEL = 4 */
 /* 循环定时器周期：50ms */
 #define KEY_POLL_PERIOD_MS   50
 /* 长按阈值：1.5秒 = 30个周期 */
@@ -526,11 +525,9 @@ void handle_nfc_card_event(uint8_t *card_id, uint8_t id_len)
 *********************************************************************/
 static void enable_wakeup_pin(void)
 {
-    /* 1. 配置 P0.4 为输入，并根据外部电路选择上拉/下拉 */
-    nrf_gpio_cfg_input(WAKEUP_PIN_PSEL, NRF_GPIO_PIN_PULLUP);
+    /*  配置 P1.9 为输入，并根据外部电路选择上拉/下拉,配置 SENSE 条件，低电平唤醒*/
+    nrf_gpio_cfg_sense_input(NRF_GPIO_PIN_MAP(1, 9), NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_SENSE_LOW);
 
-    /* 2. 配置 SENSE 条件，低电平唤醒 */
-    nrf_gpio_cfg_sense_set(WAKEUP_PIN_PSEL, NRF_GPIO_PIN_SENSE_LOW);
 }
 
 /********************************************************************
@@ -544,7 +541,7 @@ static void enable_wakeup_pin(void)
 **           3. 延迟 2 秒确保日志输出
 **           4. 进入 System OFF 模式
 *********************************************************************/
-static void go_to_system_off(void)
+void go_to_system_off(void)
 {
     MY_LOG_INF("Config wakeup pin and enter System OFF");
 
@@ -552,7 +549,6 @@ static void go_to_system_off(void)
     nrf_reset_resetreas_clear(NRF_RESET, 0xFFFFFFFF);
 
     enable_wakeup_pin();
-
     k_sleep(K_SECONDS(2));// 确保上面的日志有打印出来
 
     /* 进入 System OFF（深度睡眠） */
