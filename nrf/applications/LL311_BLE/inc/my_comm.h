@@ -116,6 +116,7 @@ typedef enum
     ALARM_SEPARATE,         // 蓝牙分离告警
     ALARM_NFC,              // NFC告警
     ALARM_CUT,              // 剪线告警
+    ALARM_LOCKPIN,          // 锁销状态告警
     ALARM_OTHER,            // 其他类型告警
 } alarm_type_t;
 

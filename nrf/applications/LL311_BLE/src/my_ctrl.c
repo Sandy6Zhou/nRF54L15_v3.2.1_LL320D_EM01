@@ -213,7 +213,7 @@ void send_alarm_message_to_lte(alarm_type_t alarm_type, const char *additional_i
 
         case ALARM_NFC:
             alarm_str = "NFC";
-            // TODO: 后续补充告警信息和上报方式。
+            rpt = REPORT_MODE_GPRS;//NFC刷卡事件上报固定方式为GPRS模式
             break;
 
         case ALARM_CUT:
@@ -221,7 +221,10 @@ void send_alarm_message_to_lte(alarm_type_t alarm_type, const char *additional_i
             rpt = g_device_cmd_config.lockpincyt_report;
             break;
 
-        // TODO: 遗漏了一个锁销状态告警，需要后续补充。
+        case ALARM_LOCKPIN:
+            alarm_str = "LOCKPIN";
+            rpt = g_device_cmd_config.pinstat_report;
+            break;
 
         default:
             MY_LOG_ERR("unknown alarm type");
@@ -490,8 +493,10 @@ void handle_nfc_card_event(uint8_t *card_id, uint8_t id_len)
         MY_LOG_INF("Command not matched or failed to parse: cmd_type:%d; card_id:%s", ret, card_id_str);
     }
 
-    // TODO 4G就绪后发送NFC刷卡事件：BLE+ALARM=<告警类型>(NFC),< 时间戳 >,< 附加信息 >(NFC卡号)
+    //4G就绪后发送NFC刷卡事件：BLE+ALARM=<告警类型>(NFC),< 时间戳 >,< 附加信息 >(NFC卡号)
     my_send_msg(MOD_CTRL, MOD_LTE, MY_MSG_LTE_PWRON);
+    // 发送NFC刷卡事件告警
+    send_alarm_message_to_lte(ALARM_NFC, card_id_str);
 
     ret = nfc_card_detected(card_id_str, &g_nfc_card_index);
 
@@ -753,7 +758,8 @@ static void lock_pin_timer_handler(struct k_timer *timer)
                 {
 
                     my_send_msg(MOD_CTRL, MOD_LTE, MY_MSG_LTE_PWRON);
-                    // TODO 直接发消息给LTE线程,由4G判断是否要上报
+                    // 插入上报锁销状态为已插入
+                    send_alarm_message_to_lte(ALARM_LOCKPIN, "1");
                 }
             }
             my_send_msg(MOD_CTRL, MOD_CTRL, msgID);
@@ -766,14 +772,16 @@ static void lock_pin_timer_handler(struct k_timer *timer)
                 {
 
                     my_send_msg(MOD_CTRL, MOD_LTE, MY_MSG_LTE_PWRON);
-                    // TODO 直接发消息给LTE线程,由4G判断是否要上报
+                    // 断开上报锁销状态为拔出
+                    send_alarm_message_to_lte(ALARM_LOCKPIN, "0");
                 }
             }
             /* 锁销被拔出时,检测到锁是关闭状态 */
             if (get_closelock_state())
             {
                 // MY_LOG_INF("The locking pin was illegally pulled out.");
-                // TODO 锁销非法拔出上报,直接发消息给LTE线程,由4G判断是否要上报
+                //锁销非法拔出上报
+                send_alarm_message_to_lte(ALARM_CUT, NULL);
 
                 /* 蜂鸣器报警 */
                 if (g_device_cmd_config.lockpincyt_buzzer == ALARM_TEMPORARY)

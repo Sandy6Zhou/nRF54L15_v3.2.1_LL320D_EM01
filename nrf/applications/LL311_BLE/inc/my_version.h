@@ -16,6 +16,13 @@
 /* 软件版本:        V1.0
 ** 完成日期:        2026.04.10
 ** 作    者:        吴楚庆 (wuchuqing@jimiiot.com)
+** 修改内容:        1.增加锁销状态告警类型,补充锁销告警上报和NFC刷卡上报
+*/
+
+//#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260410"
+/* 软件版本:        V1.0
+** 完成日期:        2026.04.10
+** 作    者:        吴楚庆 (wuchuqing@jimiiot.com)
 ** 修改内容:        1.增加接收4G应答（BLE+command=OK,参数,参数）统一接口
 **                 2.新增处理应答BLE+LOCATION,OK,纬度，经度 执行函数，处理NFC刷卡解锁需要判断位置，获取经纬度
 **                 3.增加LTE+LOCATION=<纬度>,<经度>用于更新储存点位置
