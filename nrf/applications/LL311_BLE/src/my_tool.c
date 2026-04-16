@@ -8,6 +8,8 @@ LOG_MODULE_REGISTER(my_tool, LOG_LEVEL_INF);
 // 一天的总秒数（24*60*60）
 #define DAY_SECONDS 86400
 
+#define M_PI 3.1415926
+
 /*********************************************************************
 **函数名称:  my_set_system_time
 **入口参数:  _sec  --  自 1970-01-01 00:00:00 UTC 起的秒数
@@ -1007,4 +1009,70 @@ int custom_timestamp_formatter(const struct log_output *output,
     return printer(output, "[%04d-%02d-%02d %02d:%02d:%02d] ",
                   t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
                   t.tm_hour, t.tm_min, t.tm_sec);
+}
+
+/********************************************************************
+**函数名称:  calculate_distance
+**入口参数:  lat1    ---        纬度1（微度）
+            lon1    ---        经度1（微度）
+            lat2    ---        纬度2（微度）
+            lon2    ---        经度2（微度）
+**出口参数:  无
+**函数功能:  计算两个经纬度点之间的距离（使用Haversine公式）
+**返 回 值:  距离（米）
+**公式说明:
+**   Haversine公式用于计算球面上两点间的大圆距离
+**   a = sin²(Δφ/2) + cos(φ1) * cos(φ2) * sin²(Δλ/2)
+**   c = 2 * atan2(√a, √(1-a))
+**   d = R * c
+**   其中R为地球半径（6371000米）
+*********************************************************************/
+uint32_t calculate_distance(int32_t lat1, int32_t lon1, int32_t lat2, int32_t lon2)
+{
+    // 地球半径（米）
+    const double EARTH_RADIUS = 6371000.0;
+
+    // 直接用微度转弧度：微度 * PI / 180000000
+    double rad_lat1 = lat1 * M_PI / 180000000.0;
+    double rad_lat2 = lat2 * M_PI / 180000000.0;
+    double rad_lon1 = lon1 * M_PI / 180000000.0;
+    double rad_lon2 = lon2 * M_PI / 180000000.0;
+
+    double d_lat = rad_lat2 - rad_lat1;
+    double d_lon = rad_lon2 - rad_lon1;
+
+    // Haversine 公式
+    double a = sin(d_lat / 2) * sin(d_lat / 2) +
+               cos(rad_lat1) * cos(rad_lat2) *
+               sin(d_lon / 2) * sin(d_lon / 2);
+    
+    double c = 2 * atan2(sqrt(a), sqrt(1 - a));
+    
+    return (uint32_t)(EARTH_RADIUS * c);
+}
+
+/********************************************************************
+**函数名称:  is_point_in_circle
+**入口参数:  lat         ---        当前纬度（微度）
+            lon         ---        当前经度（微度）
+            center_lat  ---        圆心纬度（微度）
+            center_lon  ---        圆心经度（微度）
+            radius      ---        半径（米）
+**出口参数:  无
+**函数功能:  判断点是否在圆内
+**返 回 值:  true 表示在圆内，false 表示在圆外
+*********************************************************************/
+bool is_point_in_circle(int32_t lat, int32_t lon, 
+                        int32_t center_lat, int32_t center_lon, 
+                        uint32_t radius)
+{
+    uint32_t distance;
+
+    // 计算当前位置到圆心的距离
+    distance = calculate_distance(lat, lon, center_lat, center_lon);
+
+    MY_LOG_INF("Distance to center: %dm, radius: %dm", distance, radius);
+
+    // 判断是否在圆内（距离 <= 半径）
+    return (distance <= radius);
 }

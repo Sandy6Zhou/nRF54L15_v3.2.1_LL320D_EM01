@@ -178,6 +178,7 @@ typedef enum
     MY_MSG_CTRL_LOCK_LED, // 锁LED控制消息
     MY_MSG_CLOSE_LED_SHOW, // 关闭所有LED显示功能消息
     MY_MSG_OPEN_LED_SHOW, // 打开所有LED显示功能消息
+    MY_MSG_VERIFY_UNLOCK, // 处理开锁规则
 
 
 

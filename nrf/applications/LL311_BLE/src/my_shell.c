@@ -897,6 +897,15 @@ static int cmd_ble_test(const struct shell *sh, size_t argc, char **argv)
     return 0;
 }
 
+/********************************************************************
+**函数名称:  cmd_buzzer_test
+**入口参数:  sh    ---        Shell句柄，用于输出信息
+            argc  ---        参数个数
+            argv  ---        参数数组，argv[1]为测试参数字符串
+**出口参数:  无
+**函数功能:  处理Buzzer测试命令，接收参数并发送测试消息到Buzzer模块
+**返 回 值:  0表示成功
+*********************************************************************/
 static int cmd_buzzer_test(const struct shell *sh, size_t argc, char **argv)
 {
     int len;
@@ -921,6 +930,15 @@ static int cmd_buzzer_test(const struct shell *sh, size_t argc, char **argv)
     return 0;
 }
 
+/********************************************************************
+**函数名称:  cmd_nfctrig_test
+**入口参数:  sh    ---        Shell句柄，用于输出信息
+            argc  ---        参数个数
+            argv  ---        参数数组，argv[1]为测试参数字符串
+**出口参数:  无
+**函数功能:  测试NFC联动指令，接收参数并执行对应的NFC联动命令
+**返 回 值:  0表示成功
+*********************************************************************/
 static int cmd_nfctrig_test(const struct shell *sh, size_t argc, char **argv)
 {
     int len;
@@ -956,6 +974,40 @@ static int cmd_nfctrig_test(const struct shell *sh, size_t argc, char **argv)
     return 0;
 }
 
+/********************************************************************
+**函数名称:  cmd_nfc_swipe_test
+**入口参数:  sh    ---        Shell句柄，用于输出信息
+            argc  ---        参数个数
+            argv  ---        参数数组，argv[1]为测试参数字符串
+**出口参数:  无
+**函数功能:  处理NFC刷卡测试命令，执行对应的NFC刷卡测试逻辑（模拟刷卡事件）
+**返 回 值:  0表示成功
+*********************************************************************/
+static int cmd_nfc_swip_test(const struct shell *sh, size_t argc, char **argv)
+{
+    int len;
+    uint8_t card_index = 0; 
+    uint16_t ret = 0;
+
+    if (argc < 2)
+    {
+        shell_error(sh, "Missing parameter");
+        return -EINVAL;
+    }
+
+    memset(shell_test_buff, 0, sizeof(shell_test_buff));
+
+    len = strlen(argv[1]);
+    memcpy(shell_test_buff, argv[1], len);
+    shell_test_buff[len] = 0;
+
+    shell_print(sh, "param: %s, len: %d", argv[1], len);
+
+    handle_nfc_card_event(argv[1], len);
+
+    return 0;
+}
+
 
 /* 注册自定义命令到 Shell 子系统 */
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_app,
@@ -976,6 +1028,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_app,
     SHELL_CMD(ble_test, NULL, "test", cmd_ble_test),
     SHELL_CMD(buzzer_test, NULL, "Run Buzzer test", cmd_buzzer_test),
     SHELL_CMD(nfctrig_test, NULL, "Run nfctrig test", cmd_nfctrig_test),
+    SHELL_CMD(nfc_swip_test, NULL, "Run nfc swipe test", cmd_nfc_swip_test),
     SHELL_SUBCMD_SET_END
 );
 /* Zephyr Shell 子系统提供的宏，随 nRF Connect SDK一起提供，用来在 Shell里注册一个“根命令”

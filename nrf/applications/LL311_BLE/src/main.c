@@ -473,6 +473,100 @@ static void print_app_info(void)
 }
 
 /********************************************************************
+**函数名称:  handle_verify_unlock
+**入口参数:  result   --- 接收应答结构体
+**出口参数:  无
+**函数功能:  执行获取经纬度的应答结果（并进行校验开锁），主要包括：
+**            1. 解析返回的经纬度字符串
+**            2. 校验经纬度数据的有效性（全有或全无）
+**            3. 判断当前位置是否在 NFC 卡片设定的电子围栏范围内
+**           4. 若在范围内，触发开锁消息
+**返 回 值:  0      --- 处理成功（已触发开锁）
+            -1     --- 处理失败（参数错误或超出范围）
+*********************************************************************/
+void handle_verify_unlock(ble_rsp_result_t *result)
+{
+    char is_ok[16] = {0};
+    char lat[16] = {0};
+    char lon[16] = {0};
+    int32_t lat_value;
+    uint8_t lat_valid;
+    int32_t lon_value;
+    uint8_t lon_valid;
+    uint8_t seq[8] = {0};
+
+    if (result->param_count != 4)
+    {
+        MY_LOG_ERR("param count error");
+        return;
+    }
+
+    my_get_str_at_pos(result->params, 0, ',', is_ok, sizeof(is_ok));
+    if (strcmp(is_ok, "OK") != 0)
+    {
+        MY_LOG_ERR("location response not OK");
+        return;
+    }
+
+    // 继续提取经纬度参数，进行相关处理
+    my_get_str_at_pos(result->params, 1, ',', seq, sizeof(seq));
+    my_get_str_at_pos(result->params, 2, ',', lat, sizeof(lat));
+    my_get_str_at_pos(result->params, 3, ',', lon, sizeof(lon));
+    MY_LOG_INF("Received location: lat=%s, lon=%s, seq=%s", lat, lon, seq);
+
+    // 验证 seq 是否与当前 NFC 卡索引匹配，如果等待4G回复期间刷了第二张不同的卡，需要跳过前一张未处理的卡
+    if (atoi(seq) != g_nfc_card_index)
+    {
+        MY_LOG_ERR("seq not match, seq=%s, expected_seq=%d", seq, g_nfc_card_index);
+        return;
+    }
+
+    g_last_card_index = -1;
+
+    // 经纬度参数解析和校验
+    if (parse_coordinate_value(lat, 1, &lat_value, &lat_valid) != 0)
+    {
+        LOG_INF("invalid LAT param: %s", lat);
+        return;
+    }
+
+    if (parse_coordinate_value(lon, 0, &lon_value, &lon_valid) != 0)
+    {
+        LOG_INF("invalid LON param: %s", lon);
+        return;
+    }
+
+    if ((lon_valid == 0) || (lat_valid == 0))
+    {
+        LOG_INF("invalid LAT or LON param");
+        return;
+    }
+
+    // 更新存储点
+    g_location_point.lat = lat_value;
+    g_location_point.lon = lon_value;
+    g_location_point.timestamp_s = my_get_system_time_sec();
+
+    // 判断是否在允许半径内
+    if (!is_point_in_circle(lat_value, lon_value,
+                            g_device_cmd_config.nfcauth_cards[g_nfc_card_index].lat,
+                            g_device_cmd_config.nfcauth_cards[g_nfc_card_index].lon,
+                            g_device_cmd_config.nfcauth_cards[g_nfc_card_index].radius))
+    {
+        LOG_INF("device is out of allowed area");
+        return;
+    }
+    // 若卡的次数有限,需要消耗次数(-1为无限次数)
+    if (g_device_cmd_config.nfcauth_cards[g_nfc_card_index].unlock_times > 0)
+    {
+        g_device_cmd_config.nfcauth_cards[g_nfc_card_index].unlock_times--;
+    }
+    // 启动开锁操作
+    my_send_msg(MOD_MAIN, MOD_CTRL, MY_MSG_CTRL_OPENLOCKING);
+    MY_LOG_INF("start to openlock");
+}
+
+/********************************************************************
 **函数名称:  main
 **入口参数:  无
 **出口参数:  无
@@ -670,6 +764,21 @@ int main(void)
                 MY_LOG_INF("DFU complete received");
                 break;
 
+            case MY_MSG_VERIFY_UNLOCK:
+                MY_LOG_INF("Verify unlock request received");
+                if (msg.pData && msg.DataLen == sizeof(ble_rsp_result_t))
+                {
+                    // 处理开锁规则验证流程
+                    handle_verify_unlock((ble_rsp_result_t *)msg.pData);
+                }
+
+                // 处理完毕后释放消息数据内存
+                if(msg.pData != NULL)
+                {
+                    MY_FREE_BUFFER(msg.pData);
+                    msg.pData = NULL;
+                }
+                break;
             case MY_MSG_SHUTDOWN:
                 if (g_device_cmd_config.pwsave_sw == 1)
                 {

@@ -42,6 +42,9 @@ typedef enum
 
 extern int g_buzzer_mode;
 
+extern uint8_t g_nfc_card_index; // 处理NFC刷卡事件卡号索引
+extern int g_last_card_index;
+
 typedef struct {
     int tick;          // 当前计数（单位：100ms）
     int on_time;       // 响多久（单位：tick）

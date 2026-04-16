@@ -232,4 +232,19 @@ void my_clock_get_time(struct tm *t);
 int custom_timestamp_formatter(const struct log_output *output, const log_timestamp_t timestamp,
                                const log_timestamp_printer_t printer);
 
+/********************************************************************
+**函数名称:  is_point_in_circle
+**入口参数:  lat         ---        当前纬度（微度）
+            lon         ---        当前经度（微度）
+            center_lat  ---        圆心纬度（微度）
+            center_lon  ---        圆心经度（微度）
+            radius      ---        半径（米）
+**出口参数:  无
+**函数功能:  判断点是否在圆内
+**返 回 值:  true 表示在圆内，false 表示在圆外
+*********************************************************************/
+bool is_point_in_circle(int32_t lat, int32_t lon, 
+                        int32_t center_lat, int32_t center_lon, 
+                        uint32_t radius);
+
 #endif

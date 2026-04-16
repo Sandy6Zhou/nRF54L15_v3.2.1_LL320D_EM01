@@ -23,6 +23,42 @@ typedef struct {
     uint16_t msg_len;           /* 消息长度 */
 } lte_pending_msg_t;
 
+// 应答命令类型枚举
+typedef enum
+{
+    BLE_RSP_UNKNOWN = 0,
+    BLE_RSP_LOCATION, // BLE+LOCATION=OK,lat,lon
+    BLE_RSP_LED,      // BLE+LED=OK
+    BLE_RSP_MAX
+} ble_rsp_type;
+
+// 应答解析结果结构体
+typedef struct
+{
+    ble_rsp_type type; // 应答类型
+    char cmd_name[32]; // 命令名称
+    char params[256];  // 参数部分
+    int param_count;   // 参数个数
+} ble_rsp_result_t;
+
+// 命令映射表
+typedef struct
+{
+    const char *cmd_name;  // 命令名称 (如 "LOCATION")
+    ble_rsp_type rsp_type; // 应答类型
+} ble_rsp_cmd_map_t;
+
+// 经纬度存储点结构体定义
+typedef struct
+{
+    int32_t lat;         // 纬度（微度，单位：1e-6度）
+    int32_t lon;         // 经度（微度，单位：1e-6度
+    int64_t timestamp_s; // 获取时间戳（秒）
+} location_storage_t;
+
+//全局经纬度存储点
+extern location_storage_t g_location_point;
+
 /* 循环缓冲区用于存储排队的LTE消息 */
 #define LTE_MSG_QUEUE_SIZE    10  /* 可排队的最大消息数 */
 
@@ -105,5 +141,16 @@ void set_lte_boot_reason(lte_boot_reason_t reason);
 **返 回 值:  当前开机原因枚举值
 *********************************************************************/
 lte_boot_reason_t get_lte_boot_reason(void);
+
+/********************************************************************
+**函数名称:  my_verify_openlock
+**入口参数:  无
+**出口参数:  无
+**函数功能:  执行刷卡位置校验，主要包括：
+**            1. 校验当前储存点位置数据的有效性，有效就执行开锁规则
+**            2.储存点无效发送BLE+LOCATION=seq;seq为刷卡索引，获取经纬度信息
+**返 回 值:  无
+********************************************************************/
+void my_verify_openlock(void);
 
 #endif /* _MY_LTE_H_ */

@@ -15,6 +15,15 @@
 #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260410"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.04.10
+** 作    者:        吴楚庆 (wuchuqing@jimiiot.com)
+** 修改内容:        1.增加接收4G应答（BLE+command=OK,参数,参数）统一接口
+**                 2.新增处理应答BLE+LOCATION,OK,纬度，经度 执行函数，处理NFC刷卡解锁需要判断位置，获取经纬度
+**                 3.增加LTE+LOCATION=<纬度>,<经度>用于更新储存点位置
+*/
+
+//#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260410"
+/* 软件版本:        V1.0
+** 完成日期:        2026.04.10
 ** 作    者:        曹阳 (caoyang@jimiiot.com)
 ** 修改内容:        1.增加PWRSAVE,ON#指令的实现，发送该指令设备关机，系统进入深度睡眠模式。
 **                  2.添加按键唤醒功能，按键按下后，系统退出深度睡眠模式。

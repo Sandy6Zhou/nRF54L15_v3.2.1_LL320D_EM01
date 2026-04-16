@@ -94,6 +94,11 @@ typedef struct {
 static BUZZER_Ctrl_S g_buzzer_ctrl = { 0 };
 int g_buzzer_mode = 0;//蜂鸣器状态，默认stop
 
+//处理NFC刷卡事件卡号索引
+uint8_t g_nfc_card_index = 0;
+//上一次刷卡索引，用于判断在4G回复经纬度期间重复刷同张卡不作处理
+int g_last_card_index = -1;
+
 /* 定时器回调前向声明 */
 static void key_timer_handler(struct k_timer *timer);
 static void light_sensor_timer_handler(struct k_timer *timer);
@@ -395,6 +400,8 @@ int nfc_card_detected(uint8_t *card_id, uint8_t *card_index)
         return -1;
     }
 
+    *card_index = current_card_index;
+
     current_card = &g_device_cmd_config.nfcauth_cards[current_card_index];  /* 获取当前卡片指针 */
 
     /* 检查是否需要时间验证 */
@@ -442,7 +449,6 @@ int nfc_card_detected(uint8_t *card_id, uint8_t *card_index)
 
     MY_LOG_INF("current_card->unlock_times:%d", current_card->unlock_times);
 
-    *card_index = current_card_index;
     /* 验证通过，返回0 */
     return 0;
 }
@@ -458,8 +464,8 @@ int nfc_card_detected(uint8_t *card_id, uint8_t *card_index)
 void handle_nfc_card_event(uint8_t *card_id, uint8_t id_len)
 {
     int ret;
-    uint8_t card_index = 0;
     char card_id_str[33] = {0};
+    uint8_t nfctrig_card_index = 0;
 
     /* 重复刷卡缓存记录检查 */
     ret = is_need_location_upload(card_id, id_len);
@@ -473,23 +479,22 @@ void handle_nfc_card_event(uint8_t *card_id, uint8_t id_len)
     hex2hexstr(card_id, id_len, (uint8_t *)card_id_str, sizeof(card_id_str));
 
     //执行NFC联动指令
-    ret = run_nfc_cmd(card_id_str, &card_index);
+    ret = run_nfc_cmd(card_id_str, &nfctrig_card_index);
     if (ret)
     {
         //命令匹配成功，具体执行结果看命令响应
-        MY_LOG_INF("Command matched success: cmd_type:%d; command:%s", ret, g_device_cmd_config.nfctrig_table.nfctrig_rule[card_index].nfctrig_command);
+        MY_LOG_INF("Command matched success: cmd_type:%d; command:%s", ret, g_device_cmd_config.nfctrig_table.nfctrig_rule[nfctrig_card_index].nfctrig_command);
     }
     else
     {
         MY_LOG_INF("Command not matched or failed to parse: cmd_type:%d; card_id:%s", ret, card_id_str);
     }
 
-    card_index = 0;
-
     // TODO 4G就绪后发送NFC刷卡事件：BLE+ALARM=<告警类型>(NFC),< 时间戳 >,< 附加信息 >(NFC卡号)
     my_send_msg(MOD_CTRL, MOD_LTE, MY_MSG_LTE_PWRON);
 
-    ret = nfc_card_detected(card_id_str, &card_index);
+    ret = nfc_card_detected(card_id_str, &g_nfc_card_index);
+
     /* 符合开锁规则 */
     if (ret == 0)
     {
@@ -500,8 +505,18 @@ void handle_nfc_card_event(uint8_t *card_id, uint8_t id_len)
     /* 需要位置验证 */
     else if (ret == 1)
     {
-        // TODO 后续通过发消息通知4G需要获取经纬度信息
-        // ?设置一个标记位，待拿到经纬度信息后，再判断开锁规则
+        //获取经纬度期间再次刷相同卡，不处理
+        if (g_last_card_index == g_nfc_card_index)
+        {
+            MY_LOG_INF("repeated swiping of the card id:%s, no need to send location command", card_id_str);
+            return ;
+        }
+        else
+        {
+            //记录刷卡的授权卡索引
+            g_last_card_index = g_nfc_card_index;
+            my_verify_openlock();
+        }
     }
     /* 权限不足 */
     else if (ret == -1)

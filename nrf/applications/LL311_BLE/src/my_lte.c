@@ -18,6 +18,9 @@
 
 #define UART_TX_BUFFER_SIZE    1024
 
+// 默认存储点有效期: 30分钟（秒)
+#define LOCATION_VALIDITY_PERIOD_S     (30 * 60)
+
 // 串口协议报文头定义清单
 char LTE_PWRON[] = "LTE+PWRON=";
 char LTE_BTSET[] = "LTE+BTSET=";
@@ -28,6 +31,18 @@ char LTE_LOCK[] = "LTE+LOCK=";
 char LTE_FOTA[] = "LTE+FOTA=";
 char LTE_STATE[] = "LTE+STATE=";
 char LTE_CMD[] = "LTE+CMD=";
+char LTE_LOCATION[] = "LTE+LOCATION=";
+char BLE[] = "BLE+";
+
+// 经纬度存储点
+location_storage_t g_location_point = {0};
+
+// 命令映射表定义
+static const ble_rsp_cmd_map_t ble_rsp_cmd_table[] = {
+    {"LOCATION", BLE_RSP_LOCATION},
+    {"LED",      BLE_RSP_LED     },
+    {NULL,       BLE_RSP_UNKNOWN }
+};
 
 /* LTE电源状态跟踪 */
 static bool g_lte_power_state = false;  // false=关闭, true=开启
@@ -1127,6 +1142,332 @@ static int my_lte_handle_cmd(char *data)
     return 0;
 }
 
+/********************************************************************
+**函数名称:  my_lte_handle_location
+**入口参数:  data     --- 包含经纬度数据的源字符串 (<纬度>,<经度>)
+**出口参数:  无
+**函数功能:  处理位置信息更新请求，主要包括：
+**            1. 从源字符串中分离并提取纬度和经度字段
+**            2. 解析并校验经纬度数值的有效性 (遵循全有或全无原则)
+**            3. 更新全局位置存储点 (g_location_point) 及时间戳
+**            4. 构建应答消息 ("OK" 或 "FAIL") 并通过消息队列发送
+**返 回 值:  0      --- 处理成功 (位置已更新并回复 OK)
+            -1     --- 处理失败 (参数解析错误或校验未通过，回复 FAIL)
+********************************************************************/
+static int my_lte_handle_location(char *data)
+{
+    char lat[16] = {0};
+    char lon[16] = {0};
+    int32_t lat_value;
+    uint8_t lat_valid;
+    int32_t lon_value;
+    uint8_t lon_valid;
+    char *resp_data;
+    char resp_str[32] = "LTE+LOCATION=FAIL\r\n"; // 默认失败
+    int ret = -1;
+    int len;
+    MSG_S msg;
+
+    my_get_str_at_pos(data, 0, ',', lat, sizeof(lat));
+    my_get_str_at_pos(data, 1, ',', lon, sizeof(lon));
+
+    //经纬度参数解析和校验
+    if (parse_coordinate_value(lat, 1, &lat_value, &lat_valid) != 0)
+    {
+        LOG_INF("invalid LAT param: %s", lat);
+        goto out;
+    }
+
+    if (parse_coordinate_value(lon, 0, &lon_value, &lon_valid) != 0)
+    {
+        LOG_INF("invalid LON param: %s", lon);
+        goto out;
+    }
+
+    if ((lon_valid == 0) || (lat_valid == 0))
+    {
+        LOG_INF("invalid LAT or LON param");
+        goto out;
+    }
+
+    // 更新存储点
+    g_location_point.lat = lat_value;
+    g_location_point.lon = lon_value;
+    g_location_point.timestamp_s = my_get_system_time_sec();
+
+    strcpy(resp_str, "LTE+LOCATION=OK\r\n");
+    ret = 0;
+
+out:
+    // 统一回复逻辑
+    MY_MALLOC_BUFFER(resp_data, strlen(resp_str) + 1);
+    if (resp_data == NULL)
+    {
+        MY_LOG_ERR("resp_data malloc failed");
+        ret = -1;
+        return ret;
+    }
+
+    strcpy(resp_data, resp_str);
+    len = strlen(resp_data);
+
+    // 构建消息结构体并发送给LTE模块
+    msg.msgID = MY_MSG_LTE_BLE_DATA;
+    msg.pData = resp_data;
+    msg.DataLen = len;
+
+    my_send_msg_data(MOD_LTE, MOD_LTE, &msg);
+
+    return ret;
+}
+
+/********************************************************************
+**函数名称:  my_lte_handle_location_rsp
+**入口参数:  result   --- 接收应答结构体
+**出口参数:  无
+**函数功能:  发送消息给MAIN线程去处理开锁相关规则：     
+**返 回 值:  0      --- 处理完成
+*********************************************************************/
+//处理获取经纬度
+static int my_lte_handle_location_rsp(ble_rsp_result_t *result)
+{
+    MSG_S msg;
+    ble_rsp_result_t *result_loc;
+    // 动态分配内存存储回复消息
+    MY_MALLOC_BUFFER(result_loc, sizeof(ble_rsp_result_t));
+    if(result_loc == NULL)
+    {
+        MY_LOG_ERR("result_loc malloc failed");
+        return 0;
+    }
+    memcpy(result_loc, result, sizeof(ble_rsp_result_t));
+
+    // 构建消息结构体并发送给MAIN模块
+    msg.msgID = MY_MSG_VERIFY_UNLOCK;
+    msg.pData = result_loc;
+    msg.DataLen = sizeof(ble_rsp_result_t);
+
+    my_send_msg_data(MOD_LTE, MOD_MAIN, &msg);
+
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  ble_rsp_parse
+**入口参数:  rsp_str     ---        输入，应答字符串 (如 "LOCATION=OK,seq,22345678,113456789#/LOCATION=OK,seq,22345678,113456789")
+**           result      ---        输出，解析结果结构体
+**出口参数:  result      ---        填充解析结果
+**函数功能:  解析BLE应答字符串
+**返 回 值:  0 表示解析成功，-1 表示解析失败
+**示例:
+**   输入: "LOCATION=OK,seq,N22345678,E113456789"
+**   输出: type=BLE_RSP_LOCATION,cmd_name="LOCATION", 
+**         params="OK,seq,N22345678,E113456789", param_count=4
+*********************************************************************/
+int ble_rsp_parse(char *rsp_str, ble_rsp_result_t *result)
+{
+    char *eq_pos;
+    char *param_start;
+    char *p;
+    int i = 0;
+
+    if (rsp_str == NULL || result == NULL)
+    {
+        return -1;
+    }
+
+    memset(result, 0, sizeof(ble_rsp_result_t));
+
+    // 查找 '='
+    eq_pos = strchr(rsp_str, '=');
+    if (eq_pos == NULL)
+    {
+        MY_LOG_INF("Invalid format(no '='): %s", rsp_str);
+        return -1;
+    }
+
+    // 将 '=' 替换为\0,原始数据rsp_str会修改
+    *eq_pos = '\0';
+    // 提取 cmd_name
+    strcpy(result->cmd_name, rsp_str);
+
+    // 查表获取 type
+    for (i = 0; ble_rsp_cmd_table[i].cmd_name != NULL; i++)
+    {
+        if (strcmp(result->cmd_name, ble_rsp_cmd_table[i].cmd_name) == 0)
+        {
+            result->type = ble_rsp_cmd_table[i].rsp_type;
+            break;
+        }
+    }
+
+    // 参数起始位置
+    param_start = eq_pos + 1;
+
+    // 只截断参数中的 '#'
+    char *hash_pos = strchr(param_start, '#');
+    if (hash_pos != NULL)
+    {
+        *hash_pos = '\0';
+    }
+
+    // 保存完整参数串
+    strncpy(result->params, param_start, sizeof(result->params) - 1);
+    result->params[sizeof(result->params) - 1] = '\0';
+
+    // 计算参数个数
+    if (*param_start == '\0')
+    {
+        result->param_count = 0;
+    }
+    else 
+    {
+        result->param_count = 1;
+
+        p = param_start;
+        while ((p = strchr(p, ',')) != NULL)
+        {
+            result->param_count++;
+            p++;
+        }
+    }
+
+    MY_LOG_INF("BLE RSP: type=%d, cmd=%s, params=%s, count=%d",
+               result->type,
+               result->cmd_name,
+               result->params,
+               result->param_count);
+
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  my_ble_handle
+**入口参数:  data     --- 接收到的应答原始数据字符串指针（如 "LOCATION=OK,22345678,113456789#）
+**出口参数:  无
+**函数功能:  处理4G模块返回的BLE格式应答数据：
+**            1. 调用ble_rsp_parse解析应答字符串，获取类型、参数等信息
+**            2. 根据解析结果的类型，调用对应的处理函数（如my_lte_handle_location_rsp处理LOCATION类型的应答）
+**返 回 值:  0      --- 处理完成
+**            -1     --- 解析失败
+*********************************************************************/
+//BLE+LOCATION =OK,<维度>,<经度>
+static int my_ble_handle(char *data)
+{
+    ble_rsp_result_t rsp_result;
+    int ret = 0;
+
+    //解析数据
+    ret = ble_rsp_parse(data, &rsp_result);
+    if (ret != 0)
+    {
+        MY_LOG_ERR("Failed to parse BLE response: %s", data);
+        return -1;
+    }
+
+    switch (rsp_result.type)
+    {
+        case BLE_RSP_LOCATION:
+            ret = my_lte_handle_location_rsp(&rsp_result);
+            break;
+            
+        case BLE_RSP_LED:
+            break;
+
+        default:
+            MY_LOG_INF("Unhandled BLE TYPE: %d", rsp_result.type);
+            break;
+    }
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  my_check_location_valid
+**入口参数:  point       ---        存储点指针
+**出口参数:  无
+**函数功能:  验证经纬度存储点是否在有效期内
+**           1. 检查存储点是否已初始化（经纬度是否为有效值）
+**           2. 检查是否超过30分钟有效期
+**返 回 值:  true 表示有效，false 表示无效或过期
+*********************************************************************/
+bool my_check_location_valid(location_storage_t *point)
+{
+    int64_t current_time;
+    int64_t elapsed_time;
+
+    // 参数检查
+    if (point == NULL)
+    {
+        return false;
+    }
+
+    // 检查时间戳是否有效
+    if (point->timestamp_s == 0)
+    {
+        return false;
+    }
+
+    // 获取当前时间
+    current_time = my_get_system_time_sec();
+
+    // 计算已过去的时间
+    elapsed_time = current_time - point->timestamp_s;
+
+    // 检查是否超过30分钟有效期
+    if (elapsed_time < 0 || elapsed_time > LOCATION_VALIDITY_PERIOD_S)
+    {
+        return false;
+    }
+
+    return true;
+}
+
+/********************************************************************
+**函数名称:  my_verify_openlock
+**入口参数:  无
+**出口参数:  无
+**函数功能:  执行刷卡位置校验，主要包括：
+**            1. 校验当前储存点位置数据的有效性，有效就执行开锁规则
+**            2.储存点无效发送BLE+LOCATION=seq;seq为刷卡索引，获取经纬度信息
+**返 回 值:  无
+********************************************************************/
+void my_verify_openlock(void)
+{
+    char card_index[10]={0};
+    //先验证存储点是否有效
+    if (my_check_location_valid(&g_location_point))
+    {
+        //再验证是否在电子围栏范围内
+        if (is_point_in_circle(g_location_point.lat, g_location_point.lon,
+            g_device_cmd_config.nfcauth_cards[g_nfc_card_index].lat,
+            g_device_cmd_config.nfcauth_cards[g_nfc_card_index].lon,
+            g_device_cmd_config.nfcauth_cards[g_nfc_card_index].radius))
+        {
+            // 若卡的次数有限,需要消耗次数(-1为无限次数)
+            if (g_device_cmd_config.nfcauth_cards[g_nfc_card_index].unlock_times > 0)
+            {
+                g_device_cmd_config.nfcauth_cards[g_nfc_card_index].unlock_times--;
+            }
+            // 启动开锁操作
+            my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_CTRL_OPENLOCKING);
+            MY_LOG_INF("start to openlock");
+        }
+        else
+        {
+            LOG_INF("device is out of allowed area");
+        }
+
+        g_last_card_index = -1;
+    }
+    else
+    {
+        // 通过发消息通知4G需要获取经纬度信息
+        sprintf(card_index, "%d", g_nfc_card_index);
+        lte_send_command("LOCATION", card_index);
+    }
+    return;
+}
+
 /*
  * 处理各个协议指令
  * cmd为已经拆分好的单条指令
@@ -1184,6 +1525,17 @@ int my_lte_parse_cmd(char *cmd, int cmd_len)
     else if (CMD_MATCHED(cmd, LTE_CMD))
     {
         ret = my_lte_handle_cmd(p + strlen(LTE_CMD));
+        goto END;
+    }
+    else if (CMD_MATCHED(cmd, LTE_LOCATION))
+    {
+        ret = my_lte_handle_location(p + strlen(LTE_LOCATION));
+        goto END;
+    }
+    //处理4G应答
+    else if (CMD_MATCHED(cmd, BLE))
+    {
+        ret = my_ble_handle(p + strlen(BLE));
         goto END;
     }
 
