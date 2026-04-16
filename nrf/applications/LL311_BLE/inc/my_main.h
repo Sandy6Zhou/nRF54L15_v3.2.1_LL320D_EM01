@@ -35,9 +35,6 @@
 /* 定时器回调函数类型定义 */
 typedef void (*TIMER_FUN)(void *param);
 
-#define DEFAULT_LONG_LIFE_INTERVAL      (4 * 60)
-#define DEFAULT_START_TIME              "0001"
-
 //NFC联动最大数量
 #define NFCTRIG_MAX_RULES  10
 
@@ -76,6 +73,7 @@ typedef struct {
 typedef struct {
     uint32_t stop_status_interval_sec;  // 停止状态上传间隔，单位：秒（非负整数）
     uint32_t land_status_interval_sec;  // 陆运状态上传间隔，单位：秒（非负整数）
+    uint32_t land_status_interval_dis;  // 陆运状态上传距离，单位：米（非负整数）
     uint32_t sea_status_interval_sec;   // 海运状态上传间隔，单位：秒（非负整数）
     uint8_t sleep_switch;               // 休眠开关，可设置范围：0/1/2
 } IntelligentMode;
@@ -163,6 +161,9 @@ typedef struct
 /* 设备指令配置结构体 */
 typedef struct
 {
+    // 设备工作模式配置
+    DeviceWorkModeConfig workmode_config;
+
     /* REMALM 指令配置 */
     uint8_t remalm_sw;          /* 防拆报警开关: 0-OFF, 1-ON */
     uint8_t remalm_mode;        /* 报警上报方式: 0-GPRS, 1-GPRS+SMS, 2-GPRS+SMS+CALL */
@@ -388,14 +389,5 @@ void handle_continuous_mode(void);
 **函数功能:  LTE唤醒定时器回调函数，用于唤醒LTE模块
 *********************************************************************/
 void awaken_lte_timer_callback(void *timer);
-
-/*********************************************************************
-**函数名称:  get_workmode_config_ptr
-**入口参数:  无
-**出口参数:  无
-**函数功能:  获取设备工作模式配置结构体指针
-**返 回 值:  返回 DeviceWorkModeConfig 结构体指针
-*********************************************************************/
-DeviceWorkModeConfig* get_workmode_config_ptr(void);
 
 #endif /* _MY_MAIN_H_ */

@@ -36,7 +36,27 @@
 LOG_MODULE_REGISTER(my_cmd_setting, LOG_LEVEL_INF);
 
 /* 全局指令配置变量定义 */
-DeviceCmdConfig g_device_cmd_config = {
+DeviceCmdConfig g_device_cmd_config =
+{
+    // 设备工作模式配置
+    .workmode_config =
+    {
+        .current_mode = MY_MODE_SHUTDOWN,
+        .long_battery =
+        {
+            .reporting_interval_min = 240,
+            .start_time = "0001",
+        },
+        .intelligent =
+        {
+            .stop_status_interval_sec = 86400,
+            .land_status_interval_sec = 15,
+            .land_status_interval_dis = 100,
+            .sea_status_interval_sec = 14400,
+            .sleep_switch = 2,
+        },
+    },
+
     /* REMALM 指令默认配置 */
     .remalm_sw = 0,                    /* 默认关闭 */
     .remalm_mode = REPORT_MODE_GPRS,                  /* 默认GPRS */
@@ -143,6 +163,7 @@ static int bkey_cmd_handler(at_cmd_struc* msg);
 static int bunlock_cmd_handler(at_cmd_struc* msg);
 static int block_cmd_handler(at_cmd_struc* msg);
 static int version_cmd_handler(at_cmd_struc* msg);
+static int modeset_cmd_handler(at_cmd_struc* msg);
 
 static const at_cmd_attr_t at_cmd_attr_table[] =
 {
@@ -172,6 +193,7 @@ static const at_cmd_attr_t at_cmd_attr_table[] =
     {"BUNLOCK",        bunlock_cmd_handler},
     {"BLOCK",          block_cmd_handler},
     {"VERSION",        version_cmd_handler},
+    {"MODESET",        modeset_cmd_handler},
 };
 
 static const char* lte_cmd_attr_table[] =
@@ -384,7 +406,7 @@ static int lte_cmd_handler(at_cmd_struc* msg)
     // 检查命令发送是否成功
     if(ret < 0)
     {
-        MY_LOG_ERR("Failed to allocate memory for LTE command message");
+        LOG_ERR("Failed to allocate memory for LTE command message");
         snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
         return BLE_DATA_TYPE_AT_CMD;
     }
@@ -507,6 +529,7 @@ int set_long_battery_params(DeviceWorkModeConfig *p_workmode,
 **入口参数:  p_workmode  --  设备工作模式配置结构体指针
 **           static_int  --  停止状态上报间隔（秒）
 **           land_int    --  陆运状态上报间隔（秒）
+**           land_distance --  陆运距离（米）
 **           sea_int     --  海运状态上报间隔（秒）
 **           sleep_sw    --  休眠开关（0/1/2）
 **出口参数:  无
@@ -514,7 +537,7 @@ int set_long_battery_params(DeviceWorkModeConfig *p_workmode,
 **返 回 值:  0 表示成功，-1 表示失败（参数非法）
 *********************************************************************/
 int set_intelligent_params(DeviceWorkModeConfig *p_workmode, uint32_t static_int,
-                     uint32_t land_int, uint32_t sea_int, uint8_t sleep_sw)
+                     uint32_t land_int, uint32_t land_distance, uint32_t sea_int, uint8_t sleep_sw)
 {
     if (p_workmode == NULL) return -1;
 
@@ -529,6 +552,13 @@ int set_intelligent_params(DeviceWorkModeConfig *p_workmode, uint32_t static_int
     if (land_int < 10 || land_int > 86400)
     {
         LOG_INF("Error: intelligent land_int %u out of range (10~86400)", land_int);
+        return -1;
+    }
+
+    // 校验陆运距离
+    if (land_distance != 0 && (land_distance < 5 || land_distance > 1000))
+    {
+        LOG_INF("Error: intelligent land_distance %u out of range 0 or (5~1000)", land_distance);
         return -1;
     }
 
@@ -548,6 +578,7 @@ int set_intelligent_params(DeviceWorkModeConfig *p_workmode, uint32_t static_int
 
     p_workmode->intelligent.stop_status_interval_sec = static_int;
     p_workmode->intelligent.land_status_interval_sec = land_int;
+    p_workmode->intelligent.land_status_interval_dis = land_distance;
     p_workmode->intelligent.sea_status_interval_sec = sea_int;
     p_workmode->intelligent.sleep_switch = sleep_sw;
     LOG_INF("Set intelligent: static_int=%u, land_int=%u, sea_int=%u, sleep_sw=%u",
@@ -1258,8 +1289,7 @@ static int batlevel_cmd_handler(at_cmd_struc* msg)
     if (msg->parm_count != 6)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
-        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-        return BLE_DATA_TYPE_AT_CMD;
+        goto param_invalid;
     }
 
     /* 解析所有6个参数 */
@@ -3034,5 +3064,130 @@ static int version_cmd_handler(at_cmd_struc* msg)
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
     }
     return BLE_DATA_TYPE_AT_CMD;  // 返回 BLE 数据类型
+}
+
+/********************************************************************
+**函数名称:  modeset_cmd_handler
+**入口参数:  msg   ---   AT 命令消息结构体
+**出口参数:  msg   ---   填充响应消息
+**函数功能:  处理MODESET指令：设置设备工作模式
+**指令格式:  MODESET,[Work Mode]#
+**参数说明:  [Work Mode] - 工作模式
+**返 回 值:  BLE数据类型
+**使用示例:  AT+MODESET=1,10,0800     // 设置长续航模式，上报间隔10分钟，启动时间08:00
+**           AT+MODESET=2,3600,60,500,14400,2  // 设置智能模式，各状态间隔和睡眠开关
+**           AT+MODESET=3             // 切换到连续模式
+*********************************************************************/
+static int modeset_cmd_handler(at_cmd_struc* msg)
+{
+    uint16_t remaining;  // 响应消息缓冲区的剩余空间
+    DeviceWorkModeConfig param_work_mode_config;  // 工作模式配置结构体
+
+    remaining = sizeof(msg->resp_msg);  // 计算响应消息缓冲区的大小
+
+    if(msg->parm_count == 0)
+    {
+        LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+        goto param_invalid;
+    }
+    // 解析当前模式参数（parm[1]）
+    param_work_mode_config.current_mode = atoi(msg->parm[1]);
+    if (param_work_mode_config.current_mode < MY_MODE_CONTINUOUS || param_work_mode_config.current_mode > MY_MODE_SMART)
+    {
+        LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[1]);
+        goto param_invalid;
+    }
+
+    // 只有模式参数的情况（切换模式）
+    if (msg->parm_count == 1)
+    {
+        // 切换到指定工作模式
+        switch_work_mode(param_work_mode_config.current_mode);
+
+        /* 生成成功响应 */
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
+        LOG_INF("MODESET: current_mode:%d", param_work_mode_config.current_mode);
+
+        return BLE_DATA_TYPE_AT_CMD;
+    }
+
+    // 连续模式处理
+    if (param_work_mode_config.current_mode == MY_MODE_CONTINUOUS)
+    {
+        /* 检查参数数量 */
+        if (msg->parm_count != 3)
+        {
+            LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+            goto param_invalid;
+        }
+        LOG_INF("%s,%s,%s,%s#", msg->parm[0], msg->parm[1], msg->parm[2], msg->parm[3]);
+    }
+    // 长续航模式处理
+    else if (param_work_mode_config.current_mode == MY_MODE_LONG_LIFE)
+    {
+        /* 检查参数数量 */
+        if (msg->parm_count != 3)
+        {
+            LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+            goto param_invalid;
+        }
+
+        // 解析长续航模式参数
+        param_work_mode_config.long_battery.reporting_interval_min = atoi(msg->parm[2]);
+        // 设置长续航模式参数
+        if (set_long_battery_params(&g_device_cmd_config.workmode_config, 
+            param_work_mode_config.long_battery.reporting_interval_min, msg->parm[3]) < 0)
+        {
+            LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+            goto param_invalid;
+        }
+
+        LOG_INF("%s,%s,%s,%s#", msg->parm[0], msg->parm[1], msg->parm[2], msg->parm[3]);
+    }
+    // 智能模式处理
+    else if (param_work_mode_config.current_mode == MY_MODE_SMART)
+    {
+        /* 检查参数数量 */
+        if (msg->parm_count != 6)
+        {
+            LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+            goto param_invalid;
+        }
+
+        // 解析智能模式参数
+        param_work_mode_config.intelligent.stop_status_interval_sec = atoi(msg->parm[2]);      // 静止状态间隔（秒）
+        param_work_mode_config.intelligent.land_status_interval_sec = atoi(msg->parm[3]);      // 陆运状态间隔（秒）
+        param_work_mode_config.intelligent.land_status_interval_dis = atoi(msg->parm[4]);      // 陆运状态距离（米）
+        param_work_mode_config.intelligent.sea_status_interval_sec = atoi(msg->parm[5]);      // 海运状态间隔（秒）
+        param_work_mode_config.intelligent.sleep_switch = atoi(msg->parm[6]);                 // 睡眠开关（0-2）
+
+        // 设置智能模式参数
+        if (set_intelligent_params(&g_device_cmd_config.workmode_config,
+            param_work_mode_config.intelligent.stop_status_interval_sec,
+            param_work_mode_config.intelligent.land_status_interval_sec,
+            param_work_mode_config.intelligent.land_status_interval_dis,
+            param_work_mode_config.intelligent.sea_status_interval_sec,
+            param_work_mode_config.intelligent.sleep_switch) < 0)
+        {
+            LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+            goto param_invalid;
+        }
+
+        LOG_INF("%s,%s,%s,%s,%s,%s,%s#", msg->parm[0], msg->parm[1], msg->parm[2], msg->parm[3], msg->parm[4], msg->parm[5], msg->parm[6]);
+    }
+
+    // 命令透传，发送个LTE模块
+    lte_cmd_handler(msg);
+
+    /* 生成成功响应 */
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
+    LOG_INF("MODESET: current_mode:%d", param_work_mode_config.current_mode);
+
+    return BLE_DATA_TYPE_AT_CMD;
+
+param_invalid:
+    // 生成失败响应
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+    return BLE_DATA_TYPE_AT_CMD;
 }
 

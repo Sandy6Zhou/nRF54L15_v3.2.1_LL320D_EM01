@@ -13,8 +13,6 @@
 
 #include "my_comm.h"
 
-DeviceWorkModeConfig g_workmode_config = {0};
-
 #define LOG_MODULE_NAME my_main
 LOG_MODULE_REGISTER(LOG_MODULE_NAME);
 
@@ -280,19 +278,6 @@ bool my_time_is_run(int timerId)
 }
 
 /*********************************************************************
-**函数名称:  get_workmode_config_ptr
-**入口参数:  无
-**出口参数:  无
-**函数功能:  获取工作模式配置结构体的指针
-**返 回 值:  DeviceWorkModeConfig* - 指向g_workmode_config的指针（非NULL）
-**           该函数返回全局变量的指针，无需手动释放，且指针始终有效
-*********************************************************************/
-DeviceWorkModeConfig* get_workmode_config_ptr(void)
-{
-    return &g_workmode_config;
-}
-
-/*********************************************************************
 **函数名称:  switch_work_mode
 **入口参数:  mode     --  要切换到的工作模式
 **出口参数:  无
@@ -300,16 +285,17 @@ DeviceWorkModeConfig* get_workmode_config_ptr(void)
 *********************************************************************/
 void switch_work_mode(MY_WORK_MODE mode)
 {
+    char buf[2];
     lte_boot_reason_t boot_reason;
 
     // 当前模式与目标模式相同，无需切换
-    if (g_workmode_config.current_mode == mode)
+    if (g_device_cmd_config.workmode_config.current_mode == mode)
     {
         return;
     }
 
     /* 切换工作模式 */
-    g_workmode_config.current_mode = mode;
+    g_device_cmd_config.workmode_config.current_mode = mode;
 
     // 根据工作模式设置对应的开机原因
     switch (mode)
@@ -334,7 +320,11 @@ void switch_work_mode(MY_WORK_MODE mode)
 
     my_send_msg(MOD_MAIN, MOD_MAIN, MY_MSG_WORK_MODE_SWITCH);
 
-    MY_LOG_INF("Work mode switch request sent: %d", g_workmode_config.current_mode);
+    snprintf(buf, sizeof(buf), "%d", mode);
+    // 发送工作模式切换命令给LTE模块
+    lte_send_command("MODESET", buf);
+
+    MY_LOG_INF("Work mode switch request sent: %d", g_device_cmd_config.workmode_config.current_mode);
 }
 
 /*********************************************************************
@@ -349,7 +339,7 @@ void switch_work_mode(MY_WORK_MODE mode)
 void awaken_lte_timer_callback(void *timer)
 {
     /* 长续航模式下才需要去重置LTE定时器 */
-    if (g_workmode_config.current_mode == MY_MODE_LONG_LIFE)
+    if (g_device_cmd_config.workmode_config.current_mode == MY_MODE_LONG_LIFE)
     {
         my_send_msg(MOD_MAIN, MOD_MAIN, MY_MSG_RESET_LTE_TIMER);
     }
@@ -432,8 +422,8 @@ void set_reset_lte_timer(void)
     current_time = my_get_system_time_sec();
 
     /* timer_interval不可能为0 */
-    timer_interval = calculate_remaining_seconds(g_workmode_config.long_battery.start_time,
-                        g_workmode_config.long_battery.reporting_interval_min, current_time);
+    timer_interval = calculate_remaining_seconds(g_device_cmd_config.workmode_config.long_battery.start_time,
+                        g_device_cmd_config.workmode_config.long_battery.reporting_interval_min, current_time);
 
     MY_LOG_INF("current_time:%llu,timer_interval:%d", current_time, timer_interval);
 
@@ -449,33 +439,6 @@ void set_reset_lte_timer(void)
     MY_LOG_INF("timer_interval_random:%d", timer_interval_random);
 
     my_start_timer(MY_TIMER_LTE_POWER, timer_interval * 1000, false, awaken_lte_timer_callback);
-}
-
-/********************************************************************
-**函数名称:  device_config_init
-**入口参数:  p_workmode - 设备工作模式配置结构体指针
-**出口参数:  无
-**函数功能:  初始化设备工作模式配置，设置各模式默认参数（智能模式和长续航模式）
-**          连续追踪模式的配置跟nordic无关,无需配置
-**返 回 值:  无
-*********************************************************************/
-void device_config_init(DeviceWorkModeConfig *p_workmode)
-{
-    if (p_workmode == NULL)
-        return;
-
-    /* 默认设置为关机模式 */
-    p_workmode->current_mode = MY_MODE_SHUTDOWN;
-
-    /* 长电池模式配置：设置上传时间间隔和起始时间 */
-    p_workmode->long_battery.reporting_interval_min = DEFAULT_LONG_LIFE_INTERVAL;   // 上传间隔（分钟）
-    strcpy(p_workmode->long_battery.start_time, DEFAULT_START_TIME);                // 每日上传起始时间
-
-    /* 智能模式配置：设置不同状态下的上传时间间隔 */
-    p_workmode->intelligent.stop_status_interval_sec = STATIC_INTERVAL;             // 静止状态上传间隔（秒）
-    p_workmode->intelligent.land_status_interval_sec = LAND_TRANSPORT_INTERVAL;     // 陆运状态上传间隔（秒）
-    p_workmode->intelligent.sea_status_interval_sec = SEA_TRANSPORT_INTERVAL;       // 海运状态上传间隔（秒）
-    p_workmode->intelligent.sleep_switch = 0;                                       // 休眠开关模式(0默认不休眠)
 }
 
 /********************************************************************
@@ -524,7 +487,6 @@ int main(void)
     my_param_load_config();
 
     psa_crypto_init();  // PSA库初始化
-    device_config_init(&g_workmode_config);
 
     /* 打印应用信息 */
     print_app_info();
@@ -638,11 +600,11 @@ int main(void)
                 break;
 
             case MY_MSG_CTRL_KEY_LONG_PRESS:
-                if (g_workmode_config.current_mode == MY_MODE_SHUTDOWN)
+                if (g_device_cmd_config.workmode_config.current_mode == MY_MODE_SHUTDOWN)
                 {
                     /* 关机模式下长按唤醒 */
                     MY_LOG_INF("KEY EVENT: Long press detected in SHUTDOWN mode, waking up...");
-                    g_workmode_config.current_mode = MY_MODE_SMART;
+                    g_device_cmd_config.workmode_config.current_mode = MY_MODE_SMART;
                     MY_LOG_INF("System waken up, entering SMART mode");
                     handle_smart_mode();
                 }
@@ -655,13 +617,13 @@ int main(void)
             case MY_MSG_CTRL_SHUTDOWN_REQUEST:
                 MY_LOG_INF("Shutdown request received, entering SHUTDOWN mode");
                 /* 切换到关机模式 */
-                g_workmode_config.current_mode = MY_MODE_SHUTDOWN;
+                g_device_cmd_config.workmode_config.current_mode = MY_MODE_SHUTDOWN;
                 MY_LOG_INF("System shutdown complete. Press FUN_KEY for 2s to wakeup.");
                 break;
 
             case MY_MSG_WORK_MODE_SWITCH:
                 /* 根据当前切换的模式处理对应的逻辑 */
-                switch (g_workmode_config.current_mode)
+                switch (g_device_cmd_config.workmode_config.current_mode)
                 {
                     case MY_MODE_LONG_LIFE:
                         MY_LOG_INF("Switched to LONG_LIFE mode");

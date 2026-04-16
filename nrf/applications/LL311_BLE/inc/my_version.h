@@ -12,7 +12,16 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260404"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260407"
+/* 软件版本:        V1.0
+** 完成日期:        2026.04.07
+** 作    者:        曹阳 (caoyang@jimiiot.com)
+** 修改内容:        1.增加切换工作模式MODESET指令的实现。
+**                  2.将工作模式参数由单独的变量放入到统一的全局变量结构体中，以便后续存入flash。
+**                  3.去掉工作模式初始化函数和宏，改为变量定义时直接初始化赋值。
+***/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260404"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.04.04
 ** 作    者:        周森达 (zhousenda@jimiiot.com)

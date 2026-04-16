@@ -15,8 +15,6 @@
 
 /* 智能模式时间间隔定义（单位：秒） */
 #define STATIC_INTERVAL         (24 * 60 * 60)   // 静止状态：24小时
-#define LAND_TRANSPORT_INTERVAL (15)             // 陆运状态：15秒
-#define SEA_TRANSPORT_INTERVAL  (4 * 60 * 60)    // 海运状态：4小时
 
 /* 智能模式状态枚举 */
 typedef enum

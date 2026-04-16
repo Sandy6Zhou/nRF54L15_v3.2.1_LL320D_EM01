@@ -212,10 +212,7 @@ void get_motion_status(void)
 {
     struct gsensor_data sensor_data;
     uint32_t timer_interval = 0;
-    DeviceWorkModeConfig *p_workmode;
     int ret;
-
-    p_workmode = get_workmode_config_ptr();
 
 #if 0 // TODO 需要测试这种处理算法是否可行
 LOOP:
@@ -240,17 +237,17 @@ LOOP:
     switch (my_gsensor_get_state())
     {
         case STATE_STATIC:
-            timer_interval = p_workmode->intelligent.stop_status_interval_sec;  // 静止状态：默认86400秒（24小时）
+            timer_interval = g_device_cmd_config.workmode_config.intelligent.stop_status_interval_sec;  // 静止状态：默认86400秒（24小时）
             MY_LOG_INF("Smart mode: STATIC state, interval = %d", timer_interval);
             break;
 
         case STATE_LAND_TRANSPORT:
-            timer_interval = p_workmode->intelligent.land_status_interval_sec;  // 陆运状态：默认15秒
+            timer_interval = g_device_cmd_config.workmode_config.intelligent.land_status_interval_sec;  // 陆运状态：默认15秒
             MY_LOG_INF("Smart mode: LAND TRANSPORT state, interval = %d", timer_interval);
             break;
 
         case STATE_SEA_TRANSPORT:
-            timer_interval = p_workmode->intelligent.sea_status_interval_sec;  // 海运状态：默认14400秒（4小时）
+            timer_interval = g_device_cmd_config.workmode_config.intelligent.sea_status_interval_sec;  // 海运状态：默认14400秒（4小时）
             MY_LOG_INF("Smart mode: SEA TRANSPORT state, interval = %d", timer_interval);
             break;
 
@@ -263,13 +260,13 @@ LOOP:
     my_send_msg(MOD_GSENSOR, MOD_LTE, MY_MSG_LTE_PWRON);
 
     /* sleep_switch为0、1的情况下,4G不会断电,所以无需开启唤醒4G定时器 */
-    if (p_workmode->intelligent.sleep_switch == 0 ||
-        p_workmode->intelligent.sleep_switch == 1)
+    if (g_device_cmd_config.workmode_config.intelligent.sleep_switch == 0 ||
+        g_device_cmd_config.workmode_config.intelligent.sleep_switch == 1)
     {
         my_stop_timer(MY_TIMER_LTE_POWER);
         return ;
     }
-    else if (p_workmode->intelligent.sleep_switch == 2)
+    else if (g_device_cmd_config.workmode_config.intelligent.sleep_switch == 2)
     {
         /* 当设置的定时间隔>600时,4G是会整个断电的,所以需要启动定时器，使用动态确定的间隔 */
         if (timer_interval > 600)

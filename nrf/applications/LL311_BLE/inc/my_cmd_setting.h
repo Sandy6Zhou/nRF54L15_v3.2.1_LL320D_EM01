@@ -92,7 +92,7 @@ int set_long_battery_params(DeviceWorkModeConfig *config, uint16_t reporting_int
 **函数功能:  设置智能模式的工作参数，根据不同状态配置不同的上报间隔及睡眠模式
 **返 回 值:  0 表示成功，负值表示失败（如参数非法等）
 *********************************************************************/
-int set_intelligent_params(DeviceWorkModeConfig *config, uint32_t static_int, uint32_t land_int, uint32_t sea_int, uint8_t sleep_sw);
+int set_intelligent_params(DeviceWorkModeConfig *config, uint32_t static_int, uint32_t land_int, uint32_t land_distance, uint32_t sea_int, uint8_t sleep_sw);
 
 /********************************************************************
 **函数名称:  at_recv_cmd_handler

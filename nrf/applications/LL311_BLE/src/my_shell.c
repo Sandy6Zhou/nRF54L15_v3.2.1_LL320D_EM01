@@ -219,10 +219,7 @@ static int cmd_switch_mode(const struct shell *sh, size_t argc, char **argv)
 *********************************************************************/
 static int cmd_set_time(const struct shell *sh, size_t argc, char **argv)
 {
-    DeviceWorkModeConfig *p_workmode;
     int ret;
-
-    p_workmode = get_workmode_config_ptr();
 
     if (argc != 2)
     {
@@ -246,7 +243,7 @@ static int cmd_set_time(const struct shell *sh, size_t argc, char **argv)
         return ret;
     }
 
-    if (p_workmode->current_mode == MY_MODE_LONG_LIFE)
+    if (g_device_cmd_config.workmode_config.current_mode == MY_MODE_LONG_LIFE)
     {
         my_send_msg(MOD_MAIN, MOD_MAIN, MY_MSG_RESET_LTE_TIMER);
     }
@@ -288,7 +285,7 @@ static int cmd_modeset(const struct shell *sh, size_t argc, char **argv)
     uint32_t report_interval, static_int, land_int, land_distance, sea_int;
     uint8_t sleep_sw;
 
-    p_workmode = get_workmode_config_ptr();
+    p_workmode = &g_device_cmd_config.workmode_config;
 
     /* 第一步：解析模式标识（mode_flag），校验是否为有效数字 */
     mode_flag = strtoul(argv[1], &endptr, 10);
@@ -398,7 +395,7 @@ static int cmd_modeset(const struct shell *sh, size_t argc, char **argv)
             }
 
             // 设置智能模式参数
-            set_intelligent_params(p_workmode, static_int, land_int, sea_int, sleep_sw);
+            set_intelligent_params(p_workmode, static_int, land_int, land_distance, sea_int, sleep_sw);
             shell_print(sh, "Sensor mode config success!");
             break;
         }
