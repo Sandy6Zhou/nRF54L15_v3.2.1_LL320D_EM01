@@ -12,7 +12,14 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260414"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260415"
+/* 软件版本:        V1.0
+** 完成日期:        2026.04.15
+** 作    者:        曹阳 (caoyang@jimiiot.com)
+** 修改内容:        增加ZMS ID持久化存储参数及读取.
+***/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260414"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.04.14
 ** 作    者:        曹阳 (caoyang@jimiiot.com)

@@ -13,6 +13,7 @@ static struct zms_fs user_data_fs;
 
 const AdvValidValue_t gDefaultAdvValidValue =
 {
+    .flag = FLAG_VALID,
     .AppleValid = 1,
     .GoogleValid = 0,
 };
@@ -84,6 +85,158 @@ const BleLogConfig_t gDefaultBleLogConfig =
     }
 };
 
+const WorkModeConfig_t gDefaultWorkModeConfig =
+{
+    .flag = FLAG_VALID,
+    .workmode_config =                          // 默认工作模式配置
+    {
+        .current_mode = MY_MODE_SMART,          // 默认智能模式
+        .long_battery = // 长电池模式
+        {
+            .reporting_interval_min = 240,      // 默认240分钟上报一次
+            .start_time = "0001",               // 默认00:01开始上报
+        },
+        .intelligent = // 智能模式
+        {
+            .stop_status_interval_sec = 86400,  // 默认86400秒上报一次
+            .land_status_interval_sec = 15,     // 默认15秒上报一次
+            .land_status_interval_dis = 100,    // 默认100米上报一次
+            .sea_status_interval_sec = 14400,   // 默认14400秒上报一次
+            .sleep_switch = 2,                  // 休眠开关
+        },
+    }
+};
+
+const RemAlmConfig_t gDefaultRemAlmConfig =
+{
+    .flag = FLAG_VALID,
+    .remalm_sw = 0,                    /* 默认关闭 */
+    .remalm_mode = REPORT_MODE_GPRS,                  /* 默认GPRS */
+};
+
+const LockPinCytConfig_t gDefaultLockPinCytConfig =
+{
+    .flag = FLAG_VALID,
+    .lockpincyt_report = REPORT_MODE_GPRS,             /* 默认GPRS */
+    .lockpincyt_buzzer = ALARM_TEMPORARY,             /* 默认报警30s */
+};
+
+const LockErrConfig_t gDefaultLockErrConfig =
+{
+    .flag = FLAG_VALID,
+    .lockerr_report = REPORT_MODE_GPRS,               /* 默认GPRS */
+    .lockerr_buzzer = ALARM_TEMPORARY,               /* 默认报警30s */
+};
+
+const PinStatConfig_t gDefaultPinStatConfig =
+{
+    .flag = FLAG_VALID,
+    .pinstat_report = REPORT_MODE_GPRS,               /* 默认GPRS */
+    .pinstat_trigger = PINSTAT_TRIGGER_MODE_BOTH,              /* 默认都触发 */
+};
+
+const LockStatConfig_t gDefaultLockStatConfig =
+{
+    .flag = FLAG_VALID,
+    .lockstat_report = REPORT_MODE_GPRS,              /* 默认GPRS */
+    .lockstat_trigger = LOCK_TRIGGER_NONE,             /* 默认都不触发 */
+};
+
+const MotDetConfig_t gDefaultMotDetConfig =
+{
+    .flag = FLAG_VALID,
+    .motdet_static_g = 10,             /* 默认10 mg */
+    .motdet_land_g = 2000,             /* 默认2000 mg */
+    .motdet_static_land_length = 50,   /* 默认50 s */
+    .motdet_sea_transport_time = 10,   /* 默认10 s */
+    .motdet_report_type = REPORT_MODE_GPRS,           /* 默认GPRS */
+};
+
+const BatlevelConfig_t gDefaultBatlevelConfig =
+{
+    .flag = FLAG_VALID,
+    .batlevel_empty_rpt = REPORT_MODE_GPRS,           /* 默认GPRS */
+    .batlevel_low_rpt = REPORT_MODE_GPRS,             /* 默认GPRS */
+    .batlevel_normal_rpt = REPORT_MODE_GPRS,          /* 默认GPRS */
+    .batlevel_fair_rpt = REPORT_MODE_GPRS,            /* 默认GPRS */
+    .batlevel_high_rpt = REPORT_MODE_GPRS,            /* 默认GPRS */
+    .batlevel_full_rpt = REPORT_MODE_GPRS,            /* 默认GPRS */
+    .chargesta_report = REPORT_MODE_GPRS,             /* 默认GPRS */
+};
+
+const ShockAlarmConfig_t gDefaultShockAlarmConfig =
+{
+    .flag = FLAG_VALID,
+    .shockalarm_sw = 0,                /* 默认关闭 */
+    .shockalarm_level = 3,             /* 默认中等敏感度 */
+    .shockalarm_type = REPORT_MODE_GPRS,              /* 默认GPRS */
+};
+
+const StartrConfig_t gDefaultStartrConfig =
+{
+    .flag = FLAG_VALID,
+    .startr_sw = 0,                    /* 默认关闭 */
+};
+
+const PWRsaveConfig_t gDefaultPWRsaveConfig =
+{
+    .flag = FLAG_VALID,
+    .pwsave_sw = 0,                    /* 默认关闭 */
+};
+
+const BtUpdataConfig_t gDefaultBtUpdataConfig =
+{
+    .flag = FLAG_VALID,
+    .bt_updata_mode = 0,               /* 默认不开启 */
+    .bt_updata_scan_interval = 600,    /* 默认600秒 */
+    .bt_updata_scan_length = 10,       /* 默认10秒 */
+    .bt_updata_updata_interval = 14400,/* 默认14400秒 */
+};
+
+const TagConfig_t gDefaultTagConfig =
+{
+    .flag = FLAG_VALID,
+    .tag_sw = 0,                       /* 默认关闭 */
+    .tag_interval = 2000,              /* 默认2000ms */
+};
+
+const LockedConfig_t gDefaultLockedConfig =
+{
+    .flag = FLAG_VALID,
+    .lockcd_countdown = 3,             /* 默认3秒 */
+};
+
+const LedConfig_t gDefaultLedConfig =
+{
+    .flag = FLAG_VALID,
+    .led_display = 0,                  /* 默认关闭 */
+};
+
+const BuzzerConfig_t gDefaultBuzzerConfig =
+{
+    .flag = FLAG_VALID,
+    .buzzer_operator = 0,             /* 默认停止 */
+};
+
+const NfctrigConfig_t gDefaultNfctrigConfig =
+{
+    .flag = FLAG_VALID,
+    .nfctrig_table = 0,                    /* 默认关闭 */
+};
+
+const NfcauthConfig_t gDefaultNfcauthConfig =
+{
+    .flag = FLAG_VALID,
+    .nfcauth_card_count = 0,         /* 默认0张卡 */
+};
+
+const BkeyConfig_t gDefaultBkeyConfig =
+{
+    .flag = FLAG_VALID,
+    .bt_key = "000000",              /* 默认密钥 */
+};
+
+/**
 /********************************************************************
 **函数名称:  my_user_data_storage_init
 **入口参数:  无
@@ -292,6 +445,276 @@ void my_param_load_config(void)
         MY_LOG_INF("BLE log config loaded: global_en=%d", gConfigParam.ble_log_config.global_en);
     }
 
+    //--------Load Device Workmode Config ---------------------
+    length = sizeof(WorkModeConfig_t);
+    ret = my_user_data_read(ZMS_ID_WORK_MODE_CONFIG, &gConfigParam.device_workmode_config, length);
+    if (ret != length)
+    {
+        memcpy(&gConfigParam.device_workmode_config, &gDefaultWorkModeConfig, length);
+        MY_LOG_INF("Device workmode config not found. Use default.");
+    }
+
+    //--------Load Remote Alarm Config ---------------------
+    length = sizeof(RemAlmConfig_t);
+    ret = my_user_data_read(ZMS_ID_REM_ALM_CONFIG, &gConfigParam.remalm_config, length);
+    if (ret != length)
+    {
+        memcpy(&gConfigParam.remalm_config, &gDefaultRemAlmConfig, length);
+        MY_LOG_INF("Remote alarm config not found. Use default:remalm_mode(%d), remalm_sw(%d)",
+                    gConfigParam.remalm_config.remalm_mode, gConfigParam.remalm_config.remalm_sw);
+    }
+    else
+    {
+        MY_LOG_INF("Remote alarm config loaded: remalm_mode(%d), remalm_sw(%d)",
+                    gConfigParam.remalm_config.remalm_mode, gConfigParam.remalm_config.remalm_sw);
+    }
+
+    //--------Load Lock Pin CyT Config ---------------------
+    length = sizeof(LockPinCytConfig_t);
+    ret = my_user_data_read(ZMS_ID_LOCK_PIN_CYT_CONFIG, &gConfigParam.lockpincyt_config, length);
+    if (ret != length)
+    {
+        memcpy(&gConfigParam.lockpincyt_config, &gDefaultLockPinCytConfig, length);
+        MY_LOG_INF("Lock pin cyt config not found. Use default:lockpincyt_buzzer(%d), lockpincyt_report(%d)",
+                    gConfigParam.lockpincyt_config.lockpincyt_buzzer, gConfigParam.lockpincyt_config.lockpincyt_report);
+    }
+    else
+    {
+        MY_LOG_INF("Lock pin cyt config loaded: lockpincyt_buzzer(%d), lockpincyt_report(%d)",
+                    gConfigParam.lockpincyt_config.lockpincyt_buzzer, gConfigParam.lockpincyt_config.lockpincyt_report);
+    }
+
+    //--------Load Lock Err Config ---------------------
+    length = sizeof(LockErrConfig_t);
+    ret = my_user_data_read(ZMS_ID_LOCK_ERR_CONFIG, &gConfigParam.lockerr_config, length);
+    if (ret != length)
+    {
+        memcpy(&gConfigParam.lockerr_config, &gDefaultLockErrConfig, length);
+        MY_LOG_INF("Lock err config not found. Use default:lockerr_buzzer(%d), lockerr_report(%d)",
+                    gConfigParam.lockerr_config.lockerr_buzzer, gConfigParam.lockerr_config.lockerr_report);
+    }
+    else
+    {
+        MY_LOG_INF("Lock err config loaded: lockerr_buzzer(%d), lockerr_report(%d)",
+                    gConfigParam.lockerr_config.lockerr_buzzer, gConfigParam.lockerr_config.lockerr_report);
+    }
+
+    //--------Load Pin Stat Config ---------------------
+    length = sizeof(PinStatConfig_t);
+    ret = my_user_data_read(ZMS_ID_PIN_STAT_CONFIG, &gConfigParam.pinstat_config, length);
+    if (ret != length)
+    {
+        memcpy(&gConfigParam.pinstat_config, &gDefaultPinStatConfig, length);
+        MY_LOG_INF("Pin stat config not found. Use default:pinstat_report(%d), pinstat_trigger(%d)",
+                    gConfigParam.pinstat_config.pinstat_report, gConfigParam.pinstat_config.pinstat_trigger);
+    }
+    else
+    {
+        MY_LOG_INF("Pin stat config loaded: pinstat_report(%d), pinstat_trigger(%d)",
+                    gConfigParam.pinstat_config.pinstat_report, gConfigParam.pinstat_config.pinstat_trigger);
+    }
+
+    //--------Load Lock Stat Config ---------------------
+    length = sizeof(LockStatConfig_t);
+    ret = my_user_data_read(ZMS_ID_LOCK_STAT_CONFIG, &gConfigParam.lockstat_config, length);
+    if (ret != length)
+    {
+        memcpy(&gConfigParam.lockstat_config, &gDefaultLockStatConfig, length);
+        MY_LOG_INF("Lock stat config not found. Use default:lockstat_report(%d), lockstat_trigger(%d)",
+                    gConfigParam.lockstat_config.lockstat_report, gConfigParam.lockstat_config.lockstat_trigger);
+    }
+    else
+    {
+        MY_LOG_INF("Lock stat config loaded: lockstat_report(%d), lockstat_trigger(%d)",
+                    gConfigParam.lockstat_config.lockstat_report, gConfigParam.lockstat_config.lockstat_trigger);
+    }
+
+    //--------Load Mot Det Config ---------------------
+    length = sizeof(MotDetConfig_t);
+    ret = my_user_data_read(ZMS_ID_MOT_DET_CONFIG, &gConfigParam.motdet_config, length);
+    if (ret != length)
+    {
+        memcpy(&gConfigParam.motdet_config, &gDefaultMotDetConfig, length);
+        MY_LOG_INF("Mot det config not found. Use default:motdet_land_g(%d), motdet_report_type(%d), "
+                   "motdet_sea_transport_time(%d), motdet_static_g(%d), motdet_static_land_length(%d)",
+                    gConfigParam.motdet_config.motdet_land_g, gConfigParam.motdet_config.motdet_report_type,
+                    gConfigParam.motdet_config.motdet_sea_transport_time, gConfigParam.motdet_config.motdet_static_g,
+                    gConfigParam.motdet_config.motdet_static_land_length);
+    }
+    else
+    {
+        MY_LOG_INF("Mot det config loaded: motdet_land_g(%d), motdet_report_type(%d), "
+                    "motdet_sea_transport_time(%d), motdet_static_g(%d), motdet_static_land_length(%d)",
+                    gConfigParam.motdet_config.motdet_land_g, gConfigParam.motdet_config.motdet_report_type,
+                    gConfigParam.motdet_config.motdet_sea_transport_time, gConfigParam.motdet_config.motdet_static_g,
+                    gConfigParam.motdet_config.motdet_static_land_length);
+    }
+
+    //--------Load Batlevel Config ---------------------
+    length = sizeof(BatlevelConfig_t);
+    ret = my_user_data_read(ZMS_ID_BAT_LEVEL_CONFIG, &gConfigParam.batlevel_config, length);
+    if (ret != length)
+    {
+        memcpy(&gConfigParam.batlevel_config, &gDefaultBatlevelConfig, length);
+        MY_LOG_INF("Batlevel config not found. Use default:batlevel_empty_rpt(%d), batlevel_low_rpt(%d), batlevel_normal_rpt(%d), "
+                   "batlevel_fair_rpt(%d), batlevel_high_rpt(%d), batlevel_full_rpt(%d), chargesta_report(%d)",
+                    gConfigParam.batlevel_config.batlevel_empty_rpt, gConfigParam.batlevel_config.batlevel_low_rpt,
+                    gConfigParam.batlevel_config.batlevel_normal_rpt, gConfigParam.batlevel_config.batlevel_fair_rpt,
+                    gConfigParam.batlevel_config.batlevel_high_rpt, gConfigParam.batlevel_config.batlevel_full_rpt,
+                    gConfigParam.batlevel_config.chargesta_report);
+    }
+    else
+    {
+        MY_LOG_INF("Batlevel config loaded: batlevel_empty_rpt(%d), batlevel_low_rpt(%d), batlevel_normal_rpt(%d), "
+                   "batlevel_fair_rpt(%d), batlevel_high_rpt(%d), batlevel_full_rpt(%d), ",
+                    gConfigParam.batlevel_config.batlevel_empty_rpt, gConfigParam.batlevel_config.batlevel_low_rpt,
+                    gConfigParam.batlevel_config.batlevel_normal_rpt, gConfigParam.batlevel_config.batlevel_fair_rpt,
+                    gConfigParam.batlevel_config.batlevel_high_rpt, gConfigParam.batlevel_config.batlevel_full_rpt,
+                    gConfigParam.batlevel_config.chargesta_report);
+    }
+
+    //--------Load Shock Alarm Config ---------------------
+    length = sizeof(ShockAlarmConfig_t);
+    ret = my_user_data_read(ZMS_ID_SHOCK_ALARM_CONFIG, &gConfigParam.shockalarm_config, length);
+    if (ret != length)
+    {
+        memcpy(&gConfigParam.shockalarm_config, &gDefaultShockAlarmConfig, length);
+        MY_LOG_INF("Shock alarm config not found. Use default:shockalarm_level(%d), shockalarm_sw(%d), shockalarm_type(%d)",
+                    gConfigParam.shockalarm_config.shockalarm_level, gConfigParam.shockalarm_config.shockalarm_sw,
+                    gConfigParam.shockalarm_config.shockalarm_type);
+    }
+    else
+    {
+        MY_LOG_INF("Shock alarm config loaded: shockalarm_level(%d), shockalarm_sw(%d), shockalarm_type(%d)",
+                    gConfigParam.shockalarm_config.shockalarm_level, gConfigParam.shockalarm_config.shockalarm_sw,
+                    gConfigParam.shockalarm_config.shockalarm_type);
+    }
+
+    //--------Load Startr Config ---------------------
+    length = sizeof(StartrConfig_t);
+    ret = my_user_data_read(ZMS_ID_STARTR_CONFIG, &gConfigParam.startr_config, length);
+    if (ret != length)
+    {
+        memcpy(&gConfigParam.startr_config, &gDefaultStartrConfig, length);
+        MY_LOG_INF("Startr config not found. Use default:startr_sw(%d)", gConfigParam.startr_config.startr_sw);
+    }
+    else
+    {
+        MY_LOG_INF("Startr config loaded: startr_sw(%d)", gConfigParam.startr_config.startr_sw);
+    }
+
+    //--------Load PWRsave Config ---------------------
+    length = sizeof(PWRsaveConfig_t);
+    ret = my_user_data_read(ZMS_ID_PWSAVE_CONFIG, &gConfigParam.pwsave_config, length);
+    if (ret != length)
+    {
+        memcpy(&gConfigParam.pwsave_config, &gDefaultPWRsaveConfig, length);
+        MY_LOG_INF("PWRsave config not found. Use default:pwsave_sw(%d)", gConfigParam.pwsave_config.pwsave_sw);
+    }
+    else
+    {
+        MY_LOG_INF("PWRsave config loaded: pwsave_sw(%d)", gConfigParam.pwsave_config.pwsave_sw);
+    }
+
+    //--------Load BTUPDATA Config ---------------------
+    length = sizeof(BtUpdataConfig_t);
+    ret = my_user_data_read(ZMS_ID_BT_UPDATA_CONFIG, &gConfigParam.bt_updata_config, length);
+    if (ret != length)
+    {
+        memcpy(&gConfigParam.bt_updata_config, &gDefaultBtUpdataConfig, length);
+        MY_LOG_INF("BTUPDATA config not found. Use default:bt_updata_mode(%d), bt_updata_scan_interval(%d), bt_updata_scan_length(%d), bt_updata_updata_interval(%d)",
+                    gConfigParam.bt_updata_config.bt_updata_mode, gConfigParam.bt_updata_config.bt_updata_scan_interval,
+                    gConfigParam.bt_updata_config.bt_updata_scan_length, gConfigParam.bt_updata_config.bt_updata_updata_interval);
+    }
+    else
+    {
+        MY_LOG_INF("BTUPDATA config loaded: bt_updata_mode(%d), bt_updata_scan_interval(%d), bt_updata_scan_length(%d), bt_updata_updata_interval(%d)",
+                    gConfigParam.bt_updata_config.bt_updata_mode, gConfigParam.bt_updata_config.bt_updata_scan_interval,
+                    gConfigParam.bt_updata_config.bt_updata_scan_length, gConfigParam.bt_updata_config.bt_updata_updata_interval);
+    }
+
+    //--------Load Tag Config ---------------------
+    length = sizeof(TagConfig_t);
+    ret = my_user_data_read(ZMS_ID_TAG_CONFIG, &gConfigParam.tag_config, length);
+    if (ret != length)
+    {
+        memcpy(&gConfigParam.tag_config, &gDefaultTagConfig, length);
+        MY_LOG_INF("Tag config not found. Use default:tag_sw(%d), tag_interval(%d)", gConfigParam.tag_config.tag_sw, gConfigParam.tag_config.tag_interval);
+    }
+    else
+    {
+        MY_LOG_INF("Tag config loaded: tag_sw(%d), tag_interval(%d)", gConfigParam.tag_config.tag_sw, gConfigParam.tag_config.tag_interval);
+    }
+
+    //--------Load Locked Config ---------------------
+    length = sizeof(LockedConfig_t);
+    ret = my_user_data_read(ZMS_ID_LOCKED_CONFIG, &gConfigParam.locked_config, length);
+    if (ret != length)
+    {
+        memcpy(&gConfigParam.locked_config, &gDefaultLockedConfig, length);
+        MY_LOG_INF("Locked config not found. Use default:locked_countdown(%d)", gConfigParam.locked_config.lockcd_countdown);
+    }
+    else
+    {
+        MY_LOG_INF("Locked config loaded: locked_countdown(%d)", gConfigParam.locked_config.lockcd_countdown);
+    }
+
+    //--------Load Led Config ---------------------
+    length = sizeof(LedConfig_t);
+    ret = my_user_data_read(ZMS_ID_LED_CONFIG, &gConfigParam.led_config, length);
+    if (ret != length)
+    {
+        memcpy(&gConfigParam.led_config, &gDefaultLedConfig, length);
+        MY_LOG_INF("Led config not found. Use default:led_display(%d)", gConfigParam.led_config.led_display);
+    }
+    else
+    {
+        MY_LOG_INF("Led config loaded: led_display(%d)", gConfigParam.led_config.led_display);
+    }
+
+    //--------Load Buzzer Config ---------------------
+    length = sizeof(BuzzerConfig_t);
+    ret = my_user_data_read(ZMS_ID_BUZZER_CONFIG, &gConfigParam.buzzer_config, length);
+    if (ret != length)
+    {
+        memcpy(&gConfigParam.buzzer_config, &gDefaultBuzzerConfig, length);
+        MY_LOG_INF("Buzzer config not found. Use default:buzzer_operator(%d)", gConfigParam.buzzer_config.buzzer_operator);
+    }
+    else
+    {
+        MY_LOG_INF("Buzzer config loaded: buzzer_operator(%d)", gConfigParam.buzzer_config.buzzer_operator);
+    }
+
+    //--------Load Nfctrig Config ---------------------
+    length = sizeof(NfctrigConfig_t);
+    ret = my_user_data_read(ZMS_ID_NFTRIG_CONFIG, &gConfigParam.nfctrig_config, length);
+    if (ret != length)
+    {
+        memcpy(&gConfigParam.nfctrig_config, &gDefaultNfctrigConfig, length);
+        MY_LOG_INF("Nfctrig config not found. Use default.");
+    }
+
+    //--------Load Nfcauth Config ---------------------
+    length = sizeof(NfcauthConfig_t);
+    ret = my_user_data_read(ZMS_ID_NFCAUTH_CONFIG, &gConfigParam.nfcauth_config, length);
+    if (ret != length)
+    {
+        memcpy(&gConfigParam.nfcauth_config, &gDefaultNfcauthConfig, length);
+        MY_LOG_INF("Nfcauth config not found. Use default:card_count(%d)", gConfigParam.nfcauth_config.nfcauth_card_count);
+    }
+    else
+    {
+        MY_LOG_INF("Nfcauth config loaded: card_count(%d)", gConfigParam.nfcauth_config.nfcauth_card_count);
+    }
+
+    //--------Load Bkey Config ---------------------
+    length = sizeof(BkeyConfig_t);
+    ret = my_user_data_read(ZMS_ID_BT_KEY_CONFIG, &gConfigParam.bkey_config, length);
+    if (ret != length)
+    {
+        memcpy(&gConfigParam.bkey_config, &gDefaultBkeyConfig, length);
+        MY_LOG_INF("Bkey config not found. Use default.");
+    }
 }
 
 /********************************************************************

@@ -106,9 +106,6 @@ DeviceCmdConfig g_device_cmd_config =
     /* PWRSAVE 指令默认配置 */
     .pwsave_sw = 0,                    /* 默认关闭 */
 
-    /* BT_CRFPWR 指令默认配置 */
-    .bt_crfpwr = 0,                    /* 默认0 dBm */
-
     /* BT_UPDATA 指令默认配置 */
     .bt_updata_mode = 0,               /* 默认不开启 */
     .bt_updata_scan_interval = 600,    /* 默认600秒 */
@@ -1687,7 +1684,7 @@ static int bt_crfpwr_cmd_handler(at_cmd_struc* msg)
 
     /* 所有参数验证通过,生成成功响应 */
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
-    LOG_INF("BT_CRFPWR: A=%d", g_device_cmd_config.bt_crfpwr);
+    LOG_INF("BT_CRFPWR: A=%d",gConfigParam.ble_tx_power.tx_power);
 
     return BLE_DATA_TYPE_AT_CMD;
 

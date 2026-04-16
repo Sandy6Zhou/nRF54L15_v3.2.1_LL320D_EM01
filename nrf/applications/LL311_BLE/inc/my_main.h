@@ -162,7 +162,7 @@ typedef struct
 typedef struct
 {
     // 设备工作模式配置
-    DeviceWorkModeConfig workmode_config;
+    DeviceWorkModeConfig workmode_config; // 设备工作模式配置结构体
 
     /* REMALM 指令配置 */
     uint8_t remalm_sw;          /* 防拆报警开关: 0-OFF, 1-ON */
@@ -212,9 +212,6 @@ typedef struct
 
     /* PWRSAVE 指令配置 */
     uint8_t pwsave_sw;                 /* 低功耗运输状态开关: 0-OFF, 1-ON */
-
-    /* BT_CRFPWR 指令配置 */
-    int8_t  bt_crfpwr;                  /* 蓝牙发射功率: -8,-4,0,3,5,7,12 dBm */
 
     /* BT_UPDATA 指令配置 */
     uint8_t  bt_updata_mode;            /* 工作方式: 0-不开启, 1-Cell启动时开启, 2-持续收集Cell启动上传, 3-持续收集Cell启动上传或唤醒上传 */
