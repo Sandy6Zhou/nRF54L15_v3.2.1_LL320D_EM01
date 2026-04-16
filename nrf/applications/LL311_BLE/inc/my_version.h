@@ -15,6 +15,15 @@
 #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260416"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.04.16
+** 作    者:        吴楚庆 (wuchuqing@jimiiot.com)
+** 修改内容:        1.新增网络开锁/上锁指令，通过数据透传LTE+CMD指令
+**                  2.LTE+CMD处理程序移动到与蓝牙指令处理程序同个线程
+**                  3.开锁限位改为边沿触发
+***/
+
+//#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260416"
+/* 软件版本:        V1.0
+** 完成日期:        2026.04.16
 ** 作    者:        曹阳 (caoyang@jimiiot.com)
 ** 修改内容:        替换所有的g_device_cmd_config为gConfigParam.
 ***/

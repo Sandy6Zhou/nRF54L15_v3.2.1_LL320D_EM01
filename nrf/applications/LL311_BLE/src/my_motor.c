@@ -48,8 +48,10 @@ static lock_posdet closelock_posdet;
 /* 开锁状态标志，true表示正在开锁 */
 static bool s_bOpenLockingState = false;
 
-/* 蓝牙操作锁状态：默认停止锁操作 */
-BLE_LOCK_STATE_T g_bBleLockState = BLE_LOCK_STOP;
+// 蓝牙操作锁状态：默认停止锁操作
+lock_state_t g_bBleLockState = LOCK_STOP;
+// 网络操作锁状态：默认停止锁操作
+lock_state_t g_netLockState = LOCK_STOP;
 
 const char unlock_success[] = "Unlock success";
 const char unlock_fail[] = "Unlock failed. No unlock state detected.";
@@ -129,6 +131,41 @@ void send_lock_result_event(const char *lock_msg_data)
 }
 
 /********************************************************************
+**函数名称:  respond_netlock_result
+**入口参数:  lock_msg_data   ---   需要发送的锁状态结果字符串
+**出口参数:  无
+**函数功能:  响应网络上锁结果：将结果数据通过消息队列发送给 LTE 模块
+**           回复应答4G
+**返 回 值:  无
+*********************************************************************/
+void respond_netlock_result(const char *lock_msg_data)
+{
+    char *p;
+    MSG_S msg;
+    char resp_buf[80];
+
+    // 拼接回复消息
+    snprintf(resp_buf, sizeof(resp_buf), "LTE+CMD=%s,%s\r\n", g_lte_cmd_id, lock_msg_data);
+    resp_buf[sizeof(resp_buf) - 1] = '\0'; // 确保字符串终止
+
+    MY_MALLOC_BUFFER(p, strlen(resp_buf) + 1);
+    if (p == NULL)
+    {
+        MY_LOG_ERR("p malloc failed");
+        return;
+    }
+
+    // 拼接回复消息
+    strcpy(p, resp_buf);
+
+    // 构建消息结构体并发送给LTE模块
+    msg.msgID = MY_MSG_LTE_BLE_DATA;
+    msg.pData = p;
+    msg.DataLen = strlen(p);
+    my_send_msg_data(MOD_LTE, MOD_LTE, &msg);
+}
+
+/********************************************************************
 **函数名称:  lock_posdet_edge_handler
 **入口参数:  state  ---        输入，锁状态（OPEN_LOCK/CLOSE_LOCK）
 **出口参数:  无
@@ -181,13 +218,31 @@ static void openlock_posdet_timer_handler(struct k_timer *timer)
             my_lock_led_msg_send(LOCK_LED_UNLOCK);
 
             /* 如果是蓝牙开锁触发，通知蓝牙线程开锁成功 */
-            if (g_bBleLockState == BLE_UNLOCKING)
+            if (g_bBleLockState == UNLOCKING)
             {
-                g_bBleLockState = BLE_LOCK_STOP;
+                g_bBleLockState = LOCK_STOP;
 
                 send_lock_result_event(unlock_success);
                 // buzzer进行解锁成功提示
                 my_set_buzzer_mode(BUZZER_UNLOCK_SUCCESS);
+            }
+            // 如果是网络开锁触发，通知LTE线程开锁成功
+            if (g_netLockState == UNLOCKING)
+            {
+                g_netLockState = LOCK_STOP;
+
+                // 定时器触发开锁，不需要回复
+                if (g_net_unlock.start_timer_flag)
+                {
+                    g_net_unlock.start_timer_flag = 0;
+                }
+                else
+                {
+                    respond_netlock_result(unlock_success);
+                }
+
+                g_net_unlock.netunlock_flag = 1;
+                k_timer_start(&g_net_unlock.delay_timer, K_MSEC(g_net_unlock.delay_sec * 1000), K_NO_WAIT);
             }
             // MY_MSG_CTRL_OPENLOCKED:先发送消息通知MAIN线程，再经过LTE线程上报开锁状态成功
 
@@ -225,14 +280,28 @@ static void closelock_posdet_timer_handler(struct k_timer *timer)
             my_lock_led_msg_send(LOCK_LED_CLOSE);
 
             /* 如果是蓝牙关锁触发，通知蓝牙线程关锁成功 */
-            if (g_bBleLockState == BLE_LOCKING)
+            if (g_bBleLockState == LOCKING)
             {
-                g_bBleLockState = BLE_LOCK_STOP;
+                g_bBleLockState = LOCK_STOP;
                 send_lock_result_event(lock_success);
                 //buzzer进行关锁成功提示
                 my_set_buzzer_mode(BUZZER_EVENT_LOCK_SUCCESS);
             }
+            // 如果是网络关锁触发，通知lte线程关锁成功
+            if (g_netLockState == LOCKING)
+            {
+                g_netLockState = LOCK_STOP;
+                respond_netlock_result(lock_success);
+            }
             // TODO MY_MSG_CTRL_CLOSELOCKED:发送消息给LTE线程上报关锁状态成功
+
+            // 上锁成功，直接取消窗口期倒计时
+            if (k_timer_remaining_get(&g_net_unlock.delay_timer) != 0)
+            {
+                k_timer_stop(&g_net_unlock.delay_timer);
+                // 允许自动上锁
+                g_net_unlock.netunlock_flag = 0;
+            }
 
             //上锁成功提示
             my_set_buzzer_mode(BUZZER_EVENT_LOCK_SUCCESS);
@@ -324,22 +393,42 @@ static void motor_timer_timeout_handler(struct k_timer *timer)
 
     // MY_LOG_INF("%s:run", __func__);
     /* 如果是蓝牙开锁触发，通知蓝牙线程开锁失败 */
-    if (g_bBleLockState == BLE_UNLOCKING)
+    if (g_bBleLockState == UNLOCKING)
     {
-        g_bBleLockState = BLE_LOCK_STOP;
+        g_bBleLockState = LOCK_STOP;
 
         send_lock_result_event(unlock_fail);
         //buzzer进行解锁失败提示
         my_set_buzzer_mode(BUZZER_EVENT_LOCK_FAIL);
     }
     /* 如果是蓝牙关锁触发，通知蓝牙线程关锁失败 */
-    else if (g_bBleLockState == BLE_LOCKING)
+    else if (g_bBleLockState == LOCKING)
     {
-        g_bBleLockState = BLE_LOCK_STOP;
+        g_bBleLockState = LOCK_STOP;
 
         send_lock_result_event(lock_fail);
-        //buzzer进行关锁失败提示
+        // buzzer进行关锁失败提示
         my_set_buzzer_mode(BUZZER_EVENT_LOCK_FAIL);
+    }
+
+    if (g_netLockState == UNLOCKING)
+    {
+        g_netLockState = LOCK_STOP;
+        // 定时器触发的开锁不用回复
+        if (g_net_unlock.start_timer_flag)
+        {
+            g_net_unlock.start_timer_flag = 0;
+        }
+        else
+        {
+            respond_netlock_result(unlock_fail);
+        }
+    }
+    // 如果是网络关锁触发，通知网络线程关锁失败
+    else if (g_netLockState == LOCKING)
+    {
+        g_netLockState = LOCK_STOP;
+        respond_netlock_result(lock_fail);
     }
 
     /* 发送停止锁操作消息 */
@@ -382,8 +471,8 @@ int motor_gpio_init(void)
     ret = gpio_pin_configure_dt(&motor_pos_b, GPIO_INPUT);
     if (ret) return ret;
 
-    /* 配置中断为下降沿触发 */
-    ret = gpio_pin_interrupt_configure_dt(&motor_pos_a, GPIO_INT_EDGE_FALLING);
+    // 配置中断为边沿触发
+    ret = gpio_pin_interrupt_configure_dt(&motor_pos_a, GPIO_INT_EDGE_BOTH);
     if (ret) return ret;
     /* 配置中断为边沿触发 */
     ret = gpio_pin_interrupt_configure_dt(&motor_pos_b, GPIO_INT_EDGE_BOTH);

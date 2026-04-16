@@ -213,6 +213,9 @@ typedef enum
     /* BLE 处理程序消息 */
     MY_MSG_BLE_RX,
 
+    // 处理4G过来LTE+CMD数据透传
+    MY_MSG_LTE_CMD_RX,
+
     /* DFU OTA 状态消息 */
     MY_MSG_DFU_START,    /* DFU OTA 开始 */
     MY_MSG_DFU_TIMEOUT,  /* DFU OTA 超时退出 */

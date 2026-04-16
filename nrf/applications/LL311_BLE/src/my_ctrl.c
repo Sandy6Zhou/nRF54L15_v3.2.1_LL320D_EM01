@@ -855,6 +855,11 @@ static void auto_lock_detection(void)
         return ;
     }
 
+    // 网络指令解锁，有开锁期，不允许自动上锁
+    if (g_net_unlock.netunlock_flag)
+    {
+        return;
+    }
     // 自动上锁定时器
     k_timer_start(&auto_lock_timer, K_MSEC(gConfigParam.locked_config.lockcd_countdown * 1000), K_NO_WAIT);
 }

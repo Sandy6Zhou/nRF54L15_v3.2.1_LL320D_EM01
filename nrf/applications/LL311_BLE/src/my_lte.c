@@ -105,6 +105,12 @@ CMD_STRUC AT_CMD_INNER[] = {
     {0, NULL,        NULL,                      NULL}
 };
 
+// 网络解锁全局变量
+net_unlock_ctrl_t g_net_unlock;
+
+// lte+cmd异步回复需要id号
+char g_lte_cmd_id[16];
+
 /********************************************************************
  * 函数名称: my_lte_msg_queue_init
  * 入口参数: 无
@@ -1037,37 +1043,49 @@ static int my_lte_handle_ntc_set(char *data)
     return 0;
 }
 
-/*
-0: 开锁
-LTE+LOCK=0,<Time>,<Delay>
-
-1: 上锁
-LTE+LOCK=1,<Time>,<Delay> // Time, Delay 可选
-
-DT: 设置延迟上锁时间
-LTE+LOCK=DT,<延迟时间>
-*/
-static int my_lte_handle_lock(char *data)
+/********************************************************************
+**函数名称:  netunlock_start_timer_handler
+**入口参数:  timer   ---   定时器句柄 (此处未使用)
+**出口参数:  无
+**函数功能:  网络开锁定时器回调：执行实际的开锁动作
+**           1. 状态检查：检测当前是否已处于解锁状态
+**           2. 若已解锁，开启窗口定时器倒计时
+**           3. 未解锁：更新全局锁状态为 UNLOCKING 并发送控制消息解锁（解锁成功才需要开启窗口定时器）
+**返 回 值:  无
+*********************************************************************/
+void netunlock_start_timer_handler(struct k_timer *timer)
 {
-    char cmd_name[16] = {0};
-    char val_buff[16] = {0};
+    ARG_UNUSED(timer);
 
-    my_get_str_at_pos(data, 0, ',', cmd_name, sizeof(cmd_name));
+    // 检查当前锁状态：通过开锁限位判断是否已解锁
+    if (get_openlock_state())
+    {
+        //窗口定时器 开启标记
+        g_net_unlock.netunlock_flag = 1;
+        k_timer_start(&g_net_unlock.delay_timer, K_MSEC(g_net_unlock.delay_sec * 1000), K_NO_WAIT);
 
-    // 开锁
-    if (CMD_EQUAL(cmd_name, "0"))
-    {
-    }
-    // 上锁
-    else if (CMD_EQUAL(cmd_name, "1"))
-    {
-    }
-    // 自动上锁延迟时间
-    else if (CMD_EQUAL(cmd_name, "DT"))
-    {
+        return;
     }
 
-    return 0;
+    g_netLockState = UNLOCKING;
+    //表示到时开启定时器解锁（不需要异步回复）
+    g_net_unlock.start_timer_flag = 1;
+
+    my_send_msg(MOD_MAIN, MOD_CTRL, MY_MSG_CTRL_OPENLOCKING);
+}
+
+/********************************************************************
+**函数名称:  netunlock_delay_timer_handler
+**入口参数:  timer   ---   定时器句柄 (此处未使用)
+**出口参数:  无
+**函数功能:  窗口定时到时，清空标志位（自动上锁恢复）
+**返 回 值:  无
+*********************************************************************/
+void netunlock_delay_timer_handler(struct k_timer *timer)
+{
+    ARG_UNUSED(timer);
+
+    g_net_unlock.netunlock_flag = 0;
 }
 
 static int my_lte_handle_transmit(char *data)
@@ -1089,7 +1107,7 @@ static int my_lte_handle_fota(char *data)
 **          LTE+CMD=111,NFCTRIG,ADD,1234456789,
 **          "NFCAUTH,SET,88040FBE99050B,+22277120,13516763,999900,2603200000,2603201200,1"
 *********************************************************************/
-static int my_lte_handle_cmd(char *data)
+int my_lte_handle_cmd(char *data)
 {
 
     at_cmd_struc at_cmd_msg = {0};
@@ -1097,6 +1115,7 @@ static int my_lte_handle_cmd(char *data)
     char id[16] = {0};
     MSG_S msg;
     char *resp_msg;
+    int ret = 0;
 
     memset(g_lte_cmd_resp_buf, 0, sizeof(g_lte_cmd_resp_buf));
 
@@ -1108,7 +1127,16 @@ static int my_lte_handle_cmd(char *data)
         strcpy(at_cmd_msg.rcv_msg, data + strlen(id) + 1); // +1跳过逗号
 
         //执行指令内容
-        run_lte_cmd(&at_cmd_msg);
+        ret = run_lte_cmd(&at_cmd_msg);
+
+        //需要异步回复，只做简单应答
+        if (ret == 2)
+        {
+            //TODO 可能存在连续2条需要异步回复指令过来，后续需要修改做匹配和回复内容需增加指令头
+            strcpy(g_lte_cmd_id, id);
+
+            sprintf(at_cmd_msg.resp_msg, "OK");
+        }
 
         // 拼接回复消息
         snprintf(g_lte_cmd_resp_buf, LTE_CMD_RESPBUF_SIZE, "LTE+CMD=%s,%s\r\n", id, at_cmd_msg.resp_msg);
@@ -1478,6 +1506,8 @@ int my_lte_parse_cmd(char *cmd, int cmd_len)
     char *p = cmd;
     int argc, num_commands;
     char *argv[MAX_ARGS];
+    MSG_S msg;
+    char *lte_cmd;
 
     if (0 == strlen(cmd) || 0 == cmd_len)
     {
@@ -1507,11 +1537,6 @@ int my_lte_parse_cmd(char *cmd, int cmd_len)
         ret = my_lte_handle_ntc_set(p + strlen(LTE_NTCSET));
         goto END;
     }
-    else if (CMD_MATCHED(cmd, LTE_LOCK))
-    {
-        ret = my_lte_handle_lock(p + strlen(LTE_LOCK));
-        goto END;
-    }
     else if (CMD_MATCHED(cmd, LTE_TRANSMIT))
     {
         ret = my_lte_handle_transmit(p + strlen(LTE_TRANSMIT));
@@ -1524,7 +1549,19 @@ int my_lte_parse_cmd(char *cmd, int cmd_len)
     }
     else if (CMD_MATCHED(cmd, LTE_CMD))
     {
-        ret = my_lte_handle_cmd(p + strlen(LTE_CMD));
+        MY_MALLOC_BUFFER(lte_cmd, strlen(cmd) + 1 - strlen(LTE_CMD));
+        if (lte_cmd == NULL)
+        {
+            MY_LOG_ERR("lte_cmd malloc failed");
+            return 0;
+        }
+
+        strcpy(lte_cmd, cmd + strlen(LTE_CMD));
+
+        // 将数据透传指令放到与蓝牙同线程
+        msg.msgID = MY_MSG_LTE_CMD_RX;
+        msg.pData = lte_cmd;
+        my_send_msg_data(MOD_LTE, MOD_BLE, &msg);
         goto END;
     }
     else if (CMD_MATCHED(cmd, LTE_LOCATION))
@@ -1669,6 +1706,10 @@ int my_lte_init(k_tid_t *tid)
 
     /* 初始化完成后默认开启模块电源 */
     my_lte_pwr_on(true);
+
+    // 网络解锁相关定时器
+    k_timer_init(&g_net_unlock.start_timer, netunlock_start_timer_handler, NULL);
+    k_timer_init(&g_net_unlock.delay_timer, netunlock_delay_timer_handler, NULL);
 
     return 0;
 }

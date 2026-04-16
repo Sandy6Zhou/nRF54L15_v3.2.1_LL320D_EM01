@@ -56,6 +56,21 @@ typedef struct
     int64_t timestamp_s; // 获取时间戳（秒）
 } location_storage_t;
 
+typedef struct
+{
+    struct k_timer start_timer; // 网络开锁开始倒计时定时器
+    struct k_timer delay_timer; // 网络开锁成功之后窗口期倒计时定时器
+    uint16_t delay_sec;         // 窗口期时长（秒）
+    uint8_t netunlock_flag;     // 在窗口期时长内开锁标志
+    uint8_t start_timer_flag;   // 开始定时器开启过标志位（开启了start定时器意味着不需要回复）
+} net_unlock_ctrl_t;
+
+//网络解锁全局变量
+extern net_unlock_ctrl_t g_net_unlock;
+
+//回复的id号
+extern char g_lte_cmd_id[16];
+
 //全局经纬度存储点
 extern location_storage_t g_location_point;
 
@@ -152,5 +167,16 @@ lte_boot_reason_t get_lte_boot_reason(void);
 **返 回 值:  无
 ********************************************************************/
 void my_verify_openlock(void);
+
+/********************************************************************
+**函数名称:  my_lte_handle_cmd
+**入口参数:  data      ---   接收4G的数据
+**函数功能:  执行LTE+CMD=<号码>,<指令内容>,并根据指令内容的执行回复对应的结果给4G模块
+**            <指令内容>与通过蓝牙指令下发下来的内容一致，按照相关指令格式填写即可
+**          如:LTE+CMD=111,VERSION/LTE+CMD=111,VERSION#/末尾加不加#都可以
+**          LTE+CMD=111,NFCTRIG,ADD,1234456789,
+**          "NFCAUTH,SET,88040FBE99050B,+22277120,13516763,999900,2603200000,2603201200,1"
+*********************************************************************/
+int my_lte_handle_cmd(char *data);
 
 #endif /* _MY_LTE_H_ */

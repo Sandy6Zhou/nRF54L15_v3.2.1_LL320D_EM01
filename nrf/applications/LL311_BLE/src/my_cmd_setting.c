@@ -35,6 +35,8 @@
 
 LOG_MODULE_REGISTER(my_cmd_setting, LOG_LEVEL_INF);
 
+// 标记lte_cmd来的,用于区分蓝牙下发的还是lte过来的(某些指令只能网络发蓝牙不能执行)
+uint8_t g_lte_cmdSource;
 static int remalm_cmd_handler(at_cmd_struc* msg);
 static int lockpincyt_cmd_handler(at_cmd_struc* msg);
 static int lockerr_cmd_handler(at_cmd_struc* msg);
@@ -61,6 +63,8 @@ static int bunlock_cmd_handler(at_cmd_struc* msg);
 static int block_cmd_handler(at_cmd_struc* msg);
 static int version_cmd_handler(at_cmd_struc* msg);
 static int modeset_cmd_handler(at_cmd_struc* msg);
+static int cunlock_cmd_handler(at_cmd_struc* msg);
+static int clock_cmd_handler(at_cmd_struc* msg);
 static int jatag_cmd_handler(at_cmd_struc* msg);
 static int jgtag_cmd_handler(at_cmd_struc* msg);
 
@@ -95,6 +99,8 @@ static const at_cmd_attr_t at_cmd_attr_table[] =
     {"BLOCK",          block_cmd_handler},
     {"VERSION",        version_cmd_handler},
     {"MODESET",        modeset_cmd_handler},
+    {"CUNLOCK",        cunlock_cmd_handler},
+    {"CLOCK",          clock_cmd_handler},
 };
 
 static const char* lte_cmd_attr_table[] =
@@ -719,6 +725,7 @@ uint16_t run_nfc_cmd(char *card_id, uint8_t *index)
 **函数功能:  执行LTE+CMD指令中的command
 **返回值:    未匹配指令或命令解析失败返回0
 **          返回非0不代表command执行成功，具体看对应的执行函数resp_msg回复
+**          返回2代表需要异步回复
 *********************************************************************/
 uint16_t run_lte_cmd(at_cmd_struc *at_cmd_msg)
 {
@@ -728,8 +735,14 @@ uint16_t run_lte_cmd(at_cmd_struc *at_cmd_msg)
     MY_LOG_INF("at_cmd_msg->rcv_msg:%s", at_cmd_msg->rcv_msg);
     MY_LOG_INF("at_cmd_msg->rcv_msglen:%d", strlen(at_cmd_msg->rcv_msg));
 
+    //标记网络指令
+    g_lte_cmdSource = 1;
+
     //执行命令
     cmd_type = at_recv_cmd_handler(at_cmd_msg);
+
+    //执行完清除
+    g_lte_cmdSource = 0;
 
     if (!cmd_type)
     {
@@ -2961,7 +2974,7 @@ static int bunlock_cmd_handler(at_cmd_struc* msg)
     LOG_INF("%s=>executing unlock action", __func__);
 
     /* 标记当前是处于蓝牙解锁 */
-    g_bBleLockState = BLE_UNLOCKING;
+    g_bBleLockState = UNLOCKING;
     my_send_msg(MOD_MAIN, MOD_CTRL, MY_MSG_CTRL_OPENLOCKING);
 
     /* 不返回响应消息，由ble模块异步回复 */
@@ -3049,7 +3062,7 @@ static int block_cmd_handler(at_cmd_struc* msg)
     LOG_INF("%s=>executing lock action", __func__);
 
     /* 标记当前是处于蓝牙上锁 */
-    g_bBleLockState = BLE_LOCKING;
+    g_bBleLockState = LOCKING;
     my_send_msg(MOD_MAIN, MOD_CTRL, MY_MSG_CTRL_CLOSELOCKING);
 
     /* 不返回响应消息，由ble模块异步回复 */
@@ -3233,3 +3246,249 @@ param_invalid:
     return BLE_DATA_TYPE_AT_CMD;
 }
 
+/********************************************************************
+**函数名称:  cunlock_cmd_handler
+**入口参数:  msg   ---   AT 命令消息结构体
+**出口参数:  msg   ---   填充响应消息
+**函数功能:  处理 UNLOCK 指令：执行带时间窗口的远程开锁操作
+**           1. 权限检查：仅允许 LTE 网络来源，拒绝蓝牙指令
+**           2. 参数校验：检查参数数量(2个)、时间格式(12位)、延迟时间范围(<=3600s)
+**           3. 指令更新：重复发直接更新指令
+**           4. 时间窗口逻辑：
+**                 delay_time > 0:
+**              - start_time + delay_time < current_ts,时间过期：返回失败
+**              - start_time < current_ts < start_time + delay_time：立即执行开锁
+**              - start_time > current_ts：启动启动定时器等待
+**                 delay_time = 0:
+**                 start_time < current_ts:立即执行开锁
+**                 start_time > current_ts：启动启动定时器等待
+**指令格式:  UNLOCK,[YYMMDDHHMMSS],[delay_time]
+**返回值说明: 0: 来源错误（非 LTE 来源）
+**             1: 直接回复
+**             2: 需异步回复
+**返 回 值:  int
+*********************************************************************/
+static int cunlock_cmd_handler(at_cmd_struc* msg)
+{
+    uint16_t remaining;
+    int delay_time = 0;
+    time_t start_ts = 0;
+    time_t current_ts = 0;
+    char buf[12] = {0};
+    uint8_t sec = 0;
+
+    remaining = sizeof(msg->resp_msg);
+
+    // 此指令不允许蓝牙发
+    if (!g_lte_cmdSource)
+    {
+        return 0;
+    }
+
+    // 参数数量基础校验
+    if (msg->parm_count != 2)
+    {
+        LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+        goto param_invalid;
+    }
+
+    // YYMMDDHHMMSS  12个字符
+    if (strlen(msg->parm[1]) != 12)
+    {
+        MY_LOG_INF("Time setting error");
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "Time setting error");
+        return 1;
+    }
+
+    //获取delay数据
+    delay_time = atoi(msg->parm[2]);
+
+    // 检查delay_time
+    if (delay_time > 3600 || delay_time < 0)
+    {
+        MY_LOG_INF("Timeout exceeds 3600s or delay_time < 0");
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "Timeout exceeds 3600s or delay_time < 0");
+        return 1;
+    }
+
+    // 指令更新
+    if (k_timer_remaining_get(&g_net_unlock.start_timer) != 0)
+    {
+        k_timer_stop(&g_net_unlock.start_timer);
+    }
+    if (k_timer_remaining_get(&g_net_unlock.delay_timer) != 0)
+    {
+        k_timer_stop(&g_net_unlock.delay_timer);
+    }
+    g_net_unlock.netunlock_flag = 0;
+    g_net_unlock.start_timer_flag = 0;
+
+
+    g_net_unlock.delay_sec = delay_time;
+
+    // 取前10个字符
+    strncpy(buf, msg->parm[1], 10);
+    buf[10] = '\0';
+
+    sec = atoi(msg->parm[1] + 10);
+    start_ts = time_str_to_timestamp(buf) + sec;
+    current_ts = my_get_system_time_sec();
+    MY_LOG_INF("current_ts = %d", current_ts);
+
+    if (delay_time > 0)
+    {
+        // 判断起始时间+窗口期时间是否过期，过期返回失败
+        if (start_ts + delay_time <= current_ts)
+        {
+            // 不在窗口期内
+            MY_LOG_INF("Command received, but not within the valid time window.1");
+            msg->resp_length = snprintf(msg->resp_msg, remaining, "Command received, but not within the valid time window.");
+            return 1;
+        }
+        else
+        {
+            // 当前是否处于当前时间范围内
+            if (start_ts > current_ts)
+            {
+                // 启动定时器等到达start_ts时间后执行开锁命令
+                k_timer_start(&g_net_unlock.start_timer, K_MSEC((start_ts - current_ts) * 1000), K_NO_WAIT);
+                MY_LOG_INF("start_ts - current_ts = %d", (start_ts - current_ts));
+                // 不在窗口期内
+                MY_LOG_INF("Command received, but not within the valid time window.2");
+                msg->resp_length = snprintf(msg->resp_msg, remaining, "Command received, but not within the valid time window.");
+                return 1;
+            }
+            else
+            {
+                /*说明时间在当前时间之后且+delay没过期，直接执行开锁命令
+                检查当前锁状态：通过开锁限位判断是否已解锁*/
+                if (get_openlock_state())
+                {
+                    MY_LOG_INF("Unlock failed. Device already in unlock state.");
+                    msg->resp_length = snprintf(msg->resp_msg, remaining, "Unlock failed. Device already in unlock state.");
+
+                    //当时锁是打开的，窗口期内不允许自动关锁(计算剩余窗口期)
+                    g_net_unlock.delay_sec = delay_time + start_ts - current_ts;
+                    g_net_unlock.netunlock_flag = 1;
+                    k_timer_start(&g_net_unlock.delay_timer, K_MSEC(g_net_unlock.delay_sec * 1000), K_NO_WAIT);
+
+                    return 1;
+                }
+
+                // 标记当前是处于网络解锁
+                g_netLockState = UNLOCKING;
+                my_send_msg(MOD_MAIN, MOD_CTRL, MY_MSG_CTRL_OPENLOCKING);
+                MY_LOG_INF("start to openlock");
+
+                // 需要异步回复
+                return 2;
+            }
+        }
+    }
+    else // 没有窗口期
+    {
+        // 判断是否到达开锁时间
+        if (start_ts <= current_ts)
+        {
+            /*到达开锁时间，执行开锁命令
+            检查当前锁状态：通过开锁限位判断是否已解锁 */
+            if (get_openlock_state())
+            {
+                MY_LOG_INF("Unlock failed. Device already in unlock state.");
+                msg->resp_length = snprintf(msg->resp_msg, remaining, "Unlock failed. Device already in unlock state.");
+                return 1;
+            }
+
+            g_net_unlock.netunlock_flag = 1;
+
+            // 标记当前是处于网络解锁
+            g_netLockState = UNLOCKING;
+            my_send_msg(MOD_MAIN, MOD_CTRL, MY_MSG_CTRL_OPENLOCKING);
+            MY_LOG_INF("start to openlock");
+
+            // 需要异步回复
+            return 2;
+        }
+        else
+        {
+            // 未到达开锁时间，启动定时器等到达开锁时间后执行开锁命令
+            k_timer_start(&g_net_unlock.start_timer, K_MSEC((start_ts - current_ts) * 1000), K_NO_WAIT);
+
+            // 不在窗口期内
+            MY_LOG_INF("Command received, but not within the valid time window.");
+            msg->resp_length = snprintf(msg->resp_msg, remaining, "Command received, but not within the valid time window.");
+            return 1;
+        }
+    }
+
+param_invalid:
+    // 生成失败响应
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+    return 1;
+}
+
+/********************************************************************
+**函数名称:  clock_cmd_handler
+**入口参数:  msg   ---   AT 命令消息结构体
+**出口参数:  msg   ---   填充响应消息
+**函数功能:  处理 CLOCK 指令：执行远程上锁操作
+**           1. 权限检查：仅允许 LTE 网络来源，拒绝蓝牙指令
+**           2. 参数检查：校验参数数量必须为 0
+**           3. 硬件检查：检测锁销是否插入、检测当前是否已处于上锁状态
+**           4. 执行逻辑：若检查通过，更新全局锁状态为 LOCKING 并发送控制消息
+**指令格式:  CLOCK#
+**返回值说明: 0: 来源错误（非 LTE 来源）
+**             1: 直接回复
+**             2: 需异步回复
+**返 回 值:  int
+*********************************************************************/
+static int clock_cmd_handler(at_cmd_struc *msg)
+{
+    uint16_t remaining;
+    bool pin_inserted;
+
+    remaining = sizeof(msg->resp_msg);
+
+    // 此指令不允许蓝牙发
+    if (!g_lte_cmdSource)
+    {
+        return 0;
+    }
+
+    // 检查参数数量
+    if (msg->parm_count != 0)
+    {
+        LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "Lock failed. Invalid param.");
+        return 1;
+    }
+
+    // 检查锁销是否插入
+    pin_inserted = get_lockpin_insert_state();
+    // 锁销未插入
+    if (!pin_inserted)
+    {
+        // Buzzer 上锁失败提示
+        my_set_buzzer_mode(BUZZER_EVENT_LOCK_FAIL);
+        MY_LOG_INF("Lock failed. Lock pin not detected.");
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "Lock failed. Lock pin not detected.");
+        return 1;
+    }
+
+    // 检查当前锁状态：通过关锁限位判断是否已上锁
+    if (get_closelock_state())
+    {
+        // Buzzer 上锁失败提示
+        my_set_buzzer_mode(BUZZER_EVENT_LOCK_FAIL);
+        MY_LOG_INF("Lock failed. Device already in lock state.");
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "Lock failed. Device already in lock state.");
+        return 1;
+    }
+
+    // 标记当前是处于网络上锁
+    g_netLockState = LOCKING;
+    my_send_msg(MOD_MAIN, MOD_CTRL, MY_MSG_CTRL_CLOSELOCKING);
+
+    // 需要异步回复
+    return 2;
+}

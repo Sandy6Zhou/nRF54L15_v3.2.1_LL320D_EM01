@@ -11,12 +11,13 @@
 #define _MY_MOTOR_H_
 
 typedef enum {
-    BLE_UNLOCKING,  // 正在开锁
-    BLE_LOCKING,    // 正在关锁
-    BLE_LOCK_STOP,  // 停止锁操作
-} BLE_LOCK_STATE_T;
+    UNLOCKING,  // 正在开锁
+    LOCKING,    // 正在关锁
+    LOCK_STOP,  // 停止锁操作
+} lock_state_t;
 
-extern BLE_LOCK_STATE_T g_bBleLockState;
+extern lock_state_t g_bBleLockState;
+extern lock_state_t g_netLockState;
 
 void motor_power_set(bool on);
 
@@ -68,5 +69,15 @@ bool get_closelock_state(void);
             false ---        未开锁到位
 *********************************************************************/
 bool get_openlock_state(void);
+
+/********************************************************************
+**函数名称:  respond_netlock_result
+**入口参数:  lock_msg_data   ---   需要发送的锁状态结果字符串
+**出口参数:  无
+**函数功能:  响应网络上锁结果：将结果数据通过消息队列发送给 LTE 模块
+**           回复应答4G
+**返 回 值:  无
+*********************************************************************/
+void respond_netlock_result(const char *lock_msg_data);
 
 #endif

@@ -1222,6 +1222,18 @@ static void my_ble_task(void *p1, void *p2, void *p3)
                 ble_comu_response_or_expansion_cmd(BLE_DATA_TYPE_AT_CMD, msg.pData, msg.DataLen);
                 break;
 
+            //LTE+CMD数据透传指令
+            case MY_MSG_LTE_CMD_RX:
+                my_lte_handle_cmd((char *)msg.pData);
+
+                // 释放动态分配的内存
+                if(msg.pData != NULL)
+                {
+                    MY_FREE_BUFFER(msg.pData);
+                    msg.pData = NULL;
+                }
+                break;
+
             default:
                 break;
         }
