@@ -756,14 +756,17 @@ int main(void)
                 break;
 
             case MY_MSG_DFU_START:
+                lte_send_command("OTA", "ENTER");
                 MY_LOG_INF("DFU start received");
                 break;
 
             case MY_MSG_DFU_TIMEOUT:
+                lte_send_command("OTA", "EXIT");
                 MY_LOG_INF("DFU timeout received");
                 break;
 
             case MY_MSG_DFU_COMPLETE:
+                lte_send_command("OTA", "EXIT");
                 MY_LOG_INF("DFU complete received");
                 break;
 
