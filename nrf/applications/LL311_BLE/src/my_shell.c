@@ -1149,6 +1149,50 @@ static int cmd_alarm_test(const struct shell *sh, size_t argc, char **argv)
 
     return 0;
 }
+/********************************************************************
+**函数名称:  cmd_retransmit_check_test
+**入口参数:  sh    ---   Shell 实例句柄
+**           argc  ---   参数个数
+**           argv  ---   参数数组 (argv[1]: 指令内容, argv[2]: 可选参数)
+**出口参数:  无
+**函数功能:  Shell 测试命令：手动触发 LTE 重传检查机制
+**           调用 lte_send_cmd_with_retry 发送指令并启动重传
+**指令格式:  retransmit_test [cmd_string] [optional_param]
+**返回值说明:  0:      成功
+**           -EINVAL: 参数缺失
+**返 回 值:  int
+*********************************************************************/
+static int cmd_retransmit_check_test(const struct shell *sh, size_t argc, char **argv)
+{
+    int len;
+    char *p = NULL;
+
+    if (argc < 2)
+    {
+        shell_error(sh, "Missing parameter");
+        return -EINVAL;
+    }
+
+    memset(shell_test_buff, 0, sizeof(shell_test_buff));
+
+    len = strlen(argv[1]);
+    memcpy(shell_test_buff, argv[1], len);
+    shell_test_buff[len] = 0;
+
+    // 检查是否有第二个参数
+    if (argc >= 3)
+    {
+        p = argv[2];
+        shell_print(sh, "param2: %s", p);
+    }
+    shell_print(sh, "param1: %s, len: %d", argv[1], len);
+
+    lte_send_cmd_with_retry(argv[1], p);
+
+    return 0;
+}
+
+
 
 /* 注册自定义命令到 Shell 子系统 */
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_app,
@@ -1172,6 +1216,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_app,
     SHELL_CMD(nfc_swip_test, NULL, "Run nfc swipe test", cmd_nfc_swip_test),
     SHELL_CMD(tagscan, NULL, "Set tag scan config: app tagscan <mode> <scan_interval> <scan_length> <upload_interval>", cmd_tag_scan_set_config),
     SHELL_CMD(alarmtest, NULL, "Test alarm message: app alarmtest <type> [info]", cmd_alarm_test),
+    SHELL_CMD(retransmit_check_test, NULL, "Run retransmit_check_test test", cmd_retransmit_check_test),
     SHELL_SUBCMD_SET_END
 );
 /* Zephyr Shell 子系统提供的宏，随 nRF Connect SDK一起提供，用来在 Shell里注册一个“根命令”

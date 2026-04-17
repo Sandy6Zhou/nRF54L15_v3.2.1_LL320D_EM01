@@ -325,7 +325,11 @@ void switch_work_mode(MY_WORK_MODE mode)
 
     snprintf(buf, sizeof(buf), "%d", mode);
     // 发送工作模式切换命令给LTE模块
+#if RETRANSMIT_CHECK_ENABLED
+    lte_send_cmd_with_retry("MODESET", buf);
+#else
     lte_send_command("MODESET", buf);
+#endif
 
     // 工作模式切换时根据配置的扫描模式决定是否上报扫描数据
     my_scan_upload_on_lte_wakeup();

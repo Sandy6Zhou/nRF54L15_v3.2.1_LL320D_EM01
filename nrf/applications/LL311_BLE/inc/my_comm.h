@@ -195,6 +195,8 @@ typedef enum
     MY_MSG_LTE_PWRON,
     MY_MSG_LTE_PWROFF,
     MY_MSG_LTE_REV,
+    MY_MSG_RETRANS_CHECK,
+    MY_MSG_ADD_RETRANS_QUEUE,
 
     /* G-Sensor处理程序消息 */
     MY_MSG_GSENSOR_PWRON,

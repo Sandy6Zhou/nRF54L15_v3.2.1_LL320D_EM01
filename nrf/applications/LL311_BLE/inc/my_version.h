@@ -15,6 +15,13 @@
 #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260417"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.04.17
+** 作    者:        吴楚庆 (wuchuqing@jimiiot.com)
+** 修改内容:        1.增加串口数据重传机制功能（用宏RETRANSMIT_CHECK_ENABLED控制）
+***/
+
+//#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260417"
+/* 软件版本:        V1.0
+** 完成日期:        2026.04.17
 ** 作    者:        曹阳 (caoyang@jimiiot.com)
 ** 修改内容:        增加蓝牙OTA串口协议指令
 ***/

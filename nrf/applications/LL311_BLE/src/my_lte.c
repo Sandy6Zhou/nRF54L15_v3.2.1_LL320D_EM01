@@ -37,6 +37,39 @@ char BLE[] = "BLE+";
 // 经纬度存储点
 location_storage_t g_location_point = {0};
 
+/* 串口重发机制：
+ * 设备将消息通过串口发出去后，同时记录此消息到重发队列里面并标记状态为等待状态
+ * 收到对应消息应答时，将重发队列里面对应的消息的标记位变为非等待状态(即下次可使用这个位置进行存储消息)
+ * 当重发队列里面的消息超过ACK_TIMEOUT_S s未收到应答时，执行重发操作并标记重发次数，达到重发上限次数(3次)仍未收到应答时，将消息从重发队列里面清掉。
+ */
+
+// 重传机制相关宏和结构体
+#define MAX_RETRIES                3   // 最大重试次数
+#define ACK_TIMEOUT_S              2   // ACK等待超时时间(秒)
+#define RETRANSMISSION_QUEUE_SIZE  10  // 重传队列大小
+#define RETRANSMIT_TIMER_PERIOD_MS 500 // 重传定时器周期（毫秒）
+
+typedef enum
+{
+    MSG_STATE_IDLE = 0, // 空闲可用
+    MSG_STATE_PENDING,   // 等待ACK
+    MSG_STATE_TIMEOUT    // 超时
+} MsgStateEnum;
+
+typedef struct
+{
+    char cmd_name[32];  // 指令头
+    char *param;        // 发送的参数内容
+    int retry_count;    // 当前重试次数
+    time_t send_time;   // 最后一次发送的时间(秒时间戳)
+    MsgStateEnum state; // 当前状态
+} Retransmission_Item;
+
+Retransmission_Item g_retrans_queue[RETRANSMISSION_QUEUE_SIZE]; // 重传队列
+
+// 重传检查定时器
+struct k_timer retrans_check_timer;
+
 // 命令映射表定义
 static const ble_rsp_cmd_map_t ble_rsp_cmd_table[] = {
     {"LOCATION", BLE_RSP_LOCATION},
@@ -110,6 +143,390 @@ net_unlock_ctrl_t g_net_unlock;
 
 // lte+cmd异步回复需要id号
 char g_lte_cmd_id[16];
+
+/********************************************************************
+**函数名称:  init_retransmission_queue
+**入口参数:  无
+**出口参数:  无
+**函数功能:  重传队列初始化
+**           1. 遍历队列所有槽位，释放动态分配的 param 内存
+**           2. 清空 cmd_name、计数器和时间戳
+**           3. 重置状态为 0 (空闲)
+**返 回 值:  无
+********************************************************************/
+void init_retransmission_queue(void)
+{
+    int i = 0;
+    // 将整个队列的内存块清零
+    for (i = 0; i < RETRANSMISSION_QUEUE_SIZE; i++)
+    {
+        if (g_retrans_queue[i].param)
+        {
+            MY_FREE_BUFFER(g_retrans_queue[i].param);
+            g_retrans_queue[i].param = NULL;
+        }
+
+        memset(g_retrans_queue[i].cmd_name, 0, sizeof(g_retrans_queue[i].cmd_name));
+        g_retrans_queue[i].retry_count = 0;
+        g_retrans_queue[i].send_time = 0;
+        g_retrans_queue[i].state = 0;
+    }
+
+    // 停止定时器
+    if (k_timer_remaining_get(&retrans_check_timer) != 0)
+    {
+        k_timer_stop(&retrans_check_timer);
+        MY_LOG_INF("retrans_check_timer : STOP");
+    }
+
+    MY_LOG_INF("Retransmission queue initialized with size %d", RETRANSMISSION_QUEUE_SIZE);
+}
+
+/********************************************************************
+**函数名称:  retrans_queue_is_empty
+**入口参数:  无
+**出口参数:  无
+**函数功能:  判断重传队列是否为空
+**           遍历队列，检查是否存在状态为 MSG_STATE_PENDING 的消息
+**返 回 值:  1: 队列为空
+**           0: 队列非空
+********************************************************************/
+int retrans_queue_is_empty(void)
+{
+    int i = 0;
+    for (i = 0; i < RETRANSMISSION_QUEUE_SIZE; i++)
+    {
+        if (g_retrans_queue[i].state == MSG_STATE_PENDING)
+        {
+            return 0; // 非空
+        }
+    }
+    return 1; // 空
+}
+
+/********************************************************************
+**函数名称:  check_ack
+**入口参数:  cmd_name  ---   收到的应答消息对应的命令名称
+**出口参数:  无
+**函数功能:  检查并处理应答
+**           1. 遍历队列，查找处于 PENDING 状态且名称匹配的消息
+**           2. 若匹配成功：标记为 ACKED，释放 param 内存，打印日志
+**           3. 检查队列是否已空，若空则发送消息停止重传定时器
+**返 回 值:  无
+********************************************************************/
+void check_ack(char *cmd_name)
+{
+    int i = 0;
+    int j = 0;
+    for (i = 0; i < RETRANSMISSION_QUEUE_SIZE; i++)
+    {
+        // 当前收到的应答消息是重传队列中的消息且处于等待应答阶段
+        if (g_retrans_queue[i].state == MSG_STATE_PENDING &&
+            (strcmp(g_retrans_queue[i].cmd_name, cmd_name) == 0))
+        {
+            MY_LOG_INF("Received ACK for pending message[%d]:%s", i, g_retrans_queue[i].cmd_name);
+            // 释放当前param
+            if (g_retrans_queue[i].param)
+            {
+                MY_FREE_BUFFER(g_retrans_queue[i].param);
+                g_retrans_queue[i].param = NULL;
+            }
+            // 前移
+            for (j = i; j < RETRANSMISSION_QUEUE_SIZE - 1 && g_retrans_queue[j + 1].state == MSG_STATE_PENDING; j++)
+            {
+                memcpy(&g_retrans_queue[j], &g_retrans_queue[j + 1], sizeof(Retransmission_Item));
+                g_retrans_queue[j + 1].param = NULL;
+            }
+
+            //清空最后一个
+            memset(&g_retrans_queue[j], 0, sizeof(Retransmission_Item));
+            break;
+        }
+    }
+
+    // 检查队列是否为空
+    if (retrans_queue_is_empty())
+    {
+        // 停止定时器
+        if (k_timer_remaining_get(&retrans_check_timer) != 0)
+        {
+            k_timer_stop(&retrans_check_timer);
+            MY_LOG_INF("retrans_check_timer : STOP");
+        }
+    }
+}
+
+/********************************************************************
+**函数名称:  retransmission_check
+**入口参数:  无
+**出口参数:  无
+**函数功能:  重传超时检查与处理 (定时器回调逻辑)
+**           1. 获取当前系统时间
+**           2. 遍历队列中 PENDING 状态的消息
+**           3. 若超时 (当前时间 - 发送时间 >= 超时阈值):
+**              - 未达最大重试次数: 重发指令，更新发送时间和重试计数
+**              - 已达最大重试次数: 标记超时失败，释放内存，触发 LTE 断电重启
+**返 回 值:  无
+********************************************************************/
+void retransmission_check(void)
+{
+    int i = 0;
+    char cmd_name[32];
+    time_t current_time = my_get_system_time_sec();
+
+    for (i = 0; i < RETRANSMISSION_QUEUE_SIZE; i++)
+    {
+        // 只有处于等待阶段的消息才需要进行重传检查
+        if (g_retrans_queue[i].state == MSG_STATE_PENDING)
+        {
+            // 检查是否超时，没超时则不进行重发
+            if ((current_time - g_retrans_queue[i].send_time) >= ACK_TIMEOUT_S)
+            {
+                if (g_retrans_queue[i].retry_count < MAX_RETRIES)
+                {
+                    //（BLE+CMD需特殊处理）
+                    MY_LOG_INF("Retransmitting message: %s (Retry %d)", g_retrans_queue[i].cmd_name, g_retrans_queue[i].retry_count + 1);
+                    //查找字符串是否有CMD_
+                    if (strstr(g_retrans_queue[i].cmd_name, "CMD_"))
+                    {
+                        strcpy(cmd_name, "CMD");
+                    }
+                    else
+                    {
+                        strcpy(cmd_name, g_retrans_queue[i].cmd_name);
+                    }
+                    // 执行重传
+                    lte_send_command(cmd_name, g_retrans_queue[i].param);
+                    g_retrans_queue[i].retry_count++;
+                    g_retrans_queue[i].send_time = current_time;
+                }
+                else
+                {
+                    // 超过最大重试次数，标记为超时失败
+                    MY_LOG_INF("Message failed after %d retries: %s", MAX_RETRIES, g_retrans_queue[i].cmd_name);
+                    g_retrans_queue[i].state = MSG_STATE_TIMEOUT;
+
+                    // 释放param
+                    if (g_retrans_queue[i].param)
+                    {
+                        MY_FREE_BUFFER(g_retrans_queue[i].param);
+                        g_retrans_queue[i].param = NULL;
+                    }
+
+                    // 断电
+                    my_send_msg(MOD_LTE, MOD_LTE, MY_MSG_LTE_PWROFF);
+                    // 重新上电
+                    my_send_msg(MOD_LTE, MOD_LTE, MY_MSG_LTE_PWRON);
+
+                    //防止多条超时造成上下电操作重复
+                    break;
+                }
+            }
+        }
+    }
+}
+
+/********************************************************************
+**函数名称:  lte_send_cmd_with_retry
+**入口参数:  cmd_name  ---   指令名称
+**           param     ---   指令参数 (可为 NULL)
+**出口参数:  无
+**函数功能:  串口发送指令并加入重传队列
+**           1. 尝试发送指令，若失败直接返回
+**           2. 发送完发送加入队列消息到LTE
+**返 回 值:  无
+********************************************************************/
+void lte_send_cmd_with_retry(const char *cmd_name, const char *param)
+{
+    int ret;
+    char *command;
+    MSG_S msg;
+    int command_len;
+
+    // 1. 先尝试发送
+    ret = lte_send_command(cmd_name, param);
+
+    if (ret == -1)
+    {
+        return;
+    }
+
+    // 动态分配内存
+    if (param)
+    {
+        command_len = strlen(cmd_name) + strlen(param) + 8;
+    }
+    else
+    {
+        command_len = strlen(cmd_name) + 1;
+    }
+
+    MY_MALLOC_BUFFER(command, command_len);
+
+    if (command == NULL)                        // 内存分配失败
+    {
+        MY_LOG_ERR("command malloc failed");
+        return;
+    }
+
+    if (param && strlen(param) > 0) // 有参数的情况
+    {
+        snprintf(command, command_len, "%s,%s", cmd_name, param);
+    }
+    else // 无参数的情况
+    {
+        snprintf(command, command_len, "%s", cmd_name);
+    }
+
+    // 发送到LTE线程处理加入重传队列
+    msg.msgID = MY_MSG_ADD_RETRANS_QUEUE;
+    msg.pData = command;
+    my_send_msg_data(MOD_CTRL, MOD_LTE, &msg);
+}
+
+/********************************************************************
+**函数名称:  add_to_retrans_queue
+**入口参数:  command  ---   完整指令字符串 (格式: "CMD_NAME,PARAM")
+**出口参数:  无
+**函数功能:  解析指令并将其添加到重传队列
+**           1. 指令解析：使用逗号分隔，提取 cmd_name 和 param
+**           2. 在队列中寻找空闲槽位 (非 PENDING 状态)
+**           3. 填充数据：复制 cmd_name，动态分配并复制 param
+**           4. 初始化状态为 PENDING，记录发送时间
+**           5. 若定时器未启动，则启动重传检查定时器
+**返 回 值:  无
+*********************************************************************/
+void add_to_retrans_queue(char *command)
+{
+    int cnt = 0; // 记录当前数组已经保存几条消息
+    size_t len;
+    bool ret;
+    char *param = NULL;
+    char cmd_name[32];
+    char subcmd[16];
+    int i = 0;
+
+    // 获取第一个参数，指令头
+    ret = my_get_str_at_pos(command, 0, ',', cmd_name, sizeof(cmd_name));
+    if (ret)
+    {
+        param = command + strlen(cmd_name) + 1; //+1跳过逗号
+    }
+
+    //  将消息添加到重传队列
+    for (i = 0; i < RETRANSMISSION_QUEUE_SIZE; i++)
+    {
+        if (g_retrans_queue[i].state != MSG_STATE_PENDING)
+        {
+            // 释放旧内存（防止复用时泄漏）
+            //  检查是否为NULL
+            if (g_retrans_queue[i].param)
+            {
+                MY_FREE_BUFFER(g_retrans_queue[i].param);
+                g_retrans_queue[i].param = NULL;
+            }
+
+            // 动态分配 param
+            if (param)
+            {
+                len = strlen(param) + 1;
+
+                MY_MALLOC_BUFFER(g_retrans_queue[i].param, len);
+                if (g_retrans_queue[i].param == NULL) // 内存分配失败
+                {
+                    MY_LOG_ERR("g_retrans_queue[%d].param failed", i);
+                    return;
+                }
+
+                if (g_retrans_queue[i].param)
+                {
+                    memcpy(g_retrans_queue[i].param, param, len);
+                }
+                else
+                {
+                    MY_LOG_ERR("malloc param failed");
+                    return;
+                }
+            }
+
+            //对BLE+CMD = <command>,....做特殊处理
+            if (strcmp(cmd_name, "CMD") == 0)
+            {
+                //拿<command>(发送格式BLE+CMD = <command>,....)
+                my_get_str_at_pos(param, 0, ',', subcmd, sizeof(subcmd));
+                //重新组指令头CMD_subcmd
+                strcat(cmd_name, "_");
+                strcat(cmd_name, subcmd);
+            }
+
+            strncpy(g_retrans_queue[i].cmd_name, cmd_name, sizeof(g_retrans_queue[i].cmd_name) - 1);
+            g_retrans_queue[i].cmd_name[sizeof(g_retrans_queue[i].cmd_name) - 1] = '\0';
+
+            g_retrans_queue[i].retry_count = 0;
+            g_retrans_queue[i].send_time = my_get_system_time_sec();
+            g_retrans_queue[i].state = MSG_STATE_PENDING;
+            break;
+        }
+        else
+        {
+            cnt++;
+        }
+    }
+
+    // 数组已满
+    if (RETRANSMISSION_QUEUE_SIZE == cnt)
+    {
+        MY_LOG_INF("retransmission queue is full");
+    }
+
+    // 如果定时器未启动，开启定时器重传检查
+    if (k_timer_remaining_get(&retrans_check_timer) == 0)
+    {
+        k_timer_start(&retrans_check_timer, K_MSEC(RETRANSMIT_TIMER_PERIOD_MS), K_MSEC(RETRANSMIT_TIMER_PERIOD_MS));
+    }
+}
+
+/********************************************************************
+**函数名称:  retrans_check_timer_handler
+**入口参数:  timer  ---   定时器句柄 (此处未使用)
+**出口参数:  无
+**函数功能:  重传检查定时器回调函数
+**           1. 遍历重传队列，检查是否有消息超时
+**           2. 若队列为空，则发送消息停止定时器
+**返 回 值:  无
+*********************************************************************/
+void retrans_check_timer_handler(struct k_timer *timer)
+{
+    ARG_UNUSED(timer);
+
+    // 发消息去LTE线程处理重传检查
+    my_send_msg(MOD_LTE, MOD_LTE, MY_MSG_RETRANS_CHECK);
+}
+
+/********************************************************************
+**函数名称:  retransmission_poll
+**入口参数:  无
+**出口参数:  无
+**函数功能:  重传轮询主逻辑
+**           1. 执行重传检查：遍历队列，处理超时重传或失败逻辑
+**           2. 若队列为空，且定时器正在运行，则停止定时器
+**返 回 值:  无
+*********************************************************************/
+void retransmission_poll(void)
+{
+    retransmission_check();
+
+    // 检查队列是否为空
+    if (retrans_queue_is_empty())
+    {
+        // 停止定时器
+        if (k_timer_remaining_get(&retrans_check_timer) != 0)
+        {
+            k_timer_stop(&retrans_check_timer);
+            MY_LOG_INF("retrans_check_timer : STOP");
+        }
+    }
+}
 
 /********************************************************************
  * 函数名称: my_lte_msg_queue_init
@@ -324,6 +741,14 @@ static void my_lte_task(void *p1, void *p2, void *p3)
             case MY_MSG_LTE_PWROFF:
                 my_lte_pwr_on(false);
                 g_bLteReady = 0;
+
+                #if RETRANSMIT_CHECK_ENABLED
+                    //清空重传队列
+                    init_retransmission_queue();
+                #endif
+                //2s延时，防止断电后立马上电，导致模块没法真正复位
+                k_sleep(K_MSEC(2000));
+
                 break;
 
             // 收到4G发送的消息,例如返回UTC时间,在里面进行数据解析
@@ -353,6 +778,21 @@ static void my_lte_task(void *p1, void *p2, void *p3)
             case MY_MSG_LTE_BLE_DATA:
                 // 使用统一的消息发送接口
                 my_lte_send_msg((const char*)msg.pData, msg.DataLen);
+                // 释放动态分配的内存
+                if(msg.pData != NULL)
+                {
+                    MY_FREE_BUFFER(msg.pData);
+                    msg.pData = NULL;
+                }
+                break;
+
+            case MY_MSG_RETRANS_CHECK:
+                retransmission_poll();
+                break;
+
+            case MY_MSG_ADD_RETRANS_QUEUE:
+                add_to_retrans_queue((char*)msg.pData);
+
                 // 释放动态分配的内存
                 if(msg.pData != NULL)
                 {
@@ -1384,6 +1824,9 @@ static int my_ble_handle(char *data)
 {
     ble_rsp_result_t rsp_result;
     int ret = 0;
+    char is_ok[8] = {0};
+    char subcmd[16] = {0};
+    char cmd_name[32];
 
     //解析数据
     ret = ble_rsp_parse(data, &rsp_result);
@@ -1393,6 +1836,31 @@ static int my_ble_handle(char *data)
         return -1;
     }
 
+    // 检查应答
+    my_get_str_at_pos(rsp_result.params, 0, ',', is_ok, sizeof(is_ok));
+    //应答不为OK,返回不走处理逻辑
+    if (strcmp(is_ok, "OK") != 0)
+    {
+        return 0;
+    }
+
+    //对BLE+CMD特殊处理（区分BLE+CMD = <command>，需要区分command）
+    if (strcmp(rsp_result.cmd_name, "CMD") == 0)
+    {
+        //取参数的指令头（应答格式BLE+CMD =OK, <command>）
+        my_get_str_at_pos(rsp_result.params, 1, ',', subcmd, sizeof(subcmd));
+        //CMD_command 如：CMD_MILEAGE(在相关重传也需要特殊处理)
+        sprintf(cmd_name, "%s_%s", rsp_result.cmd_name, subcmd);
+    }
+    else
+    {
+        strcpy(cmd_name, rsp_result.cmd_name);
+    }
+
+    //收到应答，移出重传队列
+    check_ack(cmd_name);
+
+    //处理数据
     switch (rsp_result.type)
     {
         case BLE_RSP_LOCATION:
@@ -1491,7 +1959,11 @@ void my_verify_openlock(void)
     {
         // 通过发消息通知4G需要获取经纬度信息
         sprintf(card_index, "%d", g_nfc_card_index);
-        lte_send_command("LOCATION", card_index);
+        #if RETRANSMIT_CHECK_ENABLED
+            lte_send_cmd_with_retry("LOCATION", card_index);
+        #else
+            lte_send_command("LOCATION", card_index);
+        #endif
     }
     return;
 }
@@ -1703,6 +2175,14 @@ int my_lte_init(k_tid_t *tid)
     k_thread_name_set(*tid, "MY_LTE");
 
     MY_LOG_INF("LTE module initialized successfully (Loopback mode)");
+
+#if RETRANSMIT_CHECK_ENABLED
+    //初始化队列
+    init_retransmission_queue();
+#endif
+
+    //重传检查定时器
+    k_timer_init(&retrans_check_timer, retrans_check_timer_handler, NULL);
 
     /* 初始化完成后默认开启模块电源 */
     my_lte_pwr_on(true);

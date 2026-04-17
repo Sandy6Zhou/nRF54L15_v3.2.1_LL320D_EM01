@@ -31,7 +31,6 @@
 #include "my_comm.h"
 
 #define LTE_CMD_BUF_SIZE CMD_STRING_LENGTH_MAX          /* LTE透传最大命令字符串长度 */
-#define LTE_SEND_BUF_LEN (CMD_STRING_LENGTH_MAX + 20)  /* LTE最大发送缓冲区长度 */
 
 LOG_MODULE_REGISTER(my_cmd_setting, LOG_LEVEL_INF);
 
@@ -129,6 +128,7 @@ int lte_send_command(const char *cmd_name, const char *param)
 {
     char *p_msg = NULL;  // 动态分配的消息内存
     MSG_S msg;  // 消息结构体
+    int buf_len;
 
     // 检查LTE模块电源状态,如果关闭则先开启
     if (!get_lte_power_state())
@@ -136,8 +136,17 @@ int lte_send_command(const char *cmd_name, const char *param)
         my_send_msg(MOD_CTRL, MOD_LTE, MY_MSG_LTE_PWRON);  // 发送开启 LTE 电源的消息
     }
 
-    // 动态分配内存存储告警消息
-    MY_MALLOC_BUFFER(p_msg, LTE_SEND_BUF_LEN);  // 分配内存
+    if(param)
+    {
+        buf_len = strlen(cmd_name) + strlen(param) + 16;
+    }
+    else
+    {
+        buf_len = strlen(cmd_name) + 16;
+    }
+
+    MY_MALLOC_BUFFER(p_msg, buf_len);  // 分配内存
+
     if(p_msg == NULL)  // 内存分配失败
     {
         MY_LOG_ERR("Failed to allocate memory for LTE command message");  // 输出错误信息
@@ -146,11 +155,11 @@ int lte_send_command(const char *cmd_name, const char *param)
 
     if (param && strlen(param) > 0)  // 有参数的情况
     {
-        snprintf(p_msg, LTE_SEND_BUF_LEN, "BLE+%s=%s\r\n", cmd_name, param);  // 构建带参数的命令
+        snprintf(p_msg, buf_len, "BLE+%s=%s\r\n", cmd_name, param);  // 构建带参数的命令
     }
     else  // 无参数的情况
     {
-        snprintf(p_msg, LTE_SEND_BUF_LEN, "BLE+%s\r\n", cmd_name);  // 构建不带参数的命令
+        snprintf(p_msg, buf_len, "BLE+%s\r\n", cmd_name);  // 构建不带参数的命令
     }
 
    // 构建消息结构体并发送给LTE模块
@@ -301,7 +310,11 @@ static int lte_cmd_handler(at_cmd_struc* msg)
     snprintf(lte_cmd_msg + offset, LTE_CMD_BUF_SIZE, "#");
 
     // 发送LTE命令
+#if RETRANSMIT_CHECK_ENABLED
+    lte_send_cmd_with_retry("CMD", lte_cmd_msg);
+#else
     ret = lte_send_command("CMD", lte_cmd_msg);
+#endif
 
     // 释放动态分配的内存
     if(lte_cmd_msg != NULL)
@@ -2080,13 +2093,25 @@ static int led_cmd_handler(at_cmd_struc* msg)
     if (strcmp(msg->parm[1], "ON") == 0)
     {
         display_value = 1;
-        lte_send_command("LED", "1");
+
+        #if RETRANSMIT_CHECK_ENABLED
+            lte_send_cmd_with_retry("LED", "1");
+        #else
+            lte_send_command("LED", "1");
+        #endif
+
         my_send_msg(MOD_BLE, MOD_CTRL, MY_MSG_OPEN_LED_SHOW);
     }
     else if (strcmp(msg->parm[1], "OFF") == 0)
     {
         display_value = 0;
-        lte_send_command("LED", "0");
+
+        #if RETRANSMIT_CHECK_ENABLED
+            lte_send_cmd_with_retry("LED", "0");
+        #else
+            lte_send_command("LED", "0");
+        #endif
+
         my_send_msg(MOD_BLE, MOD_CTRL, MY_MSG_CLOSE_LED_SHOW);
     }
     else

@@ -77,6 +77,9 @@ extern location_storage_t g_location_point;
 /* 循环缓冲区用于存储排队的LTE消息 */
 #define LTE_MSG_QUEUE_SIZE    10  /* 可排队的最大消息数 */
 
+//重传检查使能
+#define RETRANSMIT_CHECK_ENABLED 0
+
 typedef struct {
     lte_pending_msg_t queue[LTE_MSG_QUEUE_SIZE];  /* 消息的循环缓冲区 */
     uint8_t head;                                 /* 最旧消息的索引 */
@@ -178,5 +181,17 @@ void my_verify_openlock(void);
 **          "NFCAUTH,SET,88040FBE99050B,+22277120,13516763,999900,2603200000,2603201200,1"
 *********************************************************************/
 int my_lte_handle_cmd(char *data);
+
+/********************************************************************
+**函数名称:  lte_send_cmd_with_retry
+**入口参数:  cmd_name  ---   指令名称
+**           param     ---   指令参数 (可为 NULL)
+**出口参数:  无
+**函数功能:  串口发送指令并加入重传队列
+**           1. 尝试发送指令，若失败直接返回
+**           2. 发送完发送加入队列消息到LTE
+**返 回 值:  无
+********************************************************************/
+void lte_send_cmd_with_retry(const char *cmd_name, const char *param);
 
 #endif /* _MY_LTE_H_ */
