@@ -770,7 +770,10 @@ int main(void)
                 break;
 
             case MY_MSG_DFU_COMPLETE:
-                lte_send_command("OTA", "EXIT");
+                gConfigParam.ota_config.flag = FLAG_VALID;
+                gConfigParam.ota_config.ble_ota_reboot = true;
+                // 设备升级完成后，会有一个6.5s定时器重启系统，不会导致数据写不进去，时间足够
+                my_user_data_write(ZMS_ID_OTA_CONFIG, &gConfigParam.ota_config, sizeof(OtaConfig_t));
                 MY_LOG_INF("DFU complete received");
                 break;
 

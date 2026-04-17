@@ -88,6 +88,8 @@ typedef struct {
     struct k_mutex queue_mutex;                   /* 线程安全访问的互斥锁 */
 } lte_msg_queue_t;
 
+extern bool g_lte_ota_in_progress;
+
 /********************************************************************
 **函数名称:  my_lte_init
 **入口参数:  tid      ---        指向线程 ID 变量的指针

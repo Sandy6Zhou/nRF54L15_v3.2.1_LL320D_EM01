@@ -144,6 +144,9 @@ net_unlock_ctrl_t g_net_unlock;
 // lte+cmd异步回复需要id号
 char g_lte_cmd_id[16];
 
+// lte OTA升级状态
+bool g_lte_ota_in_progress = false;
+
 /********************************************************************
 **函数名称:  init_retransmission_queue
 **入口参数:  无
@@ -727,6 +730,17 @@ static void my_lte_task(void *p1, void *p2, void *p3)
 
     MY_LOG_INF("LTE thread started");
 
+    // 检查重启原因是否为OTA升级
+    if (gConfigParam.ota_config.ble_ota_reboot == true)
+    {
+        lte_send_command("OTA", "EXIT");
+        gConfigParam.ota_config.ble_ota_reboot = false;
+        my_user_data_write(ZMS_ID_OTA_CONFIG, &gConfigParam.ota_config, sizeof(OtaConfig_t));
+    }
+
+    // 初始化时间指令,从4G网络获取时间同步
+    lte_send_command("TIME", "1");
+
     for (;;)
     {
         my_recv_msg(&my_lte_msgq, (void *)&msg, sizeof(MSG_S), K_FOREVER);
@@ -739,8 +753,12 @@ static void my_lte_task(void *p1, void *p2, void *p3)
                 break;
 
             case MY_MSG_LTE_PWROFF:
-                my_lte_pwr_on(false);
-                g_bLteReady = 0;
+                // 只有在OTA升级完成后，才允许断电
+                if (g_lte_ota_in_progress == false)
+                {
+                    my_lte_pwr_on(false);
+                    g_bLteReady = 0;
+                }
 
                 #if RETRANSMIT_CHECK_ENABLED
                     //清空重传队列
@@ -1458,14 +1476,8 @@ static int my_lte_handle_bt_set(char *data)
  */
 static int my_lte_handle_time(char *data)
 {
-    char utc_seconds[16] = {0};
-    char zone_in_min[16] = {0};
-
-    my_get_str_at_pos(data, 0, ',', utc_seconds, sizeof(utc_seconds));
-    my_get_str_at_pos(data, 1, ',', zone_in_min, sizeof(zone_in_min));
-
     // 设置系统时间
-    my_set_system_time(atoll(utc_seconds));
+    my_set_system_time(atoll(data));
 
     return 0;
 }
@@ -1535,6 +1547,20 @@ static int my_lte_handle_transmit(char *data)
 
 static int my_lte_handle_fota(char *data)
 {
+    if (strcmp(data, "ENTER") == 0)
+    {
+        // lte OTA升级状态设置为true, 表示正在升级中,不允许断电
+        g_lte_ota_in_progress = true;
+
+        my_lte_send_msg("LTE+FOTA=OK\r\n", strlen("LTE+FOTA=OK\r\n"));
+    }
+    else if (strcmp(data, "EXIT") == 0)
+    {
+        g_lte_ota_in_progress = false;
+
+        my_lte_send_msg("LTE+FOTA=OK\r\n", strlen("LTE+FOTA=OK\r\n"));
+    }
+
     return 0;
 }
 

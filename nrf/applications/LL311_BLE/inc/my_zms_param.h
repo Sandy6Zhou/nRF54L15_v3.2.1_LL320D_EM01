@@ -71,6 +71,7 @@ typedef enum                           // 参数ID定义
     ZMS_ID_NFTRIG_CONFIG,              // NFC触发规则配置参数ID
     ZMS_ID_NFCAUTH_CONFIG,             // NFC卡权限配置参数ID
     ZMS_ID_BT_KEY_CONFIG,              // 蓝牙解锁密钥配置参数ID
+    ZMS_ID_OTA_CONFIG,                 // OTA升级相关配置参数ID
 } ZMS_ID;
 
 typedef struct                              // 存储的LICENSE GG信息
@@ -257,6 +258,12 @@ typedef struct                              // 存储的蓝牙解锁密钥配置
 
 typedef struct
 {
+    uint8_t flag;                           // 参数有效标志
+    bool ble_ota_reboot;                  // 蓝牙OTA升级成功重启设备标志位
+} OtaConfig_t;
+
+typedef struct
+{
     lic_ff_struct               lic_ff;                     // 存储的LICENSE FF信息
     lic_gg_struct               lic_gg;                     // 存储的LICENSE GG信息
     AdvValidValue_t             adv_valid_value;            // 广播有效值
@@ -284,6 +291,7 @@ typedef struct
     NfctrigConfig_t             nfctrig_config;             // NFC触发规则配置
     NfcauthConfig_t             nfcauth_config;             // NFC卡权限配置
     BkeyConfig_t                bkey_config;                // 蓝牙解锁密钥配置
+    OtaConfig_t                 ota_config;                 // OTA升级相关配置
 } ConfigParamStruct;
 
 extern ConfigParamStruct    gConfigParam;

@@ -236,6 +236,12 @@ const BkeyConfig_t gDefaultBkeyConfig =
     .bt_key = "000000",              /* 默认密钥 */
 };
 
+const OtaConfig_t gDefaultOtaConfig =
+{
+    .flag = FLAG_VALID,
+    .ble_ota_reboot = false,
+};
+
 /**
 /********************************************************************
 **函数名称:  my_user_data_storage_init
@@ -714,6 +720,16 @@ void my_param_load_config(void)
     {
         memcpy(&gConfigParam.bkey_config, &gDefaultBkeyConfig, length);
         MY_LOG_INF("Bkey config not found. Use default.");
+    }
+
+    //--------Load Ota Config ---------------------
+    length = sizeof(OtaConfig_t);
+    ret = my_user_data_read(ZMS_ID_OTA_CONFIG, &gConfigParam.ota_config, length);
+    MY_LOG_INF("Ota config loaded: ble_ota_reboot(%d)", gConfigParam.ota_config.ble_ota_reboot);
+    if (ret != length)
+    {
+        memcpy(&gConfigParam.ota_config, &gDefaultOtaConfig, length);
+        MY_LOG_INF("Ota config not found. Use default.");
     }
 }
 

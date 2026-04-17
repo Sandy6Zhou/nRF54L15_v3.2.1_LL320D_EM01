@@ -15,6 +15,16 @@
 #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260417"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.04.17
+** 作    者:        曹阳 (caoyang@jimiiot.com)
+** 修改内容:        1.增加BLE启动向4G拿UTC时间串口指令
+**                  2.增加4G通过串口发送进入升级的指令给蓝牙
+**                  3.因为lte时间同步指令修改了参数，只有一个utc秒数参数，直接改成atoll转换写入系统时间。
+**                  4.增加蓝牙OTA串口协议指令，ota升级需要等重启后才算成功，重启后再发送ble+ota=exit命令
+***/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260417"
+/* 软件版本:        V1.0
+** 完成日期:        2026.04.17
 ** 作    者:        吴楚庆 (wuchuqing@jimiiot.com)
 ** 修改内容:        1.增加串口数据重传机制功能（用宏RETRANSMIT_CHECK_ENABLED控制）
 ***/
