@@ -15,6 +15,13 @@
 #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260416"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.04.16
+** 作    者:        曹阳 (caoyang@jimiiot.com)
+** 修改内容:        增加指令集的数据持久化存储
+***/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260416"
+/* 软件版本:        V1.0
+** 完成日期:        2026.04.16
 ** 作    者:       周森达 (zhousenda@jimiiot.com)
 ** 修改内容:        1.新增my_ble_scan 模块，支持主动扫描、ADV/SCAN_RSP分离解析、名称前缀过滤、MAC地址聚合及按RSSI替换
 **                 2.支持4种工作模式：关闭 / LTE 唤醒扫描 / 周期缓存 / 周期主动上报

@@ -297,7 +297,7 @@ static int my_user_data_storage_init(void)
 **函数功能:  通用写接口：按 ID 写入任意数据
 **返 回 值:  >=0 写入的字节数；负值为错误码
 *********************************************************************/
-static int my_user_data_write(uint32_t id, const void *data, int len)
+int my_user_data_write(uint32_t id, const void *data, int len)
 {
     int ret;
 
@@ -1093,45 +1093,6 @@ int my_param_set_mac(char *param, uint8_t len)
 const macaddr_t *my_param_get_macaddr(void)
 {
     return &gConfigParam.my_macaddr;
-}
-
-/********************************************************************
-**函数名称:  my_param_set_ble_tx_power
-**入口参数:  tx_power: 发射功率(dBm)，范围: -40 ~ +8
-**出口参数:  无
-**函数功能:  设置蓝牙发射功率参数
-**返 回 值:  0表示成功，负值表示失败
-*********************************************************************/
-int my_param_set_ble_tx_power(int8_t tx_power)
-{
-    int ret;
-    int tx_power_len = sizeof(BleTxPower_t);
-
-    /* 限制功率范围: -40 ~ +8 dBm */
-    if (tx_power < -40)
-    {
-        tx_power = -40;
-    }
-    else if (tx_power > 8)
-    {
-        tx_power = 8;
-    }
-
-    gConfigParam.ble_tx_power.flag = FLAG_VALID;
-    gConfigParam.ble_tx_power.tx_power = tx_power;
-
-    ret = my_user_data_write(ZMS_ID_BLE_TX_POWER, &gConfigParam.ble_tx_power, tx_power_len);
-    if (ret != tx_power_len)
-    {
-        MY_LOG_INF("zms set ble tx power Error!!!");
-        return -1;
-    }
-    else
-    {
-        MY_LOG_INF("zms set ble tx power OK: %d dBm", tx_power);
-    }
-
-    return 0;
 }
 
 /********************************************************************

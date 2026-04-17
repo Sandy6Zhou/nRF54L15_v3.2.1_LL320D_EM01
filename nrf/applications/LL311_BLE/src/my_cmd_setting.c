@@ -52,6 +52,8 @@ static int cbmt_cmd_handler(at_cmd_struc* msg);
 static int bt_crfpwr_cmd_handler(at_cmd_struc* msg);
 static int bt_updata_cmd_handler(at_cmd_struc* msg);
 static int tag_cmd_handler(at_cmd_struc* msg);
+static int jatag_cmd_handler(at_cmd_struc* msg);
+static int jgtag_cmd_handler(at_cmd_struc* msg);
 static int lockcd_cmd_handler(at_cmd_struc* msg);
 static int led_cmd_handler(at_cmd_struc* msg);
 static int buzzer_cmd_handler(at_cmd_struc* msg);
@@ -65,8 +67,6 @@ static int version_cmd_handler(at_cmd_struc* msg);
 static int modeset_cmd_handler(at_cmd_struc* msg);
 static int cunlock_cmd_handler(at_cmd_struc* msg);
 static int clock_cmd_handler(at_cmd_struc* msg);
-static int jatag_cmd_handler(at_cmd_struc* msg);
-static int jgtag_cmd_handler(at_cmd_struc* msg);
 
 static const at_cmd_attr_t at_cmd_attr_table[] =
 {
@@ -804,8 +804,12 @@ static int remalm_cmd_handler(at_cmd_struc* msg)
     }
 
     /* 所有参数验证通过,统一赋值 */
+    gConfigParam.remalm_config.flag = FLAG_VALID;
     gConfigParam.remalm_config.remalm_sw = (uint8_t)sw_value;
     gConfigParam.remalm_config.remalm_mode = (uint8_t)m_value;
+
+    /* 保存配置 */
+    my_user_data_write(ZMS_ID_REM_ALM_CONFIG, &gConfigParam.remalm_config, sizeof(RemAlmConfig_t));
 
     LOG_INF("%s=>%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2]);
 
@@ -866,8 +870,12 @@ static int lockpincyt_cmd_handler(at_cmd_struc* msg)
     }
 
     /* 所有参数验证通过,统一赋值 */
+    gConfigParam.lockpincyt_config.flag = FLAG_VALID;
     gConfigParam.lockpincyt_config.lockpincyt_report = (uint8_t)report_value;
     gConfigParam.lockpincyt_config.lockpincyt_buzzer = (uint8_t)buzzer_value;
+
+    /* 保存配置 */
+    my_user_data_write(ZMS_ID_LOCK_PIN_CYT_CONFIG, &gConfigParam.lockpincyt_config, sizeof(LockPinCytConfig_t));
 
     LOG_INF("%s=>%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2]);
 
@@ -930,8 +938,12 @@ static int lockerr_cmd_handler(at_cmd_struc* msg)
     }
 
     /* 所有参数验证通过,统一赋值 */
+    gConfigParam.lockerr_config.flag = FLAG_VALID;
     gConfigParam.lockerr_config.lockerr_report = (uint8_t)report_value;
     gConfigParam.lockerr_config.lockerr_buzzer = (uint8_t)buzzer_value;
+
+    /* 保存配置 */
+    my_user_data_write(ZMS_ID_LOCK_ERR_CONFIG, &gConfigParam.lockerr_config, sizeof(LockErrConfig_t));
 
     LOG_INF("%s=>%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2]);
 
@@ -994,8 +1006,12 @@ static int pinstat_cmd_handler(at_cmd_struc* msg)
     }
 
     /* 所有参数验证通过,统一赋值 */
+    gConfigParam.pinstat_config.flag = FLAG_VALID;
     gConfigParam.pinstat_config.pinstat_report = (uint8_t)report_value;
     gConfigParam.pinstat_config.pinstat_trigger = (uint8_t)trigger_value;
+
+    /* 保存配置 */
+    my_user_data_write(ZMS_ID_PIN_STAT_CONFIG, &gConfigParam.pinstat_config, sizeof(PinStatConfig_t));
 
     LOG_INF("%s=>%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2]);
 
@@ -1058,8 +1074,12 @@ static int lockstat_cmd_handler(at_cmd_struc* msg)
     }
 
     /* 所有参数验证通过,统一赋值 */
+    gConfigParam.lockstat_config.flag = FLAG_VALID;
     gConfigParam.lockstat_config.lockstat_report = (uint8_t)report_value;
     gConfigParam.lockstat_config.lockstat_trigger = (uint8_t)trigger_value;
+
+    /* 保存配置 */
+    my_user_data_write(ZMS_ID_LOCK_STAT_CONFIG, &gConfigParam.lockstat_config, sizeof(LockStatConfig_t));
 
     LOG_INF("%s=>%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2]);
 
@@ -1152,11 +1172,15 @@ static int motdet_cmd_handler(at_cmd_struc* msg)
     }
 
     /* 所有参数验证通过,统一赋值 */
+    gConfigParam.motdet_config.flag = FLAG_VALID;
     gConfigParam.motdet_config.motdet_static_g = (uint16_t)static_g_value;
     gConfigParam.motdet_config.motdet_land_g = (uint16_t)land_g_value;
     gConfigParam.motdet_config.motdet_static_land_length = (uint16_t)static_land_length_value;
     gConfigParam.motdet_config.motdet_sea_transport_time = (uint16_t)sea_transport_time_value;
     gConfigParam.motdet_config.motdet_report_type = (uint8_t)report_type_value;
+
+    /* 保存配置 */
+    my_user_data_write(ZMS_ID_MOT_DET_CONFIG, &gConfigParam.motdet_config, sizeof(MotDetConfig_t));
 
     LOG_INF("%s=>%s,%s,%s,%s,%s,%s", __func__, msg->parm[0], msg->parm[1],
            msg->parm[2], msg->parm[3], msg->parm[4], msg->parm[5]);
@@ -1218,12 +1242,16 @@ static int batlevel_cmd_handler(at_cmd_struc* msg)
     }
 
     /* 所有参数验证通过,统一赋值 */
+    gConfigParam.batlevel_config.flag = FLAG_VALID;
     gConfigParam.batlevel_config.batlevel_empty_rpt = (uint8_t)param_values[0];
     gConfigParam.batlevel_config.batlevel_low_rpt = (uint8_t)param_values[1];
     gConfigParam.batlevel_config.batlevel_normal_rpt = (uint8_t)param_values[2];
     gConfigParam.batlevel_config.batlevel_fair_rpt = (uint8_t)param_values[3];
     gConfigParam.batlevel_config.batlevel_high_rpt = (uint8_t)param_values[4];
     gConfigParam.batlevel_config.batlevel_full_rpt = (uint8_t)param_values[5];
+
+    /* 保存配置 */
+    my_user_data_write(ZMS_ID_BAT_LEVEL_CONFIG, &gConfigParam.batlevel_config, sizeof(BatlevelConfig_t));
 
     /* 生成成功响应 */
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
@@ -1273,7 +1301,13 @@ static int chargesta_cmd_handler(at_cmd_struc* msg)
         LOG_INF("%s=>invalid RPT param: %s", __func__, msg->parm[1]);
         goto param_invalid;
     }
+
+    /* 所有参数验证通过,统一赋值 */
+    gConfigParam.batlevel_config.flag = FLAG_VALID;
     gConfigParam.batlevel_config.chargesta_report = (uint8_t)report_value;
+
+    /* 保存配置 */
+    my_user_data_write(ZMS_ID_BAT_LEVEL_CONFIG, &gConfigParam.batlevel_config, sizeof(BatlevelConfig_t));
 
     LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
 
@@ -1351,9 +1385,13 @@ static int shockalarm_cmd_handler(at_cmd_struc* msg)
     }
 
     /* 所有参数验证通过,统一赋值 */
+    gConfigParam.shockalarm_config.flag = FLAG_VALID;
     gConfigParam.shockalarm_config.shockalarm_sw = (uint8_t)sw_value;
     gConfigParam.shockalarm_config.shockalarm_level = (uint8_t)level_value;
     gConfigParam.shockalarm_config.shockalarm_type = (uint8_t)type_value;
+
+    /* 保存配置 */
+    my_user_data_write(ZMS_ID_SHOCK_ALARM_CONFIG, &gConfigParam.shockalarm_config, sizeof(ShockAlarmConfig_t));
 
     LOG_INF("%s=>%s,%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2], msg->parm[3]);
 
@@ -1485,6 +1523,10 @@ static int startr_cmd_handler(at_cmd_struc* msg)
     }
 
     /* 所有参数验证通过,生成成功响应 */
+    gConfigParam.startr_config.flag = FLAG_VALID;
+    /* 保存配置 */
+    my_user_data_write(ZMS_ID_STARTR_CONFIG, &gConfigParam.startr_config, sizeof(StartrConfig_t));
+
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
     LOG_INF("STARTR: SW=%d", gConfigParam.startr_config.startr_sw);
 
@@ -1590,8 +1632,13 @@ static int bt_crfpwr_cmd_handler(at_cmd_struc* msg)
         goto param_invalid;
     }
 
+    /* 所有参数验证通过,统一赋值 */
+    gConfigParam.ble_tx_power.flag = FLAG_VALID;
     gConfigParam.ble_tx_power.tx_power = (int8_t)a_value;
     ble_set_tx_power(gConfigParam.ble_tx_power.tx_power);
+
+    /* 保存配置 */
+    my_user_data_write(ZMS_ID_BLE_TX_POWER, &gConfigParam.ble_tx_power, sizeof(BleTxPower_t));
 
     LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
 
@@ -1689,10 +1736,14 @@ static int bt_updata_cmd_handler(at_cmd_struc* msg)
     }
 
     /* 所有参数验证通过,统一赋值 */
+    gConfigParam.bt_updata_config.flag = FLAG_VALID;
     gConfigParam.bt_updata_config.bt_updata_mode = (uint8_t)mode_value;
     gConfigParam.bt_updata_config.bt_updata_scan_interval = scan_interval_value;
     gConfigParam.bt_updata_config.bt_updata_scan_length = scan_length_value;
     gConfigParam.bt_updata_config.bt_updata_updata_interval = updata_interval_value;
+
+    /* 保存配置 */
+    my_user_data_write(ZMS_ID_BT_UPDATA_CONFIG, &gConfigParam.bt_updata_config, sizeof(BtUpdataConfig_t));
 
     LOG_INF("%s=>%s,%s,%s,%s,%s", __func__, msg->parm[0], msg->parm[1],
            msg->parm[2], msg->parm[3], msg->parm[4]);
@@ -1775,11 +1826,15 @@ static int tag_cmd_handler(at_cmd_struc* msg)
     }
 
     /* 所有参数验证通过,统一赋值 */
+    gConfigParam.tag_config.flag = FLAG_VALID;
     gConfigParam.tag_config.tag_sw = (uint8_t)sw_value;
     if (msg->parm_count == 2)
     {
         gConfigParam.tag_config.tag_interval = (uint16_t)interval_value;
     }
+
+    /* 保存配置 */
+    my_user_data_write(ZMS_ID_TAG_CONFIG, &gConfigParam.tag_config, sizeof(TagConfig_t));
 
     LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
     if (msg->parm_count == 2)
@@ -1850,9 +1905,13 @@ static int jatag_cmd_handler(at_cmd_struc* msg)
         goto param_invalid;
     }
     /* 所有参数验证通过,统一赋值 */
+    gConfigParam.adv_valid_value.flag = FLAG_VALID;
     gConfigParam.adv_valid_value.AppleValid = (uint8_t)sw_value;
     set_adv_valid_status(APPLE_ADV_TYPE, gConfigParam.adv_valid_value.AppleValid);
     my_no_con_start_adv(gConfigParam.tag_config.tag_sw);
+
+    /* 保存配置 */
+    my_user_data_write(ZMS_ID_ADV_VALID, &gConfigParam.adv_valid_value, sizeof(AdvValidValue_t));
 
     LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
 
@@ -1916,9 +1975,13 @@ static int jgtag_cmd_handler(at_cmd_struc* msg)
         goto param_invalid;
     }
     /* 所有参数验证通过,统一赋值 */
+    gConfigParam.adv_valid_value.flag = FLAG_VALID;
     gConfigParam.adv_valid_value.GoogleValid = (uint8_t)sw_value;
     set_adv_valid_status(GOOGLE_ADV_TYPE, gConfigParam.adv_valid_value.GoogleValid);
     my_no_con_start_adv(gConfigParam.tag_config.tag_sw);
+
+    /* 保存配置 */
+    my_user_data_write(ZMS_ID_ADV_VALID, &gConfigParam.adv_valid_value, sizeof(AdvValidValue_t));
 
     LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
 
@@ -1967,7 +2030,11 @@ static int lockcd_cmd_handler(at_cmd_struc* msg)
     }
 
     /* 所有参数验证通过,统一赋值 */
+    gConfigParam.locked_config.flag = FLAG_VALID;
     gConfigParam.locked_config.lockcd_countdown = (uint16_t)countdown_value;
+
+    /* 保存配置 */
+    my_user_data_write(ZMS_ID_LOCKED_CONFIG, &gConfigParam.locked_config, sizeof(LockedConfig_t));
 
     LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
 
@@ -2013,13 +2080,13 @@ static int led_cmd_handler(at_cmd_struc* msg)
     if (strcmp(msg->parm[1], "ON") == 0)
     {
         display_value = 1;
-        lte_send_command(msg->parm[1], "1");
+        lte_send_command("LED", "1");
         my_send_msg(MOD_BLE, MOD_CTRL, MY_MSG_OPEN_LED_SHOW);
     }
     else if (strcmp(msg->parm[1], "OFF") == 0)
     {
         display_value = 0;
-        lte_send_command(msg->parm[1], "0");
+        lte_send_command("LED", "0");
         my_send_msg(MOD_BLE, MOD_CTRL, MY_MSG_CLOSE_LED_SHOW);
     }
     else
@@ -2029,7 +2096,11 @@ static int led_cmd_handler(at_cmd_struc* msg)
     }
 
     /* 所有参数验证通过,统一赋值 */
+    gConfigParam.led_config.flag = FLAG_VALID;
     gConfigParam.led_config.led_display = (uint8_t)display_value;
+
+    /* 保存配置 */
+    my_user_data_write(ZMS_ID_LED_CONFIG, &gConfigParam.led_config, sizeof(LedConfig_t));
 
     LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
 
@@ -2086,7 +2157,11 @@ static int buzzer_cmd_handler(at_cmd_struc* msg)
     }
 
     /* 所有参数验证通过,统一赋值 */
+    gConfigParam.buzzer_config.flag = FLAG_VALID;
     gConfigParam.buzzer_config.buzzer_operator = (uint8_t)operator_value;
+
+    /* 保存配置 */
+    my_user_data_write(ZMS_ID_BUZZER_CONFIG, &gConfigParam.buzzer_config, sizeof(BuzzerConfig_t));
 
     LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
 
@@ -2200,6 +2275,10 @@ static int nfctrig_cmd_handler(at_cmd_struc* msg)
         strcpy(gConfigParam.nfctrig_config.nfctrig_table.nfctrig_rule[index].nfctrig_nfc_no, msg->parm[2]);
         strcpy(gConfigParam.nfctrig_config.nfctrig_table.nfctrig_rule[index].nfctrig_command, msg->parm[3]);
         gConfigParam.nfctrig_config.nfctrig_table.count++;
+        gConfigParam.nfctrig_config.flag = FLAG_VALID;
+
+        /* 保存配置 */
+        my_user_data_write(ZMS_ID_NFTRIG_CONFIG, &gConfigParam.nfctrig_config, sizeof(NfctrigConfig_t));
 
         LOG_INF("%s=>%s,%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2], msg->parm[3]);
 
@@ -2267,8 +2346,14 @@ static int nfctrig_cmd_handler(at_cmd_struc* msg)
         {
             memset(gConfigParam.nfctrig_config.nfctrig_table.nfctrig_rule, 0, sizeof(gConfigParam.nfctrig_config.nfctrig_table.nfctrig_rule));
             gConfigParam.nfctrig_config.nfctrig_table.count = 0;
+            gConfigParam.nfctrig_config.flag = FLAG_VALID;
+
+            /* 保存配置 */
+            my_user_data_write(ZMS_ID_NFTRIG_CONFIG, &gConfigParam.nfctrig_config, sizeof(NfctrigConfig_t));
+
             LOG_INF("%s=>DEL ALL", __func__);
             msg->resp_length = snprintf(msg->resp_msg, remaining, "NFCTRIG Delete ALL Success.");
+
             return BLE_DATA_TYPE_AT_CMD;
         }
         /* 删除指定卡号 */
@@ -2295,8 +2380,13 @@ static int nfctrig_cmd_handler(at_cmd_struc* msg)
             }
             if (found)
             {
+                gConfigParam.nfctrig_config.flag = FLAG_VALID;
+                /* 保存配置 */
+                my_user_data_write(ZMS_ID_NFTRIG_CONFIG, &gConfigParam.nfctrig_config, sizeof(NfctrigConfig_t));
+
                 LOG_INF("%s=>DEL,%s", __func__, msg->parm[2]);
                 msg->resp_length = snprintf(msg->resp_msg, remaining, "NFCTRIG %s Delete Success.", msg->parm[2]);
+
                 return BLE_DATA_TYPE_AT_CMD;
             }
             else
@@ -2548,6 +2638,10 @@ static int nfcauth_cmd_handler(at_cmd_struc* msg)
         }
         gConfigParam.nfcauth_config.nfcauth_cards[index].unlock_times = unlock_times;
 
+        gConfigParam.nfcauth_config.flag = FLAG_VALID;
+        /* 保存配置 */
+        my_user_data_write(ZMS_ID_NFCAUTH_CONFIG, &gConfigParam.nfcauth_config, sizeof(NfcauthConfig_t));
+
         LOG_INF("%s=>SET,%s,%d,%d,%d,%u,%s,%s,%d,%u", __func__,
                 gConfigParam.nfcauth_config.nfcauth_cards[index].nfc_no,
                 gConfigParam.nfcauth_config.nfcauth_cards[index].lat,
@@ -2615,6 +2709,10 @@ static int nfcauth_cmd_handler(at_cmd_struc* msg)
         strcpy(gConfigParam.nfcauth_config.nfcauth_cards[index].end_time, "");
         gConfigParam.nfcauth_config.nfcauth_cards[index].time_valid = 0;
         gConfigParam.nfcauth_config.nfcauth_cards[index].unlock_times = 0;
+        gConfigParam.nfcauth_config.flag = FLAG_VALID;
+
+        /* 保存配置 */
+        my_user_data_write(ZMS_ID_NFCAUTH_CONFIG, &gConfigParam.nfcauth_config, sizeof(NfcauthConfig_t));
 
         LOG_INF("%s=>PSET,%s", __func__, gConfigParam.nfcauth_config.nfcauth_cards[index].nfc_no);
 
@@ -2636,6 +2734,10 @@ static int nfcauth_cmd_handler(at_cmd_struc* msg)
         {
             memset(gConfigParam.nfcauth_config.nfcauth_cards, 0, sizeof(gConfigParam.nfcauth_config.nfcauth_cards));
             gConfigParam.nfcauth_config.nfcauth_card_count = 0;
+            gConfigParam.nfcauth_config.flag = FLAG_VALID;
+            /* 保存配置 */
+            my_user_data_write(ZMS_ID_NFCAUTH_CONFIG, &gConfigParam.nfcauth_config, sizeof(NfcauthConfig_t));
+
             LOG_INF("%s=>DEL ALL", __func__);
             msg->resp_length = snprintf(msg->resp_msg, remaining, "NFC Delete ALL Success.");
             return BLE_DATA_TYPE_AT_CMD;
@@ -2666,8 +2768,13 @@ static int nfcauth_cmd_handler(at_cmd_struc* msg)
 
             if (found)
             {
+                gConfigParam.nfcauth_config.flag = FLAG_VALID;
+                /* 保存配置 */
+                my_user_data_write(ZMS_ID_NFCAUTH_CONFIG, &gConfigParam.nfcauth_config, sizeof(NfcauthConfig_t));
+
                 LOG_INF("%s=>DEL,%s", __func__, msg->parm[2]);
                 msg->resp_length = snprintf(msg->resp_msg, remaining, "NFC %s Delete Success.", msg->parm[2]);
+
                 return BLE_DATA_TYPE_AT_CMD;
             }
             else
@@ -2857,6 +2964,10 @@ static int bkey_cmd_handler(at_cmd_struc* msg)
         }
 
         strcpy(gConfigParam.bkey_config.bt_key, default_key);
+        gConfigParam.bkey_config.flag = FLAG_VALID;
+        /* 保存配置 */
+        my_user_data_write(ZMS_ID_BT_KEY_CONFIG, &gConfigParam.bkey_config, sizeof(BkeyConfig_t));
+
         LOG_INF("%s=>RESET to default key", __func__);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "Key reset success.");
         return BLE_DATA_TYPE_AT_CMD;
@@ -2915,6 +3026,11 @@ static int bkey_cmd_handler(at_cmd_struc* msg)
 
         /* 更新密钥 */
         strcpy(gConfigParam.bkey_config.bt_key, msg->parm[2]);
+
+        gConfigParam.bkey_config.flag = FLAG_VALID;
+        /* 保存配置 */
+        my_user_data_write(ZMS_ID_BT_KEY_CONFIG, &gConfigParam.bkey_config, sizeof(BkeyConfig_t));
+
         LOG_INF("%s=>key updated:%s", __func__, gConfigParam.bkey_config.bt_key);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "Key update success.");
         return BLE_DATA_TYPE_AT_CMD;
@@ -3178,6 +3294,10 @@ static int modeset_cmd_handler(at_cmd_struc* msg)
         // 切换到指定工作模式
         switch_work_mode(param_work_mode_config.current_mode);
 
+        gConfigParam.device_workmode_config.flag = FLAG_VALID;
+        /* 保存配置 */
+        my_user_data_write(ZMS_ID_WORK_MODE_CONFIG, &gConfigParam.device_workmode_config, sizeof(DeviceWorkModeConfig));
+
         /* 生成成功响应 */
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
         LOG_INF("MODESET: current_mode:%d", param_work_mode_config.current_mode);
@@ -3216,6 +3336,10 @@ static int modeset_cmd_handler(at_cmd_struc* msg)
             goto param_invalid;
         }
 
+        gConfigParam.device_workmode_config.flag = FLAG_VALID;
+        /* 保存配置 */
+        my_user_data_write(ZMS_ID_WORK_MODE_CONFIG, &gConfigParam.device_workmode_config, sizeof(DeviceWorkModeConfig));
+
         LOG_INF("%s,%s,%s,%s#", msg->parm[0], msg->parm[1], msg->parm[2], msg->parm[3]);
     }
     // 智能模式处理
@@ -3246,6 +3370,10 @@ static int modeset_cmd_handler(at_cmd_struc* msg)
             LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
             goto param_invalid;
         }
+
+        gConfigParam.device_workmode_config.flag = FLAG_VALID;
+        /* 保存配置 */
+        my_user_data_write(ZMS_ID_WORK_MODE_CONFIG, &gConfigParam.device_workmode_config, sizeof(DeviceWorkModeConfig));
 
         LOG_INF("%s,%s,%s,%s,%s,%s,%s#", msg->parm[0], msg->parm[1], msg->parm[2], msg->parm[3], msg->parm[4], msg->parm[5], msg->parm[6]);
     }
