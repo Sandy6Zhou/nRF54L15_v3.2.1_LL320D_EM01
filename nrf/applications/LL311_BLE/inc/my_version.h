@@ -12,6 +12,14 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260423"
+/* 软件版本:        V1.0
+** 完成日期:        2026.04.23
+** 作    者:        吴楚庆 (wuchuqing@jimiiot.com)
+** 修改内容:        1.串口重传增加特殊指令处理
+**                 2.根据新的指令形式，改进TAG、MACINFO的串口指令发送流程
+***/
+
 //#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260423"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.04.23

@@ -643,7 +643,7 @@ int at_cmd_str_analyse(char *str_data, char **tar_data, int limit, char startCha
 uint16_t at_recv_cmd_handler(at_cmd_struc *at_cmd_msg)
 {
     char *data_ptr, split_ch = ',';
-    uint8_t par_len;
+    int par_len;
     uint16_t cmd_type = 0;
     uint8_t index;
 

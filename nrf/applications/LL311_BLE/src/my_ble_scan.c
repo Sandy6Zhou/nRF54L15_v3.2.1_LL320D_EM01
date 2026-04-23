@@ -47,6 +47,19 @@ static struct bt_le_scan_param s_scan_param = {
 /* 扫描回调结构 */
 static struct bt_le_scan_cb s_scan_cb;
 
+// 定义上传mac和tag扫描结果状态枚举
+typedef enum {
+    UPLOAD_STATE_IDLE = 0,             // 初始空闲状态
+    UPLOAD_STATE_TAG_START,            // 发送 TAG START
+    UPLOAD_STATE_TAG_END,              // 发送 TAG END
+    UPLOAD_STATE_MAC_START,            // 发送 MACINFO START
+    UPLOAD_STATE_MAC_END               // 发送 MACINFO END
+} upload_state_t;
+
+//tag扫描结果上报和macinfo的序列号
+static uint8_t s_tag_macinfo_seq = 0;
+static uint8_t s_tag_macinfo_upload_state = UPLOAD_STATE_IDLE;
+
 /********************************************************************
 **函数名称:  parse_scan_rsp_name
 **入口参数:  buf_ptr         ---        接收数据缓冲区
@@ -743,16 +756,7 @@ static int scan_stop_internal(void)
         return err;
     }
 
-    if ((s_scan_config.mode == SCAN_MODE_PERIOD_CACHE ||
-         s_scan_config.mode == SCAN_MODE_PERIOD_UPLOAD) &&
-        s_result_table.count > 0)
-    {
-        s_scan_config.state = SCAN_STATE_WAITING_UPLOAD;
-    }
-    else
-    {
-        s_scan_config.state = SCAN_STATE_IDLE;
-    }
+    s_scan_config.state = SCAN_STATE_IDLE;
     LOG_INF("ble scan stopped");
 
     // 清空ADV缓存表和缓存序号计数器，避免跨扫描周期残留
@@ -789,6 +793,8 @@ static void scan_set_config_internal(uint8_t mode, uint32_t scan_interval,
     // 清空数据
     memset(&s_result_table, 0, sizeof(s_result_table));
     memset(&s_tran_mac_result_table, 0, sizeof(s_tran_mac_result_table));
+    s_tag_macinfo_seq = 0;
+    s_tag_macinfo_upload_state = 0;
 
     // 更新配置
     s_scan_config.mode = (scan_mode_t)mode;
@@ -843,22 +849,168 @@ static void scan_set_config_internal(uint8_t mode, uint32_t scan_interval,
 }
 
 /********************************************************************
-**函数名称:  tag_scan_upload_data
-**入口参数:  无
+**函数名称:  tran_mac_upload_one
+**入口参数:  item_ptr --- 透传MAC地址结果项指针
+**           seq     ---  序号
 **出口参数:  无
-**函数功能:  上报TAG扫描数据到LTE模块（LTE已唤醒时调用），在BLE线程中调用
+**函数功能:  上传透传MAC地址结果项(单条)
 **返 回 值:  无
 *********************************************************************/
-static void tag_scan_upload_data(void)
+void tran_mac_upload_one(tran_mac_result_item_t *item_ptr, uint8_t seq)
 {
-    uint8_t i, j;
-    uint8_t upload_count;
-    tag_scan_result_t *item_ptr;
+    int i = 0;
+    int offset;
+    char upload_msg[256] = {0};
+    char mac_str[13] = {0};
+
+    offset = 0;
+    memset(upload_msg, 0, sizeof(upload_msg));
+
+    // 将MAC地址转换为字符串格式
+    snprintf(mac_str, sizeof(mac_str), "%02X%02X%02X%02X%02X%02X",
+                item_ptr->addr.a.val[5], item_ptr->addr.a.val[4],
+                item_ptr->addr.a.val[3], item_ptr->addr.a.val[2],
+                item_ptr->addr.a.val[1], item_ptr->addr.a.val[0]);
+
+    // 先拼接seq,MAC和广播数据长度字段
+    offset += snprintf(upload_msg + offset, sizeof(upload_msg) - offset, "%d,%s,%d,",
+                        seq, mac_str, item_ptr->adv_data_len);
+
+    // 将广播数据逐字节转换为HEX字符串并拼接到消息尾部
+    for (i = 0; i < item_ptr->adv_data_len; i++)
+    {
+        offset += snprintf(upload_msg + offset, sizeof(upload_msg) - offset, "%02X",
+                            item_ptr->adv_data[i]);
+    }
+
+#if RETRANSMIT_CHECK_ENABLED
+    lte_send_cmd_with_retry("MACINFO", upload_msg);
+#else
+    lte_send_command("MACINFO", upload_msg);
+#endif
+
+}
+
+/********************************************************************
+**函数名称:  tag_scan_upload_one
+**入口参数:  item_ptr --- TAG扫描结果项指针
+**           seq     ---  序号
+**出口参数:  无
+**函数功能:  上传TAG扫描结果项（单条）
+**返 回 值:  无
+*********************************************************************/
+void tag_scan_upload_one(tag_scan_result_t *item_ptr, uint8_t seq)
+{
+    int i = 0;
     char upload_msg[256] = {0};
     char mac_str[13] = {0};
     char uuid_str[UUID_MAX_LEN * 2 + 1] = {0};
     uint8_t rssi_upload;
     char ff_str[TAG_FF_DATA_MAX_LEN * 2 + 1] = {0};
+
+    // 将MAC地址转换为字符串格式
+    snprintf(mac_str, sizeof(mac_str), "%02X%02X%02X%02X%02X%02X",
+                item_ptr->addr.a.val[5], item_ptr->addr.a.val[4],
+                item_ptr->addr.a.val[3], item_ptr->addr.a.val[2],
+                item_ptr->addr.a.val[1], item_ptr->addr.a.val[0]);
+
+    // RSSI转换：实际值为负数，上传值为补码形式（按位取反+1）
+    // 例如：实际-52(0xCC)，上传值0xCC
+    rssi_upload = (uint8_t)item_ptr->rssi;
+
+    // 构建UUID字符串（十六进制）
+    if (item_ptr->uuid_len > 0)
+    {
+        memset(uuid_str, 0, sizeof(uuid_str));
+        for (i = 0; i < item_ptr->uuid_len && i < UUID_MAX_LEN; i++)
+        {
+            snprintf(&uuid_str[i * 2], 3, "%02X", item_ptr->uuid[i]);
+        }
+    }
+    else
+    {
+        strncpy(uuid_str, "N/A", sizeof(uuid_str) - 1);
+    }
+
+    // 构建FF数据字符串（十六进制）
+    if (item_ptr->ff_data_len > 0)
+    {
+        memset(ff_str, 0, sizeof(ff_str));
+        for (i = 0; i < item_ptr->ff_data_len && i < TAG_FF_DATA_MAX_LEN; i++)
+        {
+            snprintf(&ff_str[i * 2], 3, "%02X", item_ptr->ff_data[i]);
+        }
+        // 构建上报消息：MAC(6字节),电量,RSSI,名称长度,名称,UUID长度,UUID,FF长度,FF数据
+        snprintf(upload_msg, sizeof(upload_msg), "%d,%s,%d,%02X,%d,%s,%d,%s,%d,%s",
+                    seq, mac_str, item_ptr->battery_percent, rssi_upload,
+                    strlen(item_ptr->name), item_ptr->name,
+                    item_ptr->uuid_len, uuid_str,
+                    item_ptr->ff_data_len, ff_str);
+    }
+    else
+    {
+        // 构建上报消息：MAC(6字节),电量,RSSI,名称长度,名称,UUID长度,UUID,FF长度(0),FF数据(无)
+        snprintf(upload_msg, sizeof(upload_msg), "%d,%s,%d,%02X,%d,%s,%d,%s,0,N/A",
+                    seq, mac_str, item_ptr->battery_percent, rssi_upload,
+                    strlen(item_ptr->name), item_ptr->name,
+                    item_ptr->uuid_len, uuid_str);
+    }
+
+#if RETRANSMIT_CHECK_ENABLED
+    lte_send_cmd_with_retry("TAG", upload_msg);
+#else
+    // 发送TAG数据到LTE模块
+    lte_send_command("TAG", upload_msg);
+#endif
+
+    LOG_INF("TAG uploaded: MAC:%s, Bat:%d%%, RSSI:0x%02X, NameLen:%d, Name:%s, UUIDLen:%d, UUID:%s, FFLen:%d",
+            mac_str, item_ptr->battery_percent, rssi_upload,
+            strlen(item_ptr->name), item_ptr->name,
+            item_ptr->uuid_len, uuid_str, item_ptr->ff_data_len);
+
+#if 0
+// 打印聚合后的关键原始数据，方便抓包对比
+if (item_ptr->ff_data_len > 0)
+        {
+            LOG_HEXDUMP_INF(item_ptr->ff_data, item_ptr->ff_data_len, "Upload FF Data:");
+        }
+#endif
+
+}
+
+/********************************************************************
+**函数名称:  clear_tag_macinfo
+**入口参数:  无
+**出口参数:  无
+**函数功能:  重置扫描与上传相关的状态机、序列号，并清空TAG及MAC地址缓存表
+**返 回 值:  无
+*********************************************************************/
+void clear_tag_macinfo(void)
+{
+    s_tag_macinfo_seq = 0;
+    s_tag_macinfo_upload_state = 0;
+    s_scan_config.state = SCAN_STATE_IDLE;
+
+    memset(&s_result_table, 0, sizeof(s_result_table));
+    memset(&s_tran_mac_result_table, 0, sizeof(s_tran_mac_result_table));
+
+}
+
+/********************************************************************
+**函数名称:  tag_mac_scan_upload_data
+**入口参数:  无
+**出口参数:  无
+**函数功能:  状态机调度函数，负责按（START->DATA->DATA->...->END）分步上传
+**             TAG数据和透传MAC地址数据。该函数需配合LTE模块的应答机制
+**             多次调用以推进状态流转。
+**返 回 值:  无
+*********************************************************************/
+void tag_mac_scan_upload_data(void)
+{
+    tag_scan_result_t *item_ptr;
+    tran_mac_result_item_t *mac_item_ptr;
+
+    char buf[32];
 
     if (s_scan_config.state == SCAN_STATE_SCANNING)
     {
@@ -866,95 +1018,123 @@ static void tag_scan_upload_data(void)
         return;
     }
 
-    // 检查是否有数据需要上报
-    if (s_result_table.count == 0)
+    //1发2不发
+    //1不发2发
+    //1发2发
+    //1不发2不发
+    if (s_tag_macinfo_upload_state == UPLOAD_STATE_IDLE)
     {
-        LOG_INF("No scan data to upload");
+        // 检查是否有数据需要上报
+        if (s_result_table.count == 0)
+        {
+            LOG_INF("No scan data to upload");
+            // 检查macinfo
+            if (s_tran_mac_result_table.count == 0) //12不发
+            {
+                return ;
+            }
+            else
+            {
+                s_tag_macinfo_upload_state = UPLOAD_STATE_MAC_START;
+                //先发送开始
+                snprintf(buf, sizeof(buf), "START,%d", s_tran_mac_result_table.count);
+                buf[sizeof(buf) - 1] = '\0';
+                #if RETRANSMIT_CHECK_ENABLED
+                    lte_send_cmd_with_retry("MACINFO", buf);
+                #else
+                    lte_send_command("MACINFO", buf);
+                #endif
+
+                s_scan_config.state = SCAN_STATE_WAITING_UPLOAD;
+
+                return;
+            }
+        }
+
+        s_tag_macinfo_upload_state = UPLOAD_STATE_TAG_START;
+
+        snprintf(buf, sizeof(buf), "START,%d", s_result_table.count);
+        buf[sizeof(buf) - 1] = '\0';
+        //先发送START
+        #if RETRANSMIT_CHECK_ENABLED
+            lte_send_cmd_with_retry("TAG", buf);
+        #else
+            lte_send_command("TAG", buf);
+        #endif
+
+        //开始上传
+        s_scan_config.state = SCAN_STATE_WAITING_UPLOAD;
+    }
+    else if (s_tag_macinfo_upload_state == UPLOAD_STATE_TAG_START)//应答start之后会发消息到蓝牙线程再次调用这个函数，开始上报数据体
+    {
+        //当s_tag_macinfo_seq = s_result_table.count，就代表结束
+        if (s_tag_macinfo_seq >= s_result_table.count)
+        {
+            // 上报完成后清空结果表
+            LOG_INF("TAG scan data upload complete, count: %d, table cleared", s_result_table.count);
+            memset(&s_result_table, 0, sizeof(s_result_table));
+            s_tag_macinfo_seq = 0;
+            s_tag_macinfo_upload_state = UPLOAD_STATE_TAG_END;
+            #if RETRANSMIT_CHECK_ENABLED
+                lte_send_cmd_with_retry("TAG", "END");
+            #else
+                lte_send_command("TAG", "END");
+            #endif
+            return;
+        }
+
+        //发送数据体
+        item_ptr = &s_result_table.items[s_tag_macinfo_seq++];
+        tag_scan_upload_one(item_ptr, s_tag_macinfo_seq);
+    }
+    else if (s_tag_macinfo_upload_state == UPLOAD_STATE_TAG_END) //传完tag开始传mac（tag，end的应答完再调一次）
+    {
+        if (s_tran_mac_result_table.count == 0)
+        {
+            s_tag_macinfo_seq = 0;
+            s_tag_macinfo_upload_state = UPLOAD_STATE_IDLE;
+            s_scan_config.state = SCAN_STATE_IDLE;
+            //清空对应的变量
+            return;
+        }
+        s_tag_macinfo_upload_state = UPLOAD_STATE_MAC_START;
+        //先发送开始
+        snprintf(buf, sizeof(buf), "START,%d", s_tran_mac_result_table.count);
+        buf[sizeof(buf) - 1] = '\0';
+        #if RETRANSMIT_CHECK_ENABLED
+            lte_send_cmd_with_retry("MACINFO", buf);
+        #else
+            lte_send_command("MACINFO", buf);
+        #endif
+    }
+    else if (s_tag_macinfo_upload_state == UPLOAD_STATE_MAC_START) //应答开始，开始上报mac
+    {
+        //当seq = s_tran_mac_result_table.count，就代表结束
+        if (s_tag_macinfo_seq >= s_tran_mac_result_table.count)
+        {
+            s_tag_macinfo_seq = 0;
+            s_tag_macinfo_upload_state = UPLOAD_STATE_MAC_END;
+            #if RETRANSMIT_CHECK_ENABLED
+                lte_send_cmd_with_retry("MACINFO", "END");
+            #else
+                lte_send_command("MACINFO", "END");
+            #endif
+            // 上报完成后清空结果表
+            memset(&s_tran_mac_result_table, 0, sizeof(s_tran_mac_result_table));
+            return;
+        }
+
+        //发送数据体
+        mac_item_ptr = &s_tran_mac_result_table.items[s_tag_macinfo_seq++];
+        tran_mac_upload_one(mac_item_ptr, s_tag_macinfo_seq);
+    }
+    else //MACINFO结束应答UPLOAD_STATE_MAC_END
+    {
+        s_tag_macinfo_upload_state = UPLOAD_STATE_IDLE;
+        s_tag_macinfo_seq = 0;
         s_scan_config.state = SCAN_STATE_IDLE;
-        return;
     }
 
-    s_scan_config.state = SCAN_STATE_WAITING_UPLOAD;
-
-    // 记录上报数量
-    upload_count = s_result_table.count;
-
-    // 遍历结果表，逐个上报TAG设备信息
-    for (i = 0; i < upload_count; i++)
-    {
-        item_ptr = &s_result_table.items[i];
-
-        // 将MAC地址转换为字符串格式
-        snprintf(mac_str, sizeof(mac_str), "%02X%02X%02X%02X%02X%02X",
-                 item_ptr->addr.a.val[5], item_ptr->addr.a.val[4],
-                 item_ptr->addr.a.val[3], item_ptr->addr.a.val[2],
-                 item_ptr->addr.a.val[1], item_ptr->addr.a.val[0]);
-
-        // RSSI转换：实际值为负数，上传值为补码形式（按位取反+1）
-        // 例如：实际-52(0xCC)，上传值0xCC
-        rssi_upload = (uint8_t)item_ptr->rssi;
-
-        // 构建UUID字符串（十六进制）
-        if (item_ptr->uuid_len > 0)
-        {
-            memset(uuid_str, 0, sizeof(uuid_str));
-            for (j = 0; j < item_ptr->uuid_len && j < UUID_MAX_LEN; j++)
-            {
-                snprintf(&uuid_str[j * 2], 3, "%02X", item_ptr->uuid[j]);
-            }
-        }
-        else
-        {
-            strncpy(uuid_str, "N/A", sizeof(uuid_str) - 1);
-        }
-
-        // 构建FF数据字符串（十六进制）
-        if (item_ptr->ff_data_len > 0)
-        {
-            memset(ff_str, 0, sizeof(ff_str));
-            for (j = 0; j < item_ptr->ff_data_len && j < TAG_FF_DATA_MAX_LEN; j++)
-            {
-                snprintf(&ff_str[j * 2], 3, "%02X", item_ptr->ff_data[j]);
-            }
-            // 构建上报消息：MAC(6字节),电量,RSSI,名称长度,名称,UUID长度,UUID,FF长度,FF数据
-            snprintf(upload_msg, sizeof(upload_msg), "%s,%d,%02X,%d,%s,%d,%s,%d,%s",
-                     mac_str, item_ptr->battery_percent, rssi_upload,
-                     strlen(item_ptr->name), item_ptr->name,
-                     item_ptr->uuid_len, uuid_str,
-                     item_ptr->ff_data_len, ff_str);
-        }
-        else
-        {
-            // 构建上报消息：MAC(6字节),电量,RSSI,名称长度,名称,UUID长度,UUID,FF长度(0),FF数据(无)
-            snprintf(upload_msg, sizeof(upload_msg), "%s,%d,%02X,%d,%s,%d,%s,0,N/A",
-                     mac_str, item_ptr->battery_percent, rssi_upload,
-                     strlen(item_ptr->name), item_ptr->name,
-                     item_ptr->uuid_len, uuid_str);
-        }
-
-        // 发送TAG数据到LTE模块
-        lte_send_command("TAG", upload_msg);
-
-        LOG_INF("TAG uploaded: MAC:%s, Bat:%d%%, RSSI:0x%02X, NameLen:%d, Name:%s, UUIDLen:%d, UUID:%s, FFLen:%d",
-                mac_str, item_ptr->battery_percent, rssi_upload,
-                strlen(item_ptr->name), item_ptr->name,
-                item_ptr->uuid_len, uuid_str, item_ptr->ff_data_len);
-
-#if 0
-        // 打印聚合后的关键原始数据，方便抓包对比
-        if (item_ptr->ff_data_len > 0)
-        {
-            LOG_HEXDUMP_INF(item_ptr->ff_data, item_ptr->ff_data_len, "Upload FF Data:");
-        }
-#endif
-
-    }
-
-    // 上报完成后清空结果表
-    memset(&s_result_table, 0, sizeof(s_result_table));
-    s_scan_config.state = SCAN_STATE_IDLE;
-
-    LOG_INF("TAG scan data upload complete, count: %d, table cleared", upload_count);
 }
 
 /********************************************************************
@@ -994,59 +1174,10 @@ static void tran_mac_data_handle(tran_mac_process_msg_t *msg_ptr)
         item_ptr->adv_data_len = msg_ptr->adv_data_len;
         s_tran_mac_result_table.count++;
     }
+
+    MY_LOG_INF("tran_mac found,count: %d", s_tran_mac_result_table.count);
 }
 
-/********************************************************************
-**函数名称:  tran_mac_upload_data
-**入口参数:  无
-**出口参数:  无
-**函数功能:  上报透传MAC扫描数据到LTE模块，组包格式：MAC,数据长度,HEX
-**返 回 值:  无
-*********************************************************************/
-static void tran_mac_upload_data(void)
-{
-    uint8_t i, j;
-    int offset;
-    char mac_str[13];
-    char upload_msg[128] = {0};
-    tran_mac_result_item_t *item_ptr;
-
-    if (s_tran_mac_result_table.count == 0)
-    {
-        return;
-    }
-
-    for (i = 0; i < s_tran_mac_result_table.count; i++)
-    {
-        item_ptr = &s_tran_mac_result_table.items[i];
-        offset = 0;
-        memset(upload_msg, 0, sizeof(upload_msg));
-
-        // 将MAC地址转换为字符串格式
-        snprintf(mac_str, sizeof(mac_str), "%02X%02X%02X%02X%02X%02X",
-                 item_ptr->addr.a.val[5], item_ptr->addr.a.val[4],
-                 item_ptr->addr.a.val[3], item_ptr->addr.a.val[2],
-                 item_ptr->addr.a.val[1], item_ptr->addr.a.val[0]);
-
-        // 先拼接MAC和广播数据长度字段
-        offset += snprintf(upload_msg + offset, sizeof(upload_msg) - offset, "%s,%d,",
-                           mac_str, item_ptr->adv_data_len);
-
-        // 将广播数据逐字节转换为HEX字符串并拼接到消息尾部
-        for (j = 0; j < item_ptr->adv_data_len; j++)
-        {
-            offset += snprintf(upload_msg + offset, sizeof(upload_msg) - offset, "%02X",
-                               item_ptr->adv_data[j]);
-        }
-
-        lte_send_command("MACINFO", upload_msg);
-    }
-
-    LOG_INF("TRAN_MAC uploaded, count: %d", s_tran_mac_result_table.count);
-
-    // 上报完成后清空结果表
-    memset(&s_tran_mac_result_table, 0, sizeof(s_tran_mac_result_table));
-}
 
 /********************************************************************
 **函数名称:  scan_trigger_upload
@@ -1065,9 +1196,9 @@ static void scan_trigger_upload(void)
     }
 
     // 检查是否有数据需要上报
-    if (s_result_table.count == 0)
+    if (s_result_table.count == 0 && s_tran_mac_result_table.count == 0)
     {
-        LOG_INF("No scan data to upload");
+        LOG_INF("No data to upload");
         s_scan_config.state = SCAN_STATE_IDLE;
         return;
     }
@@ -1076,12 +1207,10 @@ static void scan_trigger_upload(void)
     set_lte_boot_reason(LTE_BOOT_REASON_SCAN);
 
     LOG_INF("Trigger LTE wakeup and upload %d TAGs", s_result_table.count);
+    LOG_INF("Trigger LTE wakeup and upload %d MACs", s_tran_mac_result_table.count);
 
     // 上报数据（lte_send_command会自动唤醒LTE）
-    tag_scan_upload_data();
-
-    // 上报透传MAC数据
-    tran_mac_upload_data();
+    tag_mac_scan_upload_data();
 }
 
 /********************************************************************
@@ -1251,7 +1380,7 @@ void my_scan_msg_handler(MSG_S *msg)
             // 周期扫描定时器消息
             if ((s_scan_config.mode == SCAN_MODE_PERIOD_CACHE ||
                  s_scan_config.mode == SCAN_MODE_PERIOD_UPLOAD) &&
-                s_scan_config.state != SCAN_STATE_SCANNING)
+                s_scan_config.state == SCAN_STATE_IDLE)
             {
                 scan_start_internal();
             }
@@ -1263,29 +1392,31 @@ void my_scan_msg_handler(MSG_S *msg)
             if (s_scan_config.mode == SCAN_MODE_WAKEUP_SCAN)
             {
                 // Mode 1：扫描完成后上报数据
-                if (s_result_table.count > 0)
+                if (s_result_table.count > 0 || s_tran_mac_result_table.count > 0)
                 {
                     LOG_INF("Mode 1: Trigger data upload after scan");
-                    tag_scan_upload_data();
-
-                    // 上报透传MAC数据
-                    tran_mac_upload_data();
+                    //上报过程中来报警或者切换工作模式，跳过
+                    if (s_scan_config.state == SCAN_STATE_WAITING_UPLOAD)
+                    {
+                        break;
+                    }
+                    tag_mac_scan_upload_data();
                 }
-                s_scan_config.state = SCAN_STATE_IDLE;
             }
             break;
 
         case MY_MSG_SCAN_UPLOAD:
             // 上报间隔定时器消息（Mode 3 定时主动唤醒LTE并上报）
             if (s_scan_config.mode == SCAN_MODE_PERIOD_UPLOAD &&
-                s_result_table.count > 0)
+                (s_result_table.count > 0 || s_tran_mac_result_table.count > 0))
             {
                 // Mode 3：主动唤醒LTE并上报数据
-                scan_trigger_upload();
-                if (s_scan_config.state != SCAN_STATE_SCANNING)
+                //上报过程中来报警或者切换工作模式，跳过
+                if (s_scan_config.state == SCAN_STATE_WAITING_UPLOAD)
                 {
-                    s_scan_config.state = SCAN_STATE_IDLE;
+                    break;
                 }
+                scan_trigger_upload();
             }
             break;
 
@@ -1296,7 +1427,7 @@ void my_scan_msg_handler(MSG_S *msg)
                 case SCAN_MODE_WAKEUP_SCAN:
                     // Mode 1：启动扫描
                     LOG_INF("LTE wakeup (Mode 1): start scanning");
-                    if (s_scan_config.state != SCAN_STATE_SCANNING)
+                    if (s_scan_config.state == SCAN_STATE_IDLE)
                     {
                         scan_start_internal();
                     }
@@ -1305,18 +1436,20 @@ void my_scan_msg_handler(MSG_S *msg)
                 case SCAN_MODE_PERIOD_CACHE:
                 case SCAN_MODE_PERIOD_UPLOAD:
                     // Mode 2/3：立即停止扫描并上报数据
-                    if (s_result_table.count > 0)
+                    if (s_result_table.count > 0 || s_tran_mac_result_table.count > 0)
                     {
                         if (s_scan_config.state == SCAN_STATE_SCANNING)
                         {
-                            LOG_INF("Mode %d LTE wakeup: stop scan and upload %d TAGs",
-                                    s_scan_config.mode, s_result_table.count);
+                            LOG_INF("Mode %d LTE wakeup: stop scan and upload %d TAGs, %d TRAN_MACs",
+                                    s_scan_config.mode, s_result_table.count, s_tran_mac_result_table.count);
                             scan_stop_internal();
                         }
-                        tag_scan_upload_data();
-
-                        // 上报透传MAC数据
-                        tran_mac_upload_data();
+                        //上报过程中来报警或者切换工作模式，跳过
+                        if (s_scan_config.state == SCAN_STATE_WAITING_UPLOAD)
+                        {
+                            break;
+                        }
+                        tag_mac_scan_upload_data();
                     }
                     break;
 

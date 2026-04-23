@@ -1246,6 +1246,12 @@ static void my_ble_task(void *p1, void *p2, void *p3)
             case MY_MSG_TRAN_MAC_PROCESS:
                 my_scan_msg_handler(&msg);
                 break;
+
+            //处理透传mac和tag数据传输（单条上报）
+            case MY_MSG_UPLOAD_TAG_AND_MAC:
+                tag_mac_scan_upload_data();
+
+                break;
             //异步回复给4G
             case MY_MSG_LTE_CMD_ASYNC_RESP:
                 async_match_and_resp((char*)msg.pData);

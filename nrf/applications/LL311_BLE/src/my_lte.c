@@ -68,6 +68,14 @@ typedef struct
 
 Retransmission_Item g_retrans_queue[RETRANSMISSION_QUEUE_SIZE]; // 重传队列
 
+// ========== 需要特殊处理的指令前缀列表 ==========
+static const char *s_special_cmd_prefixes[] = {
+    "CMD",     // BLE+CMD=<command>,... → 存储为 CMD_<command>
+    "MACINFO", // BLE+MACINFO=<seq>,... → 存储为 MACINFO_<seq> 或 MACINFO_START/END
+    "TAG",     // BLE+TAG=<seq>,... → 存储为 TAG_<seq> 或 TAG_START/END
+    NULL
+};
+
 // 重传检查定时器
 struct k_timer retrans_check_timer;
 
@@ -75,7 +83,10 @@ struct k_timer retrans_check_timer;
 static const ble_rsp_cmd_map_t ble_rsp_cmd_table[] = {
     {"LOCATION", BLE_RSP_LOCATION},
     {"LED",      BLE_RSP_LED     },
-    {"TIME",     BLE_RSP_TIME },
+    {"TIME",     BLE_RSP_TIME    },
+    {"CMD",      BLE_RSP_CMD     },
+    {"TAG",      BLE_RSP_TAG     },
+    {"MACINFO",  BLE_RSP_MACINFO },
     {NULL,       BLE_RSP_UNKNOWN }
 };
 
@@ -301,7 +312,9 @@ void check_ack(char *cmd_name)
 void retransmission_check(void)
 {
     int i = 0;
+    int j = 0;
     char cmd_name[32];
+    int prefix_len = 0;
     time_t current_time = my_get_system_time_sec();
 
     for (i = 0; i < RETRANSMISSION_QUEUE_SIZE; i++)
@@ -314,17 +327,24 @@ void retransmission_check(void)
             {
                 if (g_retrans_queue[i].retry_count < MAX_RETRIES)
                 {
-                    //（BLE+CMD需特殊处理）
                     MY_LOG_INF("Retransmitting message: %s (Retry %d)", g_retrans_queue[i].cmd_name, g_retrans_queue[i].retry_count + 1);
-                    //查找字符串是否有CMD_
-                    if (strstr(g_retrans_queue[i].cmd_name, "CMD_"))
+                    strcpy(cmd_name, g_retrans_queue[i].cmd_name);
+
+                    // 检查是否需要映射回原始指令名
+                    for (j = 0; s_special_cmd_prefixes[j] != NULL; j++)
                     {
-                        strcpy(cmd_name, "CMD");
+                        prefix_len = strlen(s_special_cmd_prefixes[j]);
+
+                        // 检查是否以 "PREFIX_" 开头
+                        if (strncmp(g_retrans_queue[i].cmd_name, s_special_cmd_prefixes[j],
+                            prefix_len) == 0 && g_retrans_queue[i].cmd_name[prefix_len] == '_')
+                        {
+                            // 提取原始指令名（如 MACINFO_001 → MACINFO）
+                            strcpy(cmd_name, s_special_cmd_prefixes[j]);
+                            break;
+                        }
                     }
-                    else
-                    {
-                        strcpy(cmd_name, g_retrans_queue[i].cmd_name);
-                    }
+
                     // 执行重传
                     lte_send_command(cmd_name, g_retrans_queue[i].param);
                     g_retrans_queue[i].retry_count++;
@@ -342,6 +362,9 @@ void retransmission_check(void)
                         MY_FREE_BUFFER(g_retrans_queue[i].param);
                         g_retrans_queue[i].param = NULL;
                     }
+
+                    // 清空存储的tag和MAC信息
+                    clear_tag_macinfo();
 
                     // 断电
                     my_send_msg(MOD_LTE, MOD_LTE, MY_MSG_LTE_PWROFF);
@@ -433,7 +456,7 @@ void add_to_retrans_queue(char *command)
     bool ret;
     char *param = NULL;
     char cmd_name[32];
-    char subcmd[16];
+    char first_param[16];
     int i = 0;
 
     // 获取第一个参数，指令头
@@ -441,6 +464,22 @@ void add_to_retrans_queue(char *command)
     if (ret)
     {
         param = command + strlen(cmd_name) + 1; //+1跳过逗号
+    }
+
+    // 检查是否是特殊指令
+    for (i = 0; s_special_cmd_prefixes[i] != NULL; i++)
+    {
+        if (strcmp(cmd_name, s_special_cmd_prefixes[i]) == 0)
+        {
+            // 匹配到，获取第一个参数（可能是 001/START/END/MILEAGE）
+            if (param && param[0] != '\0')
+            {
+                my_get_str_at_pos(param, 0, ',', first_param, sizeof(first_param));
+                strcat(cmd_name, "_");
+                strcat(cmd_name, first_param); // 变成 CMD_MILEAGE / MACINFO_START / TAG_001
+            }
+            break;
+        }
     }
 
     //  将消息添加到重传队列
@@ -477,16 +516,6 @@ void add_to_retrans_queue(char *command)
                     MY_LOG_ERR("malloc param failed");
                     return;
                 }
-            }
-
-            //对BLE+CMD = <command>,....做特殊处理
-            if (strcmp(cmd_name, "CMD") == 0)
-            {
-                //拿<command>(发送格式BLE+CMD = <command>,....)
-                my_get_str_at_pos(param, 0, ',', subcmd, sizeof(subcmd));
-                //重新组指令头CMD_subcmd
-                strcat(cmd_name, "_");
-                strcat(cmd_name, subcmd);
             }
 
             strncpy(g_retrans_queue[i].cmd_name, cmd_name, sizeof(g_retrans_queue[i].cmd_name) - 1);
@@ -2033,9 +2062,11 @@ static int my_ble_handle(char *data)
 {
     ble_rsp_result_t rsp_result;
     int ret = 0;
+    int i = 0;
     char is_ok[8] = {0};
     char subcmd[16] = {0};
     char cmd_name[32];
+    bool need_subcmd = false;
 
     //解析数据
     ret = ble_rsp_parse(data, &rsp_result);
@@ -2053,12 +2084,20 @@ static int my_ble_handle(char *data)
         return 0;
     }
 
-    //对BLE+CMD特殊处理（区分BLE+CMD = <command>，需要区分command）
-    if (strcmp(rsp_result.cmd_name, "CMD") == 0)
+    // 查找是否有特殊指令
+    for (i = 0; s_special_cmd_prefixes[i] != NULL; i++)
     {
-        //取参数的指令头（应答格式BLE+CMD =OK, <command>）
+        if (strcmp(rsp_result.cmd_name, s_special_cmd_prefixes[i]) == 0)
+        {
+            need_subcmd = true;
+            break;
+        }
+    }
+
+    if (need_subcmd)
+    {
+        // 取第二个参数（子命令或序号）
         my_get_str_at_pos(rsp_result.params, 1, ',', subcmd, sizeof(subcmd));
-        //CMD_command 如：CMD_MILEAGE(在相关重传也需要特殊处理)
         sprintf(cmd_name, "%s_%s", rsp_result.cmd_name, subcmd);
     }
     else
@@ -2084,6 +2123,12 @@ static int my_ble_handle(char *data)
             my_get_str_at_pos(rsp_result.params, 1, ',', subcmd, sizeof(subcmd));
             // 设置系统时间
             my_set_system_time(atoll(subcmd));
+            break;
+
+        //如果是tag/macinfo指令，发消息到蓝牙线性通知可以接着发下一条
+        case BLE_RSP_TAG:
+        case BLE_RSP_MACINFO:
+            my_send_msg(MOD_LTE, MOD_BLE, MY_MSG_UPLOAD_TAG_AND_MAC);
             break;
 
         default:

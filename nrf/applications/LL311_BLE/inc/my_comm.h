@@ -230,6 +230,9 @@ typedef enum
     MY_MSG_LTE_CMD_RX,
     MY_MSG_LTE_CMD_ASYNC_RESP,
 
+    //处理透传mac和tag数据传输（单条上报)
+    MY_MSG_UPLOAD_TAG_AND_MAC,
+
     /* DFU OTA 状态消息 */
     MY_MSG_DFU_START,    /* DFU OTA 开始 */
     MY_MSG_DFU_TIMEOUT,  /* DFU OTA 超时退出 */
