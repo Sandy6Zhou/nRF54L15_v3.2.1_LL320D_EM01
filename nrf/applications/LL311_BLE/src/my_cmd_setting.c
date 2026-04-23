@@ -3102,6 +3102,14 @@ static int bunlock_cmd_handler(at_cmd_struc* msg)
         return BLE_DATA_TYPE_AT_CMD;
     }
 
+    // 检查是否已有网络锁/蓝牙锁操作在进行中
+    if (g_netLockState != LOCK_STOP || g_bBleLockState != LOCK_STOP)
+    {
+        MY_LOG_INF("lock operation already in progress, state=%d", g_netLockState);
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "lock operation already in progress");
+        return BLE_DATA_TYPE_AT_CMD;
+    }
+
     /* 验证密钥长度是否为6位数字 */
     if (strlen(msg->parm[1]) != 6)
     {
@@ -3174,6 +3182,14 @@ static int block_cmd_handler(at_cmd_struc* msg)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "Lock failed. Invalid param.");
+        return BLE_DATA_TYPE_AT_CMD;
+    }
+
+    // 检查是否已有网络锁/蓝牙锁操作在进行中
+    if (g_netLockState != LOCK_STOP || g_bBleLockState != LOCK_STOP)
+    {
+        MY_LOG_INF("lock operation already in progress, state=%d", g_netLockState);
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "lock operation already in progress");
         return BLE_DATA_TYPE_AT_CMD;
     }
 
@@ -3466,6 +3482,14 @@ static int cunlock_cmd_handler(at_cmd_struc* msg)
         goto param_invalid;
     }
 
+    // 检查是否已有网络锁/蓝牙锁操作在进行中
+    if (g_netLockState != LOCK_STOP || g_bBleLockState != LOCK_STOP)
+    {
+        MY_LOG_INF("lock operation already in progress, state=%d", g_netLockState);
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "lock operation already in progress");
+        return 1;
+    }
+
     // YYMMDDHHMMSS  12个字符
     if (strlen(msg->parm[1]) != 12)
     {
@@ -3634,6 +3658,14 @@ static int clock_cmd_handler(at_cmd_struc *msg)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "Lock failed. Invalid param.");
+        return 1;
+    }
+
+    // 检查是否已有网络锁/蓝牙锁操作在进行中
+    if (g_netLockState != LOCK_STOP || g_bBleLockState != LOCK_STOP)
+    {
+        MY_LOG_INF("lock operation already in progress, state=%d", g_netLockState);
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "lock operation already in progress");
         return 1;
     }
 

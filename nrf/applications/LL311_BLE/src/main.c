@@ -501,6 +501,7 @@ void handle_verify_unlock(ble_rsp_result_t *result)
     int32_t lon_value;
     uint8_t lon_valid;
     uint8_t seq[8] = {0};
+    bool ret;
 
     if (result->param_count != 4)
     {
@@ -508,10 +509,16 @@ void handle_verify_unlock(ble_rsp_result_t *result)
         return;
     }
 
-    my_get_str_at_pos(result->params, 0, ',', is_ok, sizeof(is_ok));
+    ret = my_get_str_at_pos(result->params, 0, ',', is_ok, sizeof(is_ok));
     if (strcmp(is_ok, "OK") != 0)
     {
         MY_LOG_ERR("location response not OK");
+        return;
+    }
+
+    //后续无参数，说明只是应答，无需处理
+    if (!ret)
+    {
         return;
     }
 

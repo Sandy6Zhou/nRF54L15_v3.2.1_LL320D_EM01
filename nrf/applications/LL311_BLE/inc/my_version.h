@@ -12,7 +12,16 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260417"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260420"
+/* 软件版本:        V1.0
+** 完成日期:        2026.04.20
+** 作    者:       吴楚庆 (wuchuqing@jimiiot.com)
+** 修改内容:        1.增加4G透传需要异步回复的队列（处理异步回复)
+**                 2.增加4G透传指令发送方号码后面需要对应的命令字段
+**                 3.增加4G发送过来的进入产测模式指令解析
+***/
+
+//#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260417"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.04.17
 ** 作    者:       周森达 (zhousenda@jimiiot.com)

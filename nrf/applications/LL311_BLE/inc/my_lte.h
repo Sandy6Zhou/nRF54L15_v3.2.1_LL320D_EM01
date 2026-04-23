@@ -68,9 +68,6 @@ typedef struct
 //网络解锁全局变量
 extern net_unlock_ctrl_t g_net_unlock;
 
-//回复的id号
-extern char g_lte_cmd_id[16];
-
 //全局经纬度存储点
 extern location_storage_t g_location_point;
 

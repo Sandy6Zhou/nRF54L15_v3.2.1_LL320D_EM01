@@ -224,6 +224,7 @@ typedef enum
 
     // 处理4G过来LTE+CMD数据透传
     MY_MSG_LTE_CMD_RX,
+    MY_MSG_LTE_CMD_ASYNC_RESP,
 
     /* DFU OTA 状态消息 */
     MY_MSG_DFU_START,    /* DFU OTA 开始 */

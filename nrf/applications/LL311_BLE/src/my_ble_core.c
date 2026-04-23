@@ -1246,6 +1246,17 @@ static void my_ble_task(void *p1, void *p2, void *p3)
             case MY_MSG_TRAN_MAC_PROCESS:
                 my_scan_msg_handler(&msg);
                 break;
+            //异步回复给4G
+            case MY_MSG_LTE_CMD_ASYNC_RESP:
+                async_match_and_resp((char*)msg.pData);
+
+                // 释放动态分配的内存
+                if(msg.pData != NULL)
+                {
+                    MY_FREE_BUFFER(msg.pData);
+                    msg.pData = NULL;
+                }
+                break;
 
             default:
                 break;

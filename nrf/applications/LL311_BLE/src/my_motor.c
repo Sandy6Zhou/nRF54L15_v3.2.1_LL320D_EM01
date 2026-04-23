@@ -134,21 +134,20 @@ void send_lock_result_event(const char *lock_msg_data)
 **函数名称:  respond_netlock_result
 **入口参数:  lock_msg_data   ---   需要发送的锁状态结果字符串
 **出口参数:  无
-**函数功能:  响应网络上锁结果：将结果数据通过消息队列发送给 LTE 模块
-**           回复应答4G
+**函数功能:  响应网络上锁结果：将结果数据通过消息队列发送给蓝牙模块去做匹配处理
 **返 回 值:  无
 *********************************************************************/
-void respond_netlock_result(const char *lock_msg_data)
+void respond_netlock_result(char *cmd_name, const char *lock_msg_data)
 {
     char *p;
     MSG_S msg;
-    char resp_buf[80];
+    char buf[80];
 
-    // 拼接回复消息
-    snprintf(resp_buf, sizeof(resp_buf), "LTE+CMD=%s,%s\r\n", g_lte_cmd_id, lock_msg_data);
-    resp_buf[sizeof(resp_buf) - 1] = '\0'; // 确保字符串终止
+    // 拼接消息（指令头,回复内容）
+    snprintf(buf, sizeof(buf), "%s,%s", cmd_name, lock_msg_data);
+    buf[sizeof(buf) - 1] = '\0'; // 确保字符串终止
 
-    MY_MALLOC_BUFFER(p, strlen(resp_buf) + 1);
+    MY_MALLOC_BUFFER(p, strlen(buf) + 1);
     if (p == NULL)
     {
         MY_LOG_ERR("p malloc failed");
@@ -156,13 +155,12 @@ void respond_netlock_result(const char *lock_msg_data)
     }
 
     // 拼接回复消息
-    strcpy(p, resp_buf);
+    strcpy(p, buf);
 
-    // 构建消息结构体并发送给LTE模块
-    msg.msgID = MY_MSG_LTE_BLE_DATA;
+    // 发消息到蓝牙线程处理异步回复
+    msg.msgID = MY_MSG_LTE_CMD_ASYNC_RESP;
     msg.pData = p;
-    msg.DataLen = strlen(p);
-    my_send_msg_data(MOD_LTE, MOD_LTE, &msg);
+    my_send_msg_data(MOD_LTE, MOD_BLE, &msg);
 }
 
 /********************************************************************
@@ -226,7 +224,7 @@ static void openlock_posdet_timer_handler(struct k_timer *timer)
                 // buzzer进行解锁成功提示
                 my_set_buzzer_mode(BUZZER_UNLOCK_SUCCESS);
             }
-            // 如果是网络开锁触发，通知LTE线程开锁成功
+            // 如果是网络开锁触发，需走异步回复
             if (g_netLockState == UNLOCKING)
             {
                 g_netLockState = LOCK_STOP;
@@ -238,7 +236,7 @@ static void openlock_posdet_timer_handler(struct k_timer *timer)
                 }
                 else
                 {
-                    respond_netlock_result(unlock_success);
+                    respond_netlock_result("CUNLOCK",unlock_success);
                 }
 
                 g_net_unlock.netunlock_flag = 1;
@@ -287,11 +285,11 @@ static void closelock_posdet_timer_handler(struct k_timer *timer)
                 //buzzer进行关锁成功提示
                 my_set_buzzer_mode(BUZZER_EVENT_LOCK_SUCCESS);
             }
-            // 如果是网络关锁触发，通知lte线程关锁成功
+            // 如果是网络关锁触发，需走异步回复
             if (g_netLockState == LOCKING)
             {
                 g_netLockState = LOCK_STOP;
-                respond_netlock_result(lock_success);
+                respond_netlock_result("CLOCK",lock_success);
             }
             // TODO MY_MSG_CTRL_CLOSELOCKED:发送消息给LTE线程上报关锁状态成功
 
@@ -421,14 +419,14 @@ static void motor_timer_timeout_handler(struct k_timer *timer)
         }
         else
         {
-            respond_netlock_result(unlock_fail);
+            respond_netlock_result("CUNLOCK",unlock_fail);
         }
     }
-    // 如果是网络关锁触发，通知网络线程关锁失败
+    // 如果是网络关锁触发，走异步回复
     else if (g_netLockState == LOCKING)
     {
         g_netLockState = LOCK_STOP;
-        respond_netlock_result(lock_fail);
+        respond_netlock_result("CLOCK",lock_fail);
     }
 
     /* 发送停止锁操作消息 */

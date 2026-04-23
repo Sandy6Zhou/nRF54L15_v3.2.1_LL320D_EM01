@@ -32,6 +32,7 @@ char LTE_FOTA[] = "LTE+FOTA=";
 char LTE_STATE[] = "LTE+STATE=";
 char LTE_CMD[] = "LTE+CMD=";
 char LTE_LOCATION[] = "LTE+LOCATION=";
+char LTE_FACTORY[] = "LTE+FACTORY=";
 char BLE[] = "BLE+";
 
 // 经纬度存储点
@@ -76,6 +77,19 @@ static const ble_rsp_cmd_map_t ble_rsp_cmd_table[] = {
     {"LED",      BLE_RSP_LED     },
     {NULL,       BLE_RSP_UNKNOWN }
 };
+
+// 4G透传指令异步回复队列
+typedef struct
+{
+    char cmd_name[16]; // 指令头
+    char id[16];       // 发送方号码
+    uint8_t used;      // 是否占用（0=空闲，1=使用中）
+} async_resp_tiem_t;
+
+// LTE+CMD4G透传指令需要异步回复的队列大小（目前就LTE+CMD=UNLOCK,.../LTE+CMD=CLCOK网络开锁和解锁）
+#define ASYNC_QUEUE_SIZE 6
+
+async_resp_tiem_t g_async_queue[ASYNC_QUEUE_SIZE];
 
 /* LTE电源状态跟踪 */
 static bool g_lte_power_state = false;  // false=关闭, true=开启
@@ -130,6 +144,9 @@ static struct k_thread my_lte_task_data;
 // 产测指令
 const char FACTORY_CMD_HEADER[] = "AT^GT_CM=";
 
+// 4G进入产测模式（0 = exit, 1:enter）
+uint8_t g_lte_factory = 0;
+
 /* { visible, command, help, function } */
 CMD_STRUC AT_CMD_INNER[] = {
 
@@ -141,8 +158,17 @@ CMD_STRUC AT_CMD_INNER[] = {
 // 网络解锁全局变量
 net_unlock_ctrl_t g_net_unlock;
 
-// lte+cmd异步回复需要id号
-char g_lte_cmd_id[16];
+/********************************************************************
+**函数名称:  init_async_queue
+**入口参数:  无
+**出口参数:  无
+**函数功能:  初始化/清空异步回复队列，将所有队列元素内存置零
+**返 回 值:  无
+********************************************************************/
+void init_async_queue(void)
+{
+    memset(g_async_queue, 0, sizeof(g_async_queue));
+}
 
 // lte OTA升级状态
 bool g_lte_ota_in_progress = false;
@@ -532,6 +558,96 @@ void retransmission_poll(void)
 }
 
 /********************************************************************
+**函数名称:  async_add_item
+**入口参数:  cmd_name  ---        指令头MODE（LTE+CMD=88888888888,MODE,1,0,1,1,0#）
+**            id        ---       关联的ID 88888888888
+**出口参数:  无
+**函数功能:  向异步队列中添加新的等待项，用于后续匹配蓝牙回复
+**返 回 值:  0表示添加成功，-1表示队列已满
+********************************************************************/
+int async_add_item(char *cmd_name, char *id)
+{
+    int i = 0;
+    for (i = 0; i < ASYNC_QUEUE_SIZE; i++)
+    {
+        if (!g_async_queue[i].used)
+        {
+            strcpy(g_async_queue[i].cmd_name, cmd_name);
+            strcpy(g_async_queue[i].id, id);
+            g_async_queue[i].used = 1;
+            return 0;
+        }
+    }
+
+    return -1; // 队列满
+}
+
+/********************************************************************
+**函数名称:  async_match_and_resp
+**入口参数:  data      ---        数据（格式：指令头,回复内容）如CUNLOCK,Unlock failed. No unlock state detected.
+**出口参数:  无
+**函数功能:  解析数据头，在队列中查找匹配项；若匹配成功，将元素前移并发送响应给LTE
+**返 回 值:  0表示匹配成功并发送，-1表示未匹配到对应指令
+********************************************************************/
+int async_match_and_resp(char *data)
+{
+    int i = 0;
+    int index = -1;
+    char cmd_name[16];
+    MSG_S msg;
+    char *resp;
+    char id[16];
+
+    // 拿指令头匹配
+    my_get_str_at_pos(data, 0, ',', cmd_name, sizeof(cmd_name));
+    for (i = 0; i < ASYNC_QUEUE_SIZE; i++)
+    {
+        if (g_async_queue[i].used && strcmp(g_async_queue[i].cmd_name, cmd_name) == 0)
+        {
+            index = i;
+            strcpy(id, g_async_queue[i].id);
+            break;
+        }
+    }
+    // 成功匹配
+    if (index != -1)
+    {
+        // 将后面的元素依次前移
+        for (i = index; i < ASYNC_QUEUE_SIZE - 1 && g_async_queue[i + 1].used; i++)
+        {
+            memcpy(&g_async_queue[i], &g_async_queue[i + 1], sizeof(async_resp_tiem_t));
+        }
+
+        // 清空最后被占用的元素
+        memset(&g_async_queue[i], 0, sizeof(async_resp_tiem_t));
+
+        //应答
+        MY_MALLOC_BUFFER(resp, strlen(data) + strlen(id) + 20);
+        if (resp == NULL)
+        {
+            MY_LOG_ERR("resp malloc failed");
+            return 0;
+        }
+
+        sprintf(resp, "LTE+CMD=%s,%s", id, data);
+
+        // 构建消息结构体并发送给LTE模块
+        msg.msgID = MY_MSG_LTE_BLE_DATA;
+        msg.pData = resp;
+        msg.DataLen = strlen(resp);
+
+        my_send_msg_data(MOD_LTE, MOD_LTE, &msg);
+
+        return 0;
+    }
+    else
+    {
+        // 未匹配
+        return -1;
+    }
+}
+
+/********************************************************************
  * 函数名称: my_lte_msg_queue_init
  * 入口参数: 无
  * 出口参数: 无
@@ -753,8 +869,8 @@ static void my_lte_task(void *p1, void *p2, void *p3)
                 break;
 
             case MY_MSG_LTE_PWROFF:
-                // 只有在OTA升级完成后，才允许断电
-                if (g_lte_ota_in_progress == false)
+                // 只有在OTA升级完成后，才允许断电 or 4G不在产测下
+                if (g_lte_ota_in_progress == false || g_lte_factory == 0)
                 {
                     my_lte_pwr_on(false);
                     g_bLteReady = 0;
@@ -1575,7 +1691,6 @@ static int my_lte_handle_fota(char *data)
 *********************************************************************/
 int my_lte_handle_cmd(char *data)
 {
-
     at_cmd_struc at_cmd_msg = {0};
     int len = 0;
     char id[16] = {0};
@@ -1598,14 +1713,13 @@ int my_lte_handle_cmd(char *data)
         //需要异步回复，只做简单应答
         if (ret == 2)
         {
-            //TODO 可能存在连续2条需要异步回复指令过来，后续需要修改做匹配和回复内容需增加指令头
-            strcpy(g_lte_cmd_id, id);
-
+            //添加到异步回复队列
+            async_add_item(at_cmd_msg.parm[0], id);
             sprintf(at_cmd_msg.resp_msg, "OK");
         }
 
-        // 拼接回复消息
-        snprintf(g_lte_cmd_resp_buf, LTE_CMD_RESPBUF_SIZE, "LTE+CMD=%s,%s\r\n", id, at_cmd_msg.resp_msg);
+        // 拼接回复消息(LTE+CMD=id,cmd,resp)
+        snprintf(g_lte_cmd_resp_buf, LTE_CMD_RESPBUF_SIZE, "LTE+CMD=%s,%s,%s\r\n", id, at_cmd_msg.parm[0], at_cmd_msg.resp_msg);
         g_lte_cmd_resp_buf[LTE_CMD_RESPBUF_SIZE - 1] = '\0'; // 确保字符串终止
     }
     else
@@ -1904,6 +2018,44 @@ static int my_ble_handle(char *data)
 }
 
 /********************************************************************
+**函数名称:  my_lte_handle_factory
+**入口参数:  data      ---        接收到的原始指令字符串 (如 "ENTER" 或 "EXIT")LTE+FACTORY=ENTER/EXIT
+**出口参数:  无
+**函数功能:  处理产测模式切换指令
+**返 回 值:  0表示处理成功，-1表示内存分配失败
+********************************************************************/
+static int my_lte_handle_factory(char *data)
+{
+    char result[16] = {0};
+    bool ret = false;
+    MSG_S msg;
+    char resp_buf[24] = "LTE+FACTORY=FAIL\r\n";
+    char *resp;
+
+    ret = my_get_str_at_pos(data, 0, ',', result, sizeof(result));
+
+    // 后续无参数
+    if (!ret)
+    {
+        if (CMD_EQUAL(result, "ENTER"))
+        {
+            g_lte_factory = 1;
+        }
+        else if (CMD_EQUAL(result, "EXIT"))
+        {
+            g_lte_factory = 0;
+        }
+        memset(resp_buf, 0, sizeof(resp_buf));
+        sprintf(resp_buf, "LTE+FACTORY=OK\r\n");
+    }
+
+    // 直接应答
+    my_lte_send_msg(resp_buf, strlen(resp_buf));
+
+    return 0;
+}
+
+/********************************************************************
 **函数名称:  my_check_location_valid
 **入口参数:  point       ---        存储点指针
 **出口参数:  无
@@ -2067,6 +2219,11 @@ int my_lte_parse_cmd(char *cmd, int cmd_len)
         ret = my_lte_handle_location(p + strlen(LTE_LOCATION));
         goto END;
     }
+    else if (CMD_MATCHED(cmd, LTE_FACTORY))
+    {
+        ret = my_lte_handle_factory(p + strlen(LTE_FACTORY));
+        goto END;
+    }
     //处理4G应答
     else if (CMD_MATCHED(cmd, BLE))
     {
@@ -2209,6 +2366,9 @@ int my_lte_init(k_tid_t *tid)
 
     //重传检查定时器
     k_timer_init(&retrans_check_timer, retrans_check_timer_handler, NULL);
+
+    // 清空异步回复队列
+    init_async_queue();
 
     /* 初始化完成后默认开启模块电源 */
     my_lte_pwr_on(true);

@@ -74,10 +74,9 @@ bool get_openlock_state(void);
 **函数名称:  respond_netlock_result
 **入口参数:  lock_msg_data   ---   需要发送的锁状态结果字符串
 **出口参数:  无
-**函数功能:  响应网络上锁结果：将结果数据通过消息队列发送给 LTE 模块
-**           回复应答4G
+**函数功能:  响应网络上锁结果：将结果数据通过消息队列发送给蓝牙模块去做匹配处理
 **返 回 值:  无
 *********************************************************************/
-void respond_netlock_result(const char *lock_msg_data);
+void respond_netlock_result(char *cmd_name, const char *lock_msg_data);
 
 #endif
