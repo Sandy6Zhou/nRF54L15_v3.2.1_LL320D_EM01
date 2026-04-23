@@ -242,6 +242,13 @@ const OtaConfig_t gDefaultOtaConfig =
     .ble_ota_reboot = false,
 };
 
+const BparmacConfig_t gDefaultBparmacConfig =
+{
+    .flag = FLAG_VALID,
+    .bt_parmac_mac_count = 0,         /* 默认0个MAC地址 */
+    .bt_parmac_macs = {0},           /* 默认0个MAC地址 */
+};
+
 /**
 /********************************************************************
 **函数名称:  my_user_data_storage_init
@@ -730,6 +737,19 @@ void my_param_load_config(void)
     {
         memcpy(&gConfigParam.ota_config, &gDefaultOtaConfig, length);
         MY_LOG_INF("Ota config not found. Use default.");
+    }
+
+    //--------Load Bparmac Config ---------------------
+    length = sizeof(BparmacConfig_t);
+    ret = my_user_data_read(ZMS_ID_BT_PARMAC_CONFIG, &gConfigParam.bparmac_config, length);
+    if (ret != length)
+    {
+        memcpy(&gConfigParam.bparmac_config, &gDefaultBparmacConfig, length);
+        MY_LOG_INF("Bparmac config not found. Use default.");
+    }
+    else
+    {
+        MY_LOG_INF("Bparmac config loaded");
     }
 }
 

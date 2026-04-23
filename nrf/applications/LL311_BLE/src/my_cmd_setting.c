@@ -3767,6 +3767,11 @@ static int bt_parmac_cmd_handler(at_cmd_struc* msg)
             }
         }
 
+        // 更新配置参数
+        gConfigParam.bparmac_config.flag = FLAG_VALID;
+        // 保存配置参数到flash
+        my_user_data_write(ZMS_ID_BT_PARMAC_CONFIG, &gConfigParam.bparmac_config, sizeof(BparmacConfig_t));
+
         LOG_INF("ADD %d MACs, total: %d", add_count, gConfigParam.bparmac_config.bt_parmac_mac_count);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_ADD_OK", msg->parm[0]);
         return BLE_DATA_TYPE_AT_CMD;
@@ -3784,6 +3789,10 @@ static int bt_parmac_cmd_handler(at_cmd_struc* msg)
             my_tran_mac_del_all();
             LOG_INF("DEL ALL");
             msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_DEL_ALL_OK", msg->parm[0]);
+            // 更新配置参数
+            gConfigParam.bparmac_config.flag = FLAG_VALID;
+            // 保存配置参数到flash
+            my_user_data_write(ZMS_ID_BT_PARMAC_CONFIG, &gConfigParam.bparmac_config, sizeof(BparmacConfig_t));
             return BLE_DATA_TYPE_AT_CMD;
         }
         // BT_PARMAC,DEL,[MAC]#
@@ -3809,6 +3818,10 @@ static int bt_parmac_cmd_handler(at_cmd_struc* msg)
                 LOG_INF("DEL MAC not found");
                 goto param_invalid;
             }
+            // 更新配置参数
+            gConfigParam.bparmac_config.flag = FLAG_VALID;
+            // 保存配置参数到flash
+            my_user_data_write(ZMS_ID_BT_PARMAC_CONFIG, &gConfigParam.bparmac_config, sizeof(BparmacConfig_t));
         }
     }
     else if (strcmp(msg->parm[1], "CHECK") == 0)

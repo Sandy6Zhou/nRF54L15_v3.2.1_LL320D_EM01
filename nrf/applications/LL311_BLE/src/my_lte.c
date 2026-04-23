@@ -75,6 +75,7 @@ struct k_timer retrans_check_timer;
 static const ble_rsp_cmd_map_t ble_rsp_cmd_table[] = {
     {"LOCATION", BLE_RSP_LOCATION},
     {"LED",      BLE_RSP_LED     },
+    {"TIME",     BLE_RSP_TIME },
     {NULL,       BLE_RSP_UNKNOWN }
 };
 
@@ -855,7 +856,11 @@ static void my_lte_task(void *p1, void *p2, void *p3)
     }
 
     // 初始化时间指令,从4G网络获取时间同步
-    lte_send_command("TIME", "1");
+    #if RETRANSMIT_CHECK_ENABLED
+        lte_send_cmd_with_retry("TIME", "1");
+    #else
+        lte_send_command("TIME", "1");
+    #endif
 
     for (;;)
     {
@@ -1529,6 +1534,11 @@ static int my_lte_handle_power_on(char *data)
         boot_reason = get_lte_boot_reason();
     }
 
+    if (g_lte_ota_in_progress == true)
+    {
+        g_lte_ota_in_progress = false;
+    }
+
     utc_sec = my_get_system_time_sec();
     nRespLen = snprintf(resp_buf, sizeof(resp_buf), "%sOK,%d,%s,%lld\r\n",
                         LTE_PWRON, (int)boot_reason, SOFTWARE_VERSION, (long long)utc_sec);
@@ -1594,6 +1604,8 @@ static int my_lte_handle_time(char *data)
 {
     // 设置系统时间
     my_set_system_time(atoll(data));
+
+    my_lte_send_msg("LTE+TIME=OK\r\n", strlen("LTE+TIME=OK\r\n"));
 
     return 0;
 }
@@ -2008,6 +2020,13 @@ static int my_ble_handle(char *data)
             break;
 
         case BLE_RSP_LED:
+            break;
+
+        case BLE_RSP_TIME:
+            // 提取UTC秒数（应4G网络时间同步）
+            my_get_str_at_pos(rsp_result.params, 1, ',', subcmd, sizeof(subcmd));
+            // 设置系统时间
+            my_set_system_time(atoll(subcmd));
             break;
 
         default:

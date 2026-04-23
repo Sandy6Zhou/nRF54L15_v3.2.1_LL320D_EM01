@@ -22,6 +22,12 @@ int my_set_system_time(time_t _sec)
     struct timespec ts;
     int ret;
 
+    if (_sec < 1770000000)
+    {
+        MY_LOG_INF("set system time failed, _sec=%ld", _sec);
+        return -1;
+    }
+
     ts.tv_sec  = _sec;
     ts.tv_nsec = 0;
 
@@ -1045,9 +1051,9 @@ uint32_t calculate_distance(int32_t lat1, int32_t lon1, int32_t lat2, int32_t lo
     double a = sin(d_lat / 2) * sin(d_lat / 2) +
                cos(rad_lat1) * cos(rad_lat2) *
                sin(d_lon / 2) * sin(d_lon / 2);
-    
+
     double c = 2 * atan2(sqrt(a), sqrt(1 - a));
-    
+
     return (uint32_t)(EARTH_RADIUS * c);
 }
 
@@ -1062,8 +1068,8 @@ uint32_t calculate_distance(int32_t lat1, int32_t lon1, int32_t lat2, int32_t lo
 **函数功能:  判断点是否在圆内
 **返 回 值:  true 表示在圆内，false 表示在圆外
 *********************************************************************/
-bool is_point_in_circle(int32_t lat, int32_t lon, 
-                        int32_t center_lat, int32_t center_lon, 
+bool is_point_in_circle(int32_t lat, int32_t lon,
+                        int32_t center_lat, int32_t center_lon,
                         uint32_t radius)
 {
     uint32_t distance;

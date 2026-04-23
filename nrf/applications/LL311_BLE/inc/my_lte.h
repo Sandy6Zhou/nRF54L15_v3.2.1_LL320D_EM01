@@ -29,6 +29,7 @@ typedef enum
     BLE_RSP_UNKNOWN = 0,
     BLE_RSP_LOCATION, // BLE+LOCATION=OK,lat,lon
     BLE_RSP_LED,      // BLE+LED=OK
+    BLE_RSP_TIME,     // BLE+TIME=OK,<UTC秒数>
     BLE_RSP_MAX
 } ble_rsp_type;
 
