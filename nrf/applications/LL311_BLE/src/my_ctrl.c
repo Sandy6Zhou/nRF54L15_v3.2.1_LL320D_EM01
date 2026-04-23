@@ -1557,23 +1557,6 @@ static void buzzer_timer_handler(struct k_timer *timer)
 
 }
 
-/*********************************************************************
-**函数名称:  my_ctrl_report_tamper_alarm
-**入口参数:  无
-**出口参数:  无
-**函数功能:  上报拆防检测
-*********************************************************************/
-void my_ctrl_report_tamper_alarm(void)
-{
-    if (gConfigParam.remalm_config.remalm_sw)
-    {
-        //开启4G电源
-        my_send_msg(MOD_CTRL, MOD_LTE, MY_MSG_LTE_PWRON);
-        // TODO 直接发消息给LTE线程,由4G判断是否要上报
-
-    }
-}
-
 /********************************************************************
 **函数名称:  my_ctrl_task
 **入口参数:  p1, p2, p3   ---   线程参数（未使用）
@@ -1666,7 +1649,7 @@ static void my_ctrl_task(void *p1, void *p2, void *p3)
             case MY_MSG_CTRL_LIGHT_SENSOR_BRIGHT:
                 MY_LOG_INF("Light sensor detected: BRIGHT");
                 //上报拆除检测告警
-                my_ctrl_report_tamper_alarm();
+                send_alarm_message_to_lte(ALARM_OPEN, NULL);
                 break;
 
             case MY_MSG_CTRL_LIGHT_SENSOR_DARK:

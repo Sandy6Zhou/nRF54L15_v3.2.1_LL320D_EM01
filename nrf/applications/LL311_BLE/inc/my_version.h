@@ -16,6 +16,13 @@
 /* 软件版本:        V1.0
 ** 完成日期:        2026.04.23
 ** 作    者:        曹阳 (caoyang@jimiiot.com)
+** 修改内容:       完善拆壳检测、非法解锁、锁状态变化事件触发上报
+***/
+
+//#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260423"
+/* 软件版本:        V1.0
+** 完成日期:        2026.04.23
+** 作    者:        曹阳 (caoyang@jimiiot.com)
 ** 修改内容:       增加产测指令
 **                 AT^GT_CM=PCBA,MCU,LED,ON(RETURN_LED_ON)、
 **                 AT^GT_CM=PCBA,MCU,LED,OFF(RETURN_MCULED_OFF)

@@ -214,6 +214,8 @@ static void openlock_posdet_timer_handler(struct k_timer *timer)
             my_send_msg(MOD_MAIN, MOD_CTRL, MY_MSG_CTRL_STOPLOCK);
             /* 开锁后闪烁LED 18秒 */
             my_lock_led_msg_send(LOCK_LED_UNLOCK);
+            // 上报开锁成功告警
+            send_alarm_message_to_lte(ALARM_LOCK, "0");
 
             /* 如果是蓝牙开锁触发，通知蓝牙线程开锁成功 */
             if (g_bBleLockState == UNLOCKING)
@@ -276,6 +278,8 @@ static void closelock_posdet_timer_handler(struct k_timer *timer)
             my_send_msg(MOD_MAIN, MOD_CTRL, MY_MSG_CTRL_STOPLOCK);
             /* 关锁后关闭LED */
             my_lock_led_msg_send(LOCK_LED_CLOSE);
+            // 上报关锁成功告警
+            send_alarm_message_to_lte(ALARM_LOCK, "1");
 
             /* 如果是蓝牙关锁触发，通知蓝牙线程关锁成功 */
             if (g_bBleLockState == LOCKING)
@@ -310,6 +314,7 @@ static void closelock_posdet_timer_handler(struct k_timer *timer)
             if (!s_bOpenLockingState)
             {
                 // TODO 非法解锁上报,直接发消息给LTE线程,由4G判断是否要上报
+                send_alarm_message_to_lte(ALARM_ILLEGALUNLOCK, NULL);
 
                 /* 蜂鸣器报警方式 */
                 if (gConfigParam.lockerr_config.lockerr_buzzer == ALARM_TEMPORARY)
