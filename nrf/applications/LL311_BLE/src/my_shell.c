@@ -452,7 +452,6 @@ static void my_shell_handle_rx(uint8_t *pData, uint32_t iLen)
 *********************************************************************/
 static int shell_at_test(const struct shell *sh, size_t argc, char **argv)
 {
-    uint8_t rx_buff[512] = {0};
     int len;
 
     if (argc < 2)
@@ -461,16 +460,18 @@ static int shell_at_test(const struct shell *sh, size_t argc, char **argv)
         return -EINVAL;
     }
 
+    memset(shell_test_buff, 0, sizeof(shell_test_buff));
+
     len = strlen(argv[1]);
-    memcpy(rx_buff, argv[1], len);
+    memcpy(shell_test_buff, argv[1], len);
     // 手动增加\r\n，使得my_shell_handle_rx能识别到
-    rx_buff[len++] = '\r';
-    rx_buff[len++] = '\n';
-    rx_buff[len] = 0;
+    shell_test_buff[len++] = '\r';
+    shell_test_buff[len++] = '\n';
+    shell_test_buff[len] = 0;
 
     shell_print(sh, "param: %s, len: %d", argv[1], len);
 
-    my_shell_handle_rx(rx_buff, len);
+    my_shell_handle_rx(shell_test_buff, len);
 
     return 0;
 }

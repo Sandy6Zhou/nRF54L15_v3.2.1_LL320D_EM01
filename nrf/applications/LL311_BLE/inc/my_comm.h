@@ -76,6 +76,10 @@
 #include <soc.h>
 #include <uart_async_adapter.h>
 
+// 包含 FM175XX 相关头文件
+#include "../inc/fm175xx_driver.h"
+#include "../inc/fm175xx_reg.h"
+
 /* ========== 通用宏定义 ========== */
 #define JM_SLEEP(timeout) k_sleep(timeout)
 #define MY_MALLOC_BUFFER(PTR, BUFFER_SIZE) \

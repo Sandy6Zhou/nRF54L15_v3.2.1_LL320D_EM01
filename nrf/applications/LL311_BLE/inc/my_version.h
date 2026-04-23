@@ -12,7 +12,19 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260423"
+//#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260423"
+/* 软件版本:        V1.0
+** 完成日期:        2026.04.23
+** 作    者:        曹阳 (caoyang@jimiiot.com)
+** 修改内容:       增加产测指令
+**                 AT^GT_CM=PCBA,MCU,LED,ON(RETURN_LED_ON)、
+**                 AT^GT_CM=PCBA,MCU,LED,OFF(RETURN_MCULED_OFF)
+**                 AT^GT_CM=PCBA,MCU,MAC(RETURN_MCU_MAC:)、
+**                 AT^GT_CM=PCBA,MCU,GSENSOR(RETURN_MCU_GSENSOR:)
+**                 AT^GT_CM=PCBA,MCU,NFC(RETURN_MCU_NFC:)
+***/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260423"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.04.23
 ** 作    者:        吴楚庆 (wuchuqing@jimiiot.com)

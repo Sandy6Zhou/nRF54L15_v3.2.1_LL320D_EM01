@@ -1114,8 +1114,10 @@ static char *my_handle_at_pcba_cmd(char **pParam, int nParam)
     uint8_t data_buff[64] = {0};
     const GsmImei_t *gsmImei;
     const uint8_t *edr_addr;
+    uint8_t version = 0;
     int ret;
 
+    LOG_INF("%s: %s", __func__, pParam[0]);
     memset(resp, 0, sizeof(resp));
 
     // 产测指令至少有两个参数，且第一个参数一定是“PCBA”
@@ -1130,6 +1132,7 @@ static char *my_handle_at_pcba_cmd(char **pParam, int nParam)
     // AT^GT_CM=PCBA,BT,xxxx
     if (CMD_MATCHED(pParam[1], "BT"))
     {
+        LOG_INF("%s: %s", __func__, pParam[1]);
         if (nParam < 3)
         {
             sprintf(resp, "BT params error");
@@ -1283,6 +1286,53 @@ static char *my_handle_at_pcba_cmd(char **pParam, int nParam)
             }
         }
     }
+    else if (CMD_MATCHED(pParam[1], "MCU")) // AT^GT_CM=PCBA,MCU,xxxxxxxx
+    {
+         if (nParam < 3)
+        {
+            sprintf(resp, "MCU params error");
+            return resp;
+        }
+        if (CMD_MATCHED(pParam[2], "LED"))
+        {
+             if (nParam < 4)
+            {
+                sprintf(resp, "MCU params error");
+                return resp;
+            }
+            if (CMD_MATCHED(pParam[3], "ON"))
+            {
+                batt_led_set_level(3);
+                lock_led_set(true);
+                sprintf(resp, "RETURN_LED_ON");
+            }
+            else if (CMD_MATCHED(pParam[3], "OFF"))
+            {
+                batt_led_set_level(0);
+                lock_led_set(false);
+                sprintf(resp, "RETURN_LED_OFF");
+            }
+        }
+        else if (CMD_MATCHED(pParam[2], "MAC"))
+        {
+            edr_addr = bt_get_mac_addr();
+            if (edr_addr != NULL)
+            {
+                sprintf(resp, "RETURN_MCU_MAC:%02X%02X%02X%02X%02X%02X",
+                        edr_addr[5],edr_addr[4],edr_addr[3],edr_addr[2],edr_addr[1],edr_addr[0]);
+            }
+        }
+        else if (CMD_MATCHED(pParam[2], "GSENSOR"))
+        {
+            sprintf(resp, "RETURN_MCU_GSENSOR:0x%02X", get_chip_id());
+        }
+        else if (CMD_MATCHED(pParam[2], "NFC"))
+        {
+            fm175xx_read_reg(JREG_VERSION, &version);
+            sprintf(resp, "RETURN_MCU_NFC:0x%02X", version);
+        }
+
+    }
 
     return resp;
 }
@@ -1300,6 +1350,8 @@ static char *my_handle_at_factory_cmd(char **pParam, int nParam)
     static char resp[256];
 
     memset(resp, 0, sizeof(resp));
+
+    LOG_INF("%s: %s", __func__, pParam[0]);
 
     // SMT相关指令
     if (CMD_MATCHED(pParam[0], "PCBA"))
@@ -1486,10 +1538,15 @@ static int my_at_factory_cmd(char *pfactorycmd)
 {
     int argc = 0; // 输入输出参数
     char *argv[MAX_ARGS] = { 0 };
+    char *resp_buf;
 
+    LOG_INF("%s: %s", __func__, pfactorycmd);
     my_parse_cmd_line(pfactorycmd + strlen(FACTORY_CMD_HEADER), ',' , &argc, argv);
 
-    MY_LOG_INF("%s", my_handle_at_factory_cmd(argv, argc));
+    resp_buf = my_handle_at_factory_cmd(argv, argc);
+
+    MY_LOG_INF("%s", resp_buf);
+    my_lte_send_msg(resp_buf, strlen(resp_buf));
 
     return 0;
 }
@@ -2171,10 +2228,11 @@ void my_verify_openlock(void)
  */
 int my_lte_parse_cmd(char *cmd, int cmd_len)
 {
+    char *argv[MAX_ARGS];
     int ret = 0;
+    int i;
     char *p = cmd;
     int argc, num_commands;
-    char *argv[MAX_ARGS];
     MSG_S msg;
     char *lte_cmd;
 
@@ -2218,6 +2276,12 @@ int my_lte_parse_cmd(char *cmd, int cmd_len)
     }
     else if (CMD_MATCHED(cmd, LTE_CMD))
     {
+        if (CMD_MATCHED(cmd + strlen(LTE_CMD), FACTORY_CMD_HEADER))
+        {
+            my_at_factory_cmd(cmd + strlen(LTE_CMD));
+            return -1;
+        }
+
         MY_MALLOC_BUFFER(lte_cmd, strlen(cmd) + 1 - strlen(LTE_CMD));
         if (lte_cmd == NULL)
         {
@@ -2231,6 +2295,7 @@ int my_lte_parse_cmd(char *cmd, int cmd_len)
         msg.msgID = MY_MSG_LTE_CMD_RX;
         msg.pData = lte_cmd;
         my_send_msg_data(MOD_LTE, MOD_BLE, &msg);
+
         goto END;
     }
     else if (CMD_MATCHED(cmd, LTE_LOCATION))

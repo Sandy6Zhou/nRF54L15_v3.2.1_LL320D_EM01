@@ -3497,9 +3497,9 @@ static int version_cmd_handler(at_cmd_struc* msg)
 **指令格式:  MODESET,[Work Mode]#
 **参数说明:  [Work Mode] - 工作模式
 **返 回 值:  BLE数据类型
-**使用示例:  AT+MODESET=1,10,0800     // 设置长续航模式，上报间隔10分钟，启动时间08:00
-**           AT+MODESET=2,3600,60,500,14400,2  // 设置智能模式，各状态间隔和睡眠开关
-**           AT+MODESET=3             // 切换到连续模式
+**使用示例:  MODESET,1,10,0800#     // 设置长续航模式，上报间隔10分钟，启动时间08:00
+**           MODESET,2,3600,60,500,14400,2  // 设置智能模式，各状态间隔和睡眠开关
+**           MODESET,3             // 切换到连续模式
 *********************************************************************/
 static int modeset_cmd_handler(at_cmd_struc* msg)
 {

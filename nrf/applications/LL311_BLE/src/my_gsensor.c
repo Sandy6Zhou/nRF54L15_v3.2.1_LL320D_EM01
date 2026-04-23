@@ -99,6 +99,8 @@ static const struct PM_DEVICE_OPS gsensor_pm_ops =
     .resume = gsensor_pm_resume,
 };
 
+static uint8_t s_chip_id = 0; // 存储识别到的芯片ID
+
 /********************************************************************
 **函数名称:  my_gsensor_get_state
 **入口参数:  无
@@ -497,20 +499,30 @@ static void my_gsensor_task(void *p1, void *p2, void *p3)
 **函数功能:  检查 LSM6DSV16X 是否在线
 **返 回 值:  true 表示识别成功
 *********************************************************************/
-static bool lsm6dsv16x_check_id(void)
+bool lsm6dsv16x_check_id(void)
 {
-    uint8_t chip_id = 0;
-
-    if (lsm6dsv16x_device_id_get(&lsm_ctx, &chip_id) == 0)
+    if (lsm6dsv16x_device_id_get(&lsm_ctx, &s_chip_id) == 0)
     {
-        if (chip_id == MY_LSM6DSV16X_ID)
+        if (s_chip_id == MY_LSM6DSV16X_ID)
         {
-            MY_LOG_INF("LSM6DSV16X identified ID: 0x%02X", chip_id);
+            MY_LOG_INF("LSM6DSV16X identified ID: 0x%02X", s_chip_id);
             return true;
         }
     }
 
     return false;
+}
+
+/********************************************************************
+**函数名称:  get_chip_id
+**入口参数:  无
+**出口参数:  无
+**函数功能:  获取 LSM6DSV16X 芯片ID
+**返 回 值:  LSM6DSV16X 芯片ID
+*********************************************************************/
+uint8_t get_chip_id(void)
+{
+    return s_chip_id;
 }
 
 int my_gsensor_pwr_on(bool on)

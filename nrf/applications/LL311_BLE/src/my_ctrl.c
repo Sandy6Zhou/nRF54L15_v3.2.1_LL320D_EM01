@@ -1241,7 +1241,7 @@ int batt_led_set_level(uint8_t level)
 **返 回 值:  无
 **功能描述:  根据 on 参数控制锁状态 LED 亮灭
 *********************************************************************/
-static void lock_led_set(bool on)
+void lock_led_set(bool on)
 {
     //MY_LOG_INF("%s:%d", __func__, on);
     gpio_pin_set_dt(&lock_led, on ? 1 : 0);
