@@ -184,13 +184,7 @@ static int cmd_switch_mode(const struct shell *sh, size_t argc, char **argv)
         return -EINVAL;
     }
 
-    /* 无限等待直到拿到互斥锁 */
-    k_mutex_lock(&gsensor_mutex, K_FOREVER);
-
-    g_current_gsensor_state = gsensor_state;
-
-    /* 退出临界区，释放互斥锁 */
-    k_mutex_unlock(&gsensor_mutex);
+    g_gsensor_runtime_ctx.current_gsensor_state = gsensor_state;
 
     /* 调用实际的业务函数去切换模式/状态 */
     switch_work_mode(current_workmode);

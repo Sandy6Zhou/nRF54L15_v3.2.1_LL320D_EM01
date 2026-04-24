@@ -12,7 +12,18 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260423"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260424"
+/* 软件版本:        V1.0
+** 完成日期:        2026.04.24
+** 作    者:        周森达 (zhousenda@jimiiot.com)
+** 修改内容:        1.重构运动状态检测：加速度方差+陀螺仪均值/方差二维矩阵，初步区分静止/陆运/海运三种状态
+**                 2.新增智能模式低功耗唤醒：挂起时进入15Hz唤醒待机，INT1中断唤醒主控，配合50ms消抖与350ms保护窗口过滤假唤醒
+**                 3.新增状态切换滞后机制：连续3次同状态才确认，防止边界抖动
+**                 4.定时器驱动采样：周期采样+burst高速填充，窗口满后判定
+**                 5.新增陀螺仪零偏校准，提升检测精度
+***/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260423"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.04.23
 ** 作    者:        周森达 (zhousenda@jimiiot.com)

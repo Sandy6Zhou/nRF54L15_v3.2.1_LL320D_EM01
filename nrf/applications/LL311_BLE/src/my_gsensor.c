@@ -17,25 +17,29 @@
 #include "my_comm.h"
 #include "lsm6dsv16x_reg.h"
 
-// 传感器相关宏定义（基于LSM6DSVD文档特性）
-#define LSM6DSVD_ACC_FS       2             // 加速度满量程 ±2g
-#define LSM6DSVD_ACC_SENSITIVITY 0.061f     // 灵敏度 0.061 mg/LSB（±2g时，文档Table 3）
-#define SAMPLE_RATE_HZ        120           // 采样率120Hz（平衡响应速度与功耗）
-#define WINDOW_SIZE           50            // 滑动窗口大小（约0.42秒数据，120Hz×50≈0.417s）
-#define STATIC_VAR_THRESHOLD  0.0004f       // 静止方差阈值（g²）
-#define LAND_VAR_THRESHOLD    0.01f         // 陆运方差阈值（g²）
-// 海运：方差 > LAND_VAR_THRESHOLD
+/* GSENSOR 中断消抖控制结构体 */
+typedef struct
+{
+    struct k_timer timer;
+    bool debouncing;
+    int64_t wakeup_mode_enter_ms;
+} gsensor_int_ctrl_t;
 
-// 全局缓存：滑动窗口数据（合加速度，单位g）
-static float g_acc_magnitude_window[WINDOW_SIZE] = {0};
-// 全局缓存：当前窗口数据索引
-static uint8_t g_window_index = 0;
-/* 全局变量gsensor状态定义 */
-gsensor_state_t g_current_gsensor_state = STATE_STATIC;  // 默认静止状态
-/* 定义并初始化互斥锁 */
-K_MUTEX_DEFINE(gsensor_mutex);
-/* GSENSOR电源状态 */
-static bool g_gsensor_power_state = false;  // false=关闭, true=开启
+/* GSENSOR 运行时上下文全局实例 */
+gsensor_runtime_ctx_t g_gsensor_runtime_ctx =
+{
+    .acc_magnitude_window = {0},
+    .gyro_magnitude_window = {0},
+    .window_index = 0,
+    .sensor_ready = false,
+    .sample_count = 0,
+    .window_ready = false,
+    .last_gsensor_state = STATE_UNKNOWN,
+    .current_gsensor_state = STATE_STATIC,
+    .state_candidate = STATE_UNKNOWN,
+    .state_hysteresis_count = 0,
+    .gyro_bias = {0},
+};
 
 /* 注册 G-Sensor 模块日志 */
 LOG_MODULE_REGISTER(my_gsensor, LOG_LEVEL_INF);
@@ -49,9 +53,19 @@ static const struct gpio_dt_spec gsensor_pwr_gpio = GPIO_DT_SPEC_GET(GSENSOR_PWR
 
 static const struct gpio_dt_spec gsen_int = GPIO_DT_SPEC_GET(DT_ALIAS(gsensor_int), gpios);
 static struct gpio_callback gsensor_gpio_cb;
+static gsensor_int_ctrl_t g_gsensor_int_ctrl;
 
 /* LSM6DSV16X I2C 从机地址 */
 #define MY_LSM6DSV16X_I2C_ADDR 0x6A
+
+/********************************************************************
+**函数名称:  gsensor_reg_check
+**入口参数:  ret      ---        I2C 操作返回值（输入）
+**出口参数:  无
+**函数功能:  检查 I2C 寄存器操作返回值，非 0 时直接返回错误码
+**返 回 值:  0 表示成功，非 0 表示失败
+*********************************************************************/
+#define GSENSOR_REG_CHECK(ret) do { if ((ret) != 0) return (ret); } while (0)
 
 /* LSM6DSV16X 芯片 ID */
 #define MY_LSM6DSV16X_ID 0x71
@@ -76,9 +90,6 @@ static stmdev_ctx_t lsm_ctx = {
     .handle = (void *)DEVICE_DT_GET(I2C_NODE),
 };
 
-/* 当前识别到的传感器类型 (仅支持 LSM6DSV16X) */
-static bool sensor_ready = false;
-
 /* 消息队列定义 */
 K_MSGQ_DEFINE(my_gsensor_msgq, sizeof(MSG_S), 10, 4);
 
@@ -100,6 +111,229 @@ static const struct PM_DEVICE_OPS gsensor_pm_ops =
 };
 
 static uint8_t s_chip_id = 0; // 存储识别到的芯片ID
+/********************************************************************
+**函数名称:  gsensor_is_smart_mode
+**入口参数:  无
+**出口参数:  无
+**函数功能:  判断当前工作模式是否为智能模式
+**返 回 值:  true 表示智能模式，false 表示其他模式
+*********************************************************************/
+static bool gsensor_is_smart_mode(void)
+{
+    return (gConfigParam.device_workmode_config.workmode_config.current_mode == MY_MODE_SMART);
+}
+
+/********************************************************************
+**函数名称:  gsensor_sample_timer_cb
+**入口参数:  param     ---        定时器参数
+**出口参数:  无
+**函数功能:  GSENSOR 周期采样定时器回调，仅向线程发送读取消息
+**返 回 值:  无
+*********************************************************************/
+static void gsensor_sample_timer_cb(void *param)
+{
+    ARG_UNUSED(param);
+
+    my_send_msg(MOD_GSENSOR, MOD_GSENSOR, MY_MSG_GSENSOR_READ);
+}
+
+/********************************************************************
+**函数名称:  gsensor_int_timer_handler
+**入口参数:  timer    ---        定时器句柄（输入）
+**出口参数:  无
+**函数功能:  GSENSOR INT1 消抖定时器回调，确认中断电平稳定后再发送唤醒消息
+**返 回 值:  无
+*********************************************************************/
+static void gsensor_int_timer_handler(struct k_timer *timer)
+{
+    ARG_UNUSED(timer);
+    int level;
+
+    level = gpio_pin_get_dt(&gsen_int);
+    if (level == 1)
+    {
+        my_send_msg(MOD_GSENSOR, MOD_GSENSOR, MY_MSG_GSENSOR_WAKEUP_INT);
+    }
+
+    g_gsensor_int_ctrl.debouncing = false;
+}
+
+/********************************************************************
+**函数名称:  gsensor_int_edge_handler
+**入口参数:  无
+**出口参数:  无
+**函数功能:  GSENSOR INT1 边沿中断处理，仅启动消抖定时器
+**返 回 值:  无
+*********************************************************************/
+static void gsensor_int_edge_handler(void)
+{
+    if (g_gsensor_int_ctrl.debouncing != true)
+    {
+        g_gsensor_int_ctrl.debouncing = true;
+        k_timer_start(&g_gsensor_int_ctrl.timer, K_MSEC(GSENSOR_INT_DEBOUNCE_MS), K_NO_WAIT);
+    }
+}
+
+/********************************************************************
+**函数名称:  gsensor_start_sample_timer
+**入口参数:  无
+**出口参数:  无
+**函数功能:  启动 GSENSOR 周期采样定时器，仅在智能模式下生效
+**返 回 值:  无
+*********************************************************************/
+static void gsensor_start_sample_timer(void)
+{
+    if (gsensor_is_smart_mode() != true)
+    {
+        return;
+    }
+
+    my_start_timer(MY_TIMER_GSENSOR_SAMPLE,
+                   GSENSOR_SAMPLE_INTERVAL_MS,
+                   true,
+                   gsensor_sample_timer_cb);
+}
+
+/********************************************************************
+**函数名称:  gsensor_reset_sample_window
+**入口参数:  无
+**出口参数:  无
+**函数功能:  重置 GSENSOR 滑动窗口与各个状态计数，为重新采集运动数据做准备
+**返 回 值:  无
+**注意事项:  恢复唤醒待机模式前必须调用此函数清空旧数据，避免历史窗口污染新状态判定
+*********************************************************************/
+static void gsensor_reset_sample_window(void)
+{
+    // 清零合加速度滑动窗口（环形缓存）
+    memset(g_gsensor_runtime_ctx.acc_magnitude_window, 0, sizeof(g_gsensor_runtime_ctx.acc_magnitude_window));
+    // 清零合角速度滑动窗口（环形缓存）
+    memset(g_gsensor_runtime_ctx.gyro_magnitude_window, 0, sizeof(g_gsensor_runtime_ctx.gyro_magnitude_window));
+    // 重置窗口写索引（从头开始填充）
+    g_gsensor_runtime_ctx.window_index = 0;
+    // 重置采样计数（窗口数据量归零）
+    g_gsensor_runtime_ctx.sample_count = 0;
+    // 标记窗口未满（需重新填满50个数据点才可计算方差）
+    g_gsensor_runtime_ctx.window_ready = false;
+}
+
+/********************************************************************
+**函数名称:  gsensor_reset_state
+**入口参数:  无
+**出口参数:  无
+**函数功能:  重置 G-Sensor 运动状态机，清除滞后计数与状态缓存
+**返 回 值:  无
+**注意事项:  在传感器恢复运行或模式切换时调用，防止历史状态残留导致误判
+*********************************************************************/
+static void gsensor_reset_state(void)
+{
+    // 重置滞后计数
+    g_gsensor_runtime_ctx.state_hysteresis_count = 0;
+    // 清除当前运动状态（防止残留状态导致错误决策）
+    g_gsensor_runtime_ctx.current_gsensor_state = STATE_UNKNOWN;
+    // 重置状态切换候选
+    g_gsensor_runtime_ctx.state_candidate = STATE_UNKNOWN;
+}
+
+/********************************************************************
+**函数名称:  gsensor_apply_run_mode_config
+**入口参数:  无
+**出口参数:  无
+**函数功能:  配置 G-Sensor 为正常运行采样模式
+**返 回 值:  0 表示成功，负值表示错误码
+*********************************************************************/
+static int gsensor_apply_run_mode_config(void)
+{
+    lsm6dsv16x_pin_int_route_t int1_route = { 0 };
+    lsm6dsv16x_interrupt_mode_t int_mode = { 0 };
+    int ret;
+
+    // 使能数据块更新，确保读取的数据一致
+    ret = lsm6dsv16x_block_data_update_set(&lsm_ctx, PROPERTY_ENABLE);
+    GSENSOR_REG_CHECK(ret);
+
+    // 配置加速度计数据速率为120Hz（响应速度与功耗的平衡点）
+    ret = lsm6dsv16x_xl_data_rate_set(&lsm_ctx, LSM6DSV16X_ODR_AT_120Hz);
+    GSENSOR_REG_CHECK(ret);
+
+    // 设置加速度计满量程为±2g（灵敏度0.061mg/LSB，适用日常运动检测）
+    ret = lsm6dsv16x_xl_full_scale_set(&lsm_ctx, LSM6DSV16X_2g);
+    GSENSOR_REG_CHECK(ret);
+
+    // 配置陀螺仪数据速率为120Hz（与加速度计同步，便于运动状态融合分析）
+    ret = lsm6dsv16x_gy_data_rate_set(&lsm_ctx, LSM6DSV16X_ODR_AT_120Hz);
+    GSENSOR_REG_CHECK(ret);
+
+    // 设置陀螺仪满量程为125dps（分辨率比250dps高一倍，噪声占比更小，更适合静止/海运检测）
+    ret = lsm6dsv16x_gy_full_scale_set(&lsm_ctx, LSM6DSV16X_125dps);
+    GSENSOR_REG_CHECK(ret);
+
+    // 清零中断路由配置（本模式下不使用硬件中断，由软件轮询采集数据）
+    ret = lsm6dsv16x_pin_int1_route_set(&lsm_ctx, &int1_route);
+    GSENSOR_REG_CHECK(ret);
+
+    // 正常运行模式关闭全局事件中断，避免残留锁存状态影响后续休眠唤醒
+    int_mode.enable = 0;
+    int_mode.lir = 0;
+    ret = lsm6dsv16x_interrupt_enable_set(&lsm_ctx, int_mode);
+    GSENSOR_REG_CHECK(ret);
+
+    // 禁用活动/睡眠模式，恢复正常运行状态
+    ret = lsm6dsv16x_act_mode_set(&lsm_ctx, LSM6DSV16X_XL_AND_GY_NOT_AFFECTED);
+    GSENSOR_REG_CHECK(ret);
+
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  gsensor_apply_wakeup_mode_config
+**入口参数:  无
+**出口参数:  无
+**函数功能:  配置 G-Sensor 为低功耗唤醒待机模式
+**返 回 值:  0 表示成功，负值表示错误码
+*********************************************************************/
+static int gsensor_apply_wakeup_mode_config(void)
+{
+    int ret;
+    lsm6dsv16x_wake_up_ths_t wake_up_ths = { 0 };
+    lsm6dsv16x_wake_up_dur_t wake_up_dur = { 0 };
+    lsm6dsv16x_pin_int_route_t int1_route = { 0 };
+    lsm6dsv16x_interrupt_mode_t int_mode = { 0 };
+
+    // 关闭陀螺仪以降低功耗（唤醒待机模式仅需加速度计检测运动）
+    ret = lsm6dsv16x_gy_data_rate_set(&lsm_ctx, LSM6DSV16X_ODR_OFF);
+    GSENSOR_REG_CHECK(ret);
+
+    // 配置加速度计数据速率为15Hz（低功耗待机，检测运动事件即可）
+    ret = lsm6dsv16x_xl_data_rate_set(&lsm_ctx, LSM6DSV16X_ODR_AT_15Hz);
+    GSENSOR_REG_CHECK(ret);
+
+    // 设置加速度计满量程为±2g（与正常运行模式保持一致）
+    ret = lsm6dsv16x_xl_full_scale_set(&lsm_ctx, LSM6DSV16X_2g);
+    GSENSOR_REG_CHECK(ret);
+
+    // 配置唤醒阈值（值2≈244mg，超过此加速度触发唤醒中断）
+    wake_up_ths.wk_ths = GSENSOR_WAKEUP_THRESHOLD;
+    ret = lsm6dsv16x_write_reg(&lsm_ctx, LSM6DSV16X_WAKE_UP_THS, (uint8_t *)&wake_up_ths, 1);
+    GSENSOR_REG_CHECK(ret);
+
+    // 打开事件中断总使能，并使用锁存模式保持INT1电平，软件手动清除，防止中断丢失
+    int_mode.enable = 1;
+    int_mode.lir = 1;
+    ret = lsm6dsv16x_interrupt_enable_set(&lsm_ctx, int_mode);
+    GSENSOR_REG_CHECK(ret);
+
+    // 配置INT1引脚路由到wakeup事件（运动超阈值时拉高INT1唤醒主控）
+    int1_route.wakeup = 1;
+    ret = lsm6dsv16x_pin_int1_route_set(&lsm_ctx, &int1_route);
+    GSENSOR_REG_CHECK(ret);
+
+    wake_up_dur.sleep_dur = 0;                      // 闲置多久后进入睡眠（填 0 = 立即睡眠）
+    wake_up_dur.wake_dur = GSENSOR_WAKEUP_DURATION; // 配置唤醒持续时间（0=1个ODR周期即触发，响应最灵敏）
+    ret = lsm6dsv16x_write_reg(&lsm_ctx, LSM6DSV16X_WAKE_UP_DUR, (uint8_t *)&wake_up_dur, 1);
+    GSENSOR_REG_CHECK(ret);
+
+    return 0;
+}
 
 /********************************************************************
 **函数名称:  my_gsensor_get_state
@@ -110,108 +344,291 @@ static uint8_t s_chip_id = 0; // 存储识别到的芯片ID
 *********************************************************************/
 gsensor_state_t my_gsensor_get_state(void)
 {
-    return g_current_gsensor_state;
+    return g_gsensor_runtime_ctx.current_gsensor_state;
 }
 
 /********************************************************************
-**函数名称:  gsensor_calc_magnitude_variance
-**入口参数:  无
+**函数名称:  gsensor_calc_window_variance
+**入口参数:  window    ---        滑动窗口数据指针（输入）
+            size      ---        窗口大小（输入）
 **出口参数:  无
-**函数功能:  计算滑动窗口内合加速度的方差
-**返 回 值:  方差值（g²）
+**函数功能:  计算滑动窗口内数据的无偏方差
+**返 回 值:  方差值
 *********************************************************************/
-static float gsensor_calc_magnitude_variance(void)
+static float gsensor_calc_window_variance(const float *window, uint8_t size)
 {
     float sum = 0.0f, mean = 0.0f, variance = 0.0f;
     uint8_t i;
     float diff;
 
-    // 1. 计算窗口内合加速度的均值
-    for (i = 0; i < WINDOW_SIZE; i++)
+    // 1. 计算窗口内数据均值
+    for (i = 0; i < size; i++)
     {
-        sum += g_acc_magnitude_window[i];
+        sum += window[i];
     }
-    mean = sum / WINDOW_SIZE;
+    mean = sum / size;
 
-    // 2. 计算方差（无偏方差：除以WINDOW_SIZE-1）
-    for (i = 0; i < WINDOW_SIZE; i++)
+    // 2. 计算方差（无偏方差：除以size-1）
+    for (i = 0; i < size; i++)
     {
-        diff = g_acc_magnitude_window[i] - mean;
+        diff = window[i] - mean;
         variance += diff * diff;
     }
 
     // 防止除零
-    if (WINDOW_SIZE > 1)
+    if (size > 1)
     {
-        variance /= (WINDOW_SIZE - 1);  // 无偏方差，避免窗口数据量小时误差过大
+        variance /= (size - 1);  // 无偏方差，避免窗口数据量小时误差过大
     }
 
     return variance;
 }
 
 /********************************************************************
-**函数名称:  analyze_gsensor_state
-**入口参数:  data - GSENSOR原始数据指针
+**函数名称:  gsensor_calc_window_mean
+**入口参数:  window    ---        滑动窗口数据指针（输入）
+            size      ---        窗口大小（输入）
 **出口参数:  无
-**函数功能:  分析GSENSOR数据，更新滑动窗口并判断当前运动状态
+**函数功能:  计算滑动窗口内数据的算术均值
+**返 回 值:  均值
+*********************************************************************/
+static float gsensor_calc_window_mean(const float *window, uint8_t size)
+{
+    float sum = 0.0f;
+    uint8_t i;
+
+    for (i = 0; i < size; i++)
+    {
+        sum += window[i];
+    }
+
+    return sum / size;
+}
+
+/********************************************************************
+**函数名称:  gsensor_calibrate_gyro_bias
+**入口参数:  无
+**出口参数:  无
+**函数功能:  校准陀螺仪零偏
+**            在传感器初始化后、正常运行前调用，设备需保持静止
+**返 回 值:  无
+*********************************************************************/
+static void gsensor_calibrate_gyro_bias(void)
+{
+    int16_t gyro_raw[3];
+    float sum_x = 0.0f, sum_y = 0.0f, sum_z = 0.0f;
+    uint8_t i;
+    uint8_t success_count = 0;
+
+    // 连续采样50次计算零偏，仅统计成功读取的样本
+    for (i = 0; i < 50; i++)
+    {
+        if (lsm6dsv16x_angular_rate_raw_get(&lsm_ctx, gyro_raw) == 0)
+        {
+            sum_x += gyro_raw[0];
+            sum_y += gyro_raw[1];
+            sum_z += gyro_raw[2];
+            success_count++;
+        }
+        k_msleep(10);
+    }
+
+    if (success_count > 0)
+    {
+        // 计算平均值并转换为 dps
+        g_gsensor_runtime_ctx.gyro_bias[0] = (sum_x / success_count) * LSM6DSVD_GYRO_SENSITIVITY * 1e-3f;
+        g_gsensor_runtime_ctx.gyro_bias[1] = (sum_y / success_count) * LSM6DSVD_GYRO_SENSITIVITY * 1e-3f;
+        g_gsensor_runtime_ctx.gyro_bias[2] = (sum_z / success_count) * LSM6DSVD_GYRO_SENSITIVITY * 1e-3f;
+        MY_LOG_INF("GYRO_CALIB bias=[%.3f,%.3f,%.3f]dps raw=[%.0f,%.0f,%.0f]LSB sens=%.3f",
+               g_gsensor_runtime_ctx.gyro_bias[0],
+               g_gsensor_runtime_ctx.gyro_bias[1],
+               g_gsensor_runtime_ctx.gyro_bias[2],
+               (sum_x / success_count),
+               (sum_y / success_count),
+               (sum_z / success_count),
+               LSM6DSVD_GYRO_SENSITIVITY);
+    }
+    else
+    {
+        MY_LOG_INF("gyro calibration failed.");
+    }
+}
+
+/********************************************************************
+**函数名称:  gsensor_apply_state_hysteresis
+**入口参数:  detected_state    ---        本次检测到的原始状态（输入）
+**出口参数:  无
+**函数功能:  应用统一状态切换滞后机制，防止状态在边界抖动
+**返 回 值:  无
+**详细说明:  任何状态切换都需要连续 GSENSOR_STATE_HYSTERESIS_COUNT 次
+**           检测到相同候选状态才确认切换
+*********************************************************************/
+static void gsensor_apply_state_hysteresis(gsensor_state_t detected_state)
+{
+    MY_LOG_INF("%s:%d,%d,%d", __func__, detected_state,g_gsensor_runtime_ctx.state_candidate,g_gsensor_runtime_ctx.state_hysteresis_count);
+    if (detected_state == g_gsensor_runtime_ctx.state_candidate)
+    {
+        g_gsensor_runtime_ctx.state_hysteresis_count++;
+
+        if (g_gsensor_runtime_ctx.state_hysteresis_count >= GSENSOR_STATE_HYSTERESIS_COUNT)
+        {
+            g_gsensor_runtime_ctx.current_gsensor_state = detected_state;
+            g_gsensor_runtime_ctx.state_hysteresis_count = 0;
+        }
+    }
+    else
+    {
+        g_gsensor_runtime_ctx.state_candidate = detected_state;
+        g_gsensor_runtime_ctx.state_hysteresis_count = 1;
+    }
+}
+
+/********************************************************************
+**函数名称:  analyze_gsensor_state
+**入口参数:  data      ---        加速度原始数据指针（输入）
+            gyro_raw  ---        陀螺仪原始数据指针（输入）
+**出口参数:  无
+**函数功能:  分析GSENSOR数据，采用加速度/陀螺仪二维判决矩阵判断运动状态
 **返 回 值:  -1:表示数据不足, 0:表示数据可用
+**
+**判决矩阵（加速度方差 + 陀螺仪均值 + 陀螺仪方差）：
+**
+**    加速度方差(g²)        │ 陀螺均值(dps) │ 陀螺方差(dps²) │ 判定结果       │ 物理依据
+**    ────────────────────┼───────────────┼───────────────┼───────────────┼────────────────────────────────
+**    < 0.0003            │ < 1.5         │ -             │ STATE_STATIC  │ 完全静止
+**    < 0.0003            │ >= 1.5        │ -             │ STATE_SEA     │ 有持续角速度但加速度小 → 海运低频晃动
+**    0.0003 ~ 0.008      │ < 1.5         │ -             │ STATE_STATIC  │ 弱扰动静止（室内/仓库/静止船上）
+**    0.0003 ~ 0.008      │ >= 1.5        │ < 2.5         │ STATE_SEA     │ 低频振动 + 规律摇摆（海运核心区）
+**    0.0003 ~ 0.008      │ >= 1.5        │ >= 2.5        │ STATE_LAND    │ 弱振动但紊乱（车怠速/缓行）
+**    0.008 ~ 0.015       │ -             │ -             │ STATE_LAND    │ 中等振动（公路典型）
+**    >= 0.015            │ < 1.5         │ -             │ STATE_LAND    │ 强冲击振动（陆运）
+**    >= 0.015            │ >= 1.5        │ < 2.5         │ STATE_SEA     │ 大浪 + 强规律摇摆
+**    >= 0.015            │ >= 1.5        │ >= 2.5        │ STATE_LAND    │ 强颠簸 + 乱转
+**
+**阈值说明：
+**    ACC_VAR_STATIC_THRESHOLD = 0.0003 g²    静止判定上限
+**    ACC_VAR_MID_THRESHOLD    = 0.008 g²     中等振动上限
+**    ACC_VAR_STRONG_THRESHOLD = 0.015 g²     强振动下限
+**    GYRO_MEAN_MOTION_THRESHOLD = 1.5 dps    持续运动下限（需覆盖噪声基底0.5~0.8dps，海运通常>2dps）
+**    GYRO_VAR_SEA_THRESHOLD   = 2.5 dps²     海运方差上限
+**
 *********************************************************************/
 static int analyze_gsensor_state(const struct gsensor_data *data)
 {
     float ax, ay, az, magnitude;
-    float var;
-    static uint32_t g_data_count = 0;  // 记录写入的数据量
+    float gx, gy, gz, gyro_mag;
+    float acc_var, gyro_mean = 0.0f, gyro_var = 0.0f;
+
+    gsensor_state_t detected_state;
 
     // 1. 原始数据转换为实际加速度（单位：g）
-    // 转换公式：实际加速度(g) = 原始值(LSB) × 灵敏度(mg/LSB) × 1e-3 (mg→g)
-    ax = data->x * LSM6DSVD_ACC_SENSITIVITY * 1e-3f;
-    ay = data->y * LSM6DSVD_ACC_SENSITIVITY * 1e-3f;
-    az = data->z * LSM6DSVD_ACC_SENSITIVITY * 1e-3f;
-
-    // 2. 计算合加速度（消除安装方向影响）
+    ax = data->acc_raw_x * LSM6DSVD_ACC_SENSITIVITY * 1e-3f;
+    ay = data->acc_raw_y * LSM6DSVD_ACC_SENSITIVITY * 1e-3f;
+    az = data->acc_raw_z * LSM6DSVD_ACC_SENSITIVITY * 1e-3f;
     magnitude = sqrtf(ax*ax + ay*ay + az*az);
 
-    // 3. 更新滑动窗口（环形缓存）
-    g_acc_magnitude_window[g_window_index++] = magnitude;
-    if (g_window_index >= WINDOW_SIZE)
+    // 2. 更新加速度滑动窗口
+    g_gsensor_runtime_ctx.acc_magnitude_window[g_gsensor_runtime_ctx.window_index] = magnitude;
+
+    // 3.角速度减去零偏
+    gx = data->gyro_raw_x * LSM6DSVD_GYRO_SENSITIVITY * 1e-3f - g_gsensor_runtime_ctx.gyro_bias[0];
+    gy = data->gyro_raw_y * LSM6DSVD_GYRO_SENSITIVITY * 1e-3f - g_gsensor_runtime_ctx.gyro_bias[1];
+    gz = data->gyro_raw_z * LSM6DSVD_GYRO_SENSITIVITY * 1e-3f - g_gsensor_runtime_ctx.gyro_bias[2];
+    gyro_mag = sqrtf(gx*gx + gy*gy + gz*gz);
+
+    // 4. 更新角速度滑动窗口
+    g_gsensor_runtime_ctx.gyro_magnitude_window[g_gsensor_runtime_ctx.window_index] = gyro_mag;
+
+    // 5. 推进环形索引
+    g_gsensor_runtime_ctx.window_index++;
+    if (g_gsensor_runtime_ctx.window_index >= WINDOW_SIZE)
     {
-        g_window_index = 0;  // 窗口满了，覆盖最旧数据
+        g_gsensor_runtime_ctx.window_index = 0;
     }
 
-    g_data_count++;
+    g_gsensor_runtime_ctx.sample_count++;
 
-    /* 无限等待直到拿到互斥锁 */
-    k_mutex_lock(&gsensor_mutex, K_FOREVER);
-    // 4. 计算方差（窗口数据满了才计算，避免采集数据不足导致误差）
-    if (g_data_count < WINDOW_SIZE)
+    // 6. 窗口未满，数据不足
+    if (g_gsensor_runtime_ctx.sample_count < WINDOW_SIZE)
     {
-        g_current_gsensor_state = STATE_UNKNOWN;
+        g_gsensor_runtime_ctx.window_ready = false;
         return -1;
     }
+
+    g_gsensor_runtime_ctx.window_ready = true;
+
+    // 计算合加速度滑动窗口的方差，反映振动剧烈程度（方差越大 → 运动越剧烈）
+    acc_var = gsensor_calc_window_variance(g_gsensor_runtime_ctx.acc_magnitude_window, WINDOW_SIZE);
+
+    // 计算合角速度滑动窗口的均值与方差，均值反映是否存在持续旋转，方差反映旋转的稳定性
+    gyro_mean = gsensor_calc_window_mean(g_gsensor_runtime_ctx.gyro_magnitude_window, WINDOW_SIZE);
+    gyro_var = gsensor_calc_window_variance(g_gsensor_runtime_ctx.gyro_magnitude_window, WINDOW_SIZE);
+
+    MY_LOG_INF("window full acc_var=%.6f gyro_mean=%.3f gyro_var=%.3f bias=[%.3f,%.3f,%.3f]",
+                (double)acc_var, (double)gyro_mean, (double)gyro_var,
+                (double)g_gsensor_runtime_ctx.gyro_bias[0],
+                (double)g_gsensor_runtime_ctx.gyro_bias[1],
+                (double)g_gsensor_runtime_ctx.gyro_bias[2]);
+
+    if (acc_var < ACC_VAR_STATIC_THRESHOLD)
+    {
+        // 完全静止
+        if (gyro_mean < GYRO_MEAN_MOTION_THRESHOLD)
+        {
+            detected_state = STATE_STATIC;
+        }
+        else
+        {
+            // 有持续角速度但加速度小 → 海运低频晃动
+            detected_state = STATE_SEA_TRANSPORT;
+        }
+    }
+    else if (acc_var < ACC_VAR_MID_THRESHOLD)
+    {
+        // 弱振动区间（0.0003~0.008 g²）
+        if (gyro_mean < GYRO_MEAN_MOTION_THRESHOLD)
+        {
+            // 无持续角速度 → 弱扰动静止
+            detected_state = STATE_STATIC;
+        }
+        else if (gyro_var < GYRO_VAR_SEA_THRESHOLD)
+        {
+            // 有持续角速度 + 低方差 → 海运
+            detected_state = STATE_SEA_TRANSPORT;
+        }
+        else
+        {
+            // 有持续角速度 + 高方差 → 紊乱，陆运
+            detected_state = STATE_LAND_TRANSPORT;
+        }
+    }
+    else if (acc_var < ACC_VAR_STRONG_THRESHOLD)
+    {
+        // 中等振动（0.008~0.015 g²）→ 陆运
+        detected_state = STATE_LAND_TRANSPORT;
+    }
     else
     {
-        g_data_count = 0;
+        // 强振动（>= 0.015 g²）
+        if (gyro_mean < GYRO_MEAN_MOTION_THRESHOLD)
+        {
+            // 无持续角速度 → 陆运强冲击
+            detected_state = STATE_LAND_TRANSPORT;
+        }
+        else if (gyro_var < GYRO_VAR_SEA_THRESHOLD)
+        {
+            // 有持续角速度 + 低方差 → 海运大浪
+            detected_state = STATE_SEA_TRANSPORT;
+        }
+        else
+        {
+            // 有持续角速度 + 高方差 → 陆运强颠簸
+            detected_state = STATE_LAND_TRANSPORT;
+        }
     }
-
-    // 5. 计算方差
-    var = gsensor_calc_magnitude_variance();
-
-    // 6. 根据方差判断状态（基于之前校准的阈值）
-    if (var < STATIC_VAR_THRESHOLD)
-    {
-        g_current_gsensor_state = STATE_STATIC;
-    }
-    else if (var < LAND_VAR_THRESHOLD)
-    {
-        g_current_gsensor_state = STATE_LAND_TRANSPORT;
-    }
-    else
-    {
-        g_current_gsensor_state = STATE_SEA_TRANSPORT;
-    }
-
-    /* 退出临界区，释放互斥锁 */
-    k_mutex_unlock(&gsensor_mutex);
+    MY_LOG_INF("detected_state:%d", detected_state);
+    // 7. 应用统一状态切换滞后机制
+    gsensor_apply_state_hysteresis(detected_state);
 
     return 0;
 }
@@ -225,28 +642,7 @@ static int analyze_gsensor_state(const struct gsensor_data *data)
 *********************************************************************/
 void get_motion_status(void)
 {
-    struct gsensor_data sensor_data;
     uint32_t timer_interval = 0;
-    int ret;
-
-#if 0 // TODO 需要测试这种处理算法是否可行
-LOOP:
-    if (my_gsensor_read_data(&sensor_data) == 0)
-    {
-        /* 分析GSENSOR状态 */
-        ret = analyze_gsensor_state(&sensor_data);
-        if (ret == -1)
-        {
-            // 连续读取50次数据
-            goto LOOP;
-        }
-    }
-    else
-    {
-        MY_LOG_INF("read gsensor data fail");
-        return ;
-    }
-#endif
 
     /* 根据当前GSENSOR状态确定定时器间隔 */
     switch (my_gsensor_get_state())
@@ -324,27 +720,47 @@ static int gsensor_pm_init(void)
 **函数名称:  gsensor_pm_suspend
 **入口参数:  无
 **出口参数:  无
-**函数功能:  挂起 G-Sensor，关闭其电源以进入低功耗状态
+**函数功能:  挂起 G-Sensor，停止采样定时器并依据当前工作模式进入对应低功耗态
 **返 回 值:  0 表示成功，负值表示错误码
+**详细说明:
+**           1. 智能模式：保持传感器供电，配置为唤醒待机模式（15Hz加速度计 + 唤醒中断），
+**              并记录保护时间戳以过滤配置期间的假唤醒中断
+**           2. 非智能模式：直接切断传感器电源，标记传感器未就绪
 *********************************************************************/
 static int gsensor_pm_suspend(void)
 {
     int ret = 0;
 
-    // 关闭 G-Sensor 电源，使其进入低功耗状态
+    my_stop_timer(MY_TIMER_GSENSOR_SAMPLE);
+
+    if (gsensor_is_smart_mode() == true)
+    {
+        /* 更新保护时间戳，再配置传感器寄存器。
+         * 防止配置过程中产生的假唤醒使使设备唤醒
+         */
+        g_gsensor_int_ctrl.wakeup_mode_enter_ms = k_uptime_get();
+        ret = gsensor_apply_wakeup_mode_config();
+        if (ret != 0)
+        {
+            MY_LOG_ERR("Failed to set G-Sensor wakeup mode: %d", ret);
+            return ret;
+        }
+
+        MY_LOG_INF("GSENSOR successfully entered sleep mode");
+
+        return 0;
+    }
+
     ret = my_gsensor_pwr_on(false);
     if (ret != 0)
     {
         MY_LOG_ERR("Failed to suspend G-Sensor power: %d", ret);
-        return ret;  // 返回关闭失败错误
+        return ret;
     }
 
-    // 设置 sensor_ready 为 false，表示传感器不再就绪
-    sensor_ready = false;
-
-    // 记录挂起状态和功耗信息
-    MY_LOG_INF("G-Sensor pwr suspended (power low)");
-    return 0;  // 挂起成功
+    g_gsensor_runtime_ctx.sensor_ready = false;
+    MY_LOG_INF("G-Sensor power suspended");
+    return 0;
 }
 
 /********************************************************************
@@ -368,11 +784,46 @@ static int gsensor_pm_resume(void)
 {
     int result;         // 初始化结果
     int retry_count = 0; // 重试计数
+    lsm6dsv16x_all_sources_t all_sources;
+    int16_t acc_raw[3];
 
     // 打开 G-Sensor 电源
     my_gsensor_pwr_on(true);
 
-    // 尝试初始化 LSM6DSV16X 传感器，最多尝试 3 次
+    // 智能模式下传感器未断电，只需切回运行模式，无需完整初始化
+    if (gsensor_is_smart_mode() == true && g_gsensor_runtime_ctx.sensor_ready == true)
+    {
+        result = gsensor_apply_run_mode_config();
+        if (result != 0)
+        {
+            MY_LOG_ERR("Failed to apply run mode config: %d", result);
+            return result;
+        }
+
+        // 清楚状态及窗口
+        gsensor_reset_state();
+        gsensor_reset_sample_window();
+        // 开启采样
+        gsensor_start_sample_timer();
+
+        memset(&all_sources, 0, sizeof(all_sources));
+        // 先读取并清除中断锁存，避免 INT1 持续高电平导致后续无法触发中断
+        lsm6dsv16x_all_sources_get(&lsm_ctx, &all_sources);
+
+        // 读取唤醒时的加速度值，用于分析误触发原因
+        if (lsm6dsv16x_acceleration_raw_get(&lsm_ctx, acc_raw) == 0)
+        {
+            MY_LOG_INF("wakeup acc raw=[%6d,%6d,%6d] ths=%d",
+                        acc_raw[0], acc_raw[1], acc_raw[2], GSENSOR_WAKEUP_THRESHOLD);
+        }
+
+        MY_LOG_INF("gsensor resume wake up success for sleep");
+        return 0;
+    }
+
+    /* 非智能模式：传感器已断电，需要完整初始化
+     * 尝试初始化 LSM6DSV16X 传感器，最多尝试 3 次
+     */
     do
     {
         result = my_lsm6dsv16x_init();
@@ -392,18 +843,140 @@ static int gsensor_pm_resume(void)
         MY_LOG_ERR("Failed to reinitialize G-Sensor API after %d attempts: %d", retry_count, result);
         /* 恢复失败，重新进入低功耗 */
         my_gsensor_pwr_on(false);
+        g_gsensor_runtime_ctx.sensor_ready = false;
         return -EIO; // 返回 I/O 错误
     }
 
-    // 初始化成功，获取运动状态
-    get_motion_status();
+    // 清楚状态及窗口
+    gsensor_reset_state();
+    gsensor_reset_sample_window();
+    // 开启采样
+    gsensor_start_sample_timer();
 
-    // 等待 50ms 确保传感器稳定
-     k_sleep(K_MSEC(50));
+    MY_LOG_INF("gsensor resume wake up success");
+    return 0;
+}
 
-    // 记录恢复状态和重试次数
-    MY_LOG_INF("G-Sensor resumed (initialized, retries: %d)", retry_count);
-    return 0; // 恢复成功
+/********************************************************************
+**函数名称:  gsensor_resume_and_read
+**入口参数:  无
+**出口参数:  无
+**函数功能:  恢复 G-Sensor 并触发数据读取
+**返 回 值:  无
+**详细说明:  统一封装电源恢复与数据读取消息发送，避免多处重复代码
+********************************************************************/
+static void gsensor_resume_and_read(void)
+{
+    int ret;
+
+    ret = my_pm_device_resume(MY_PM_DEV_GSENSOR);
+    if (ret == 0)
+    {
+        my_send_msg(MOD_GSENSOR, MOD_GSENSOR, MY_MSG_GSENSOR_READ);
+    }
+}
+
+/********************************************************************
+**函数名称:  gsensor_handle_read_msg
+**入口参数:  无
+**出口参数:  无
+**函数功能:  处理 GSENSOR 数据读取消息，执行加速度/陀螺仪数据采集与运动状态分析
+**返 回 值:  无
+**详细说明:  1. 检查传感器就绪状态和工作模式
+**           2. 若窗口已就绪则重置窗口，确保基于最新数据判定
+**           3. 读取加速度计和陀螺仪数据
+**           4. 调用 analyze_gsensor_state 进行运动状态判决
+**           5. 根据状态决定是否需要 burst 采样或进入休眠
+********************************************************************/
+static void gsensor_handle_read_msg(void)
+{
+    int16_t acc_raw[3];
+    int16_t gyro_raw[3];
+    struct gsensor_data sensor_data;
+    int state_ret = 0;
+    bool is_read_ok = false;
+    bool need_burst_sample = false;
+    bool need_suspend = false;
+
+    // 传感器未就绪
+    if (g_gsensor_runtime_ctx.sensor_ready != true)
+    {
+        MY_LOG_WRN("Sensor not ready");
+        return;
+    }
+
+    // GSENSOR 仅在智能模式下生效，非智能模式直接返回
+    if (gsensor_is_smart_mode() != true)
+    {
+        return;
+    }
+
+    /* 如果窗口已满，说明之前已完成一次状态判定，窗口数据已过期。
+     * 清空窗口重新开始 burst 采集，确保每次判定都基于最新连续数据
+     */
+    if (g_gsensor_runtime_ctx.window_ready == true)
+    {
+        gsensor_reset_sample_window();
+    }
+
+    // 读取加速度计和陀螺仪数据
+    if (lsm6dsv16x_acceleration_raw_get(&lsm_ctx, acc_raw) == 0 && lsm6dsv16x_angular_rate_raw_get(&lsm_ctx, gyro_raw) == 0)
+    {
+        is_read_ok = true;
+        sensor_data.acc_raw_x = acc_raw[0];
+        sensor_data.acc_raw_y = acc_raw[1];
+        sensor_data.acc_raw_z = acc_raw[2];
+        sensor_data.gyro_raw_x = gyro_raw[0];
+        sensor_data.gyro_raw_y = gyro_raw[1];
+        sensor_data.gyro_raw_z = gyro_raw[2];
+    }
+    else
+    {
+        MY_LOG_ERR("Failed to read accelerometer and gyroscope");
+    }
+
+    if (is_read_ok != true)
+    {
+        my_start_timer(MY_TIMER_GSENSOR_BURST,
+                       GSENSOR_BURST_SAMPLE_INTERVAL_MS,
+                       false,
+                       gsensor_sample_timer_cb);
+        return;
+    }
+
+    state_ret = analyze_gsensor_state(&sensor_data);
+
+    if (state_ret == -1)
+    {
+        need_burst_sample = true;
+    }
+    else if (state_ret == 0)
+    {
+        if (g_gsensor_runtime_ctx.last_gsensor_state != g_gsensor_runtime_ctx.current_gsensor_state)
+        {
+            g_gsensor_runtime_ctx.last_gsensor_state = g_gsensor_runtime_ctx.current_gsensor_state;
+            get_motion_status();
+        }
+
+        // 统一滞后机制已确保状态稳定，确认静止后直接进入唤醒待机
+        if (g_gsensor_runtime_ctx.current_gsensor_state == STATE_STATIC)
+        {
+            need_suspend = true;
+        }
+    }
+
+    if (need_burst_sample == true)
+    {
+        my_start_timer(MY_TIMER_GSENSOR_BURST,
+                       GSENSOR_BURST_SAMPLE_INTERVAL_MS,
+                       false,
+                       gsensor_sample_timer_cb);
+    }
+
+    if (need_suspend == true)
+    {
+        my_pm_device_suspend(MY_PM_DEV_GSENSOR);
+    }
 }
 
 /********************************************************************
@@ -421,6 +994,7 @@ static void my_gsensor_task(void *p1, void *p2, void *p3)
 
     MSG_S msg;
     int ret;
+    int64_t elapsed_ms;
 
     /* 注册 G-Sensor 到电源管理模块 */
     ret = my_pm_device_register(MY_PM_DEV_GSENSOR, &gsensor_pm_ops);
@@ -443,47 +1017,42 @@ static void my_gsensor_task(void *p1, void *p2, void *p3)
         switch (msg.msgID)
         {
             case MY_MSG_GSENSOR_READ:
-            {
-                /* 读取六轴数据 */
-                if (sensor_ready)
+                gsensor_handle_read_msg();
+                break;
+
+            case MY_MSG_GSENSOR_PWROFF:
+                // 智能模式静止挂起后，设备状态可能已经是 SUSPENDED，但传感器仍处于带电唤醒待机态
+                if (my_pm_device_get_state(MY_PM_DEV_GSENSOR) == MY_PM_STATE_SUSPENDED)
                 {
-                    int16_t acc_raw[3], gyro_raw[3];
-
-                    /* 读取加速度计数据 */
-                    if (lsm6dsv16x_acceleration_raw_get(&lsm_ctx, acc_raw) == 0)
-                    {
-                        MY_LOG_INF("ACC: X=%6d, Y=%6d, Z=%6d", acc_raw[0], acc_raw[1], acc_raw[2]);
-                    }
-                    else
-                    {
-                        MY_LOG_ERR("Failed to read accelerometer");
-                    }
-
-                    /* 读取陀螺仪数据 */
-                    if (lsm6dsv16x_angular_rate_raw_get(&lsm_ctx, gyro_raw) == 0)
-                    {
-                        MY_LOG_INF("GYR: X=%6d, Y=%6d, Z=%6d", gyro_raw[0], gyro_raw[1], gyro_raw[2]);
-                    }
-                    else
-                    {
-                        MY_LOG_ERR("Failed to read gyroscope");
-                    }
+                    g_gsensor_runtime_ctx.sensor_ready = false;
+                    my_gsensor_pwr_on(false);
                 }
                 else
                 {
-                    MY_LOG_WRN("Sensor not ready");
+                    // 通过电源管理模块挂起 G-Sensor 设备（会自动挂起 I2C21 总线），会调用 gsensor_pm_suspend
+                    my_pm_device_suspend(MY_PM_DEV_GSENSOR);
                 }
-                break;
-            }
-
-            case MY_MSG_GSENSOR_PWROFF:
-                /* 通过电源管理模块挂起 G-Sensor 设备（会自动挂起 I2C21 总线），会调用 gsensor_pm_suspend */
-                my_pm_device_suspend(MY_PM_DEV_GSENSOR);
                 break;
 
             case MY_MSG_GSENSOR_PWRON:
-                /* 通过电源管理模块恢复 G-Sensor 设备（会自动恢复 I2C21 总线），会调用 gsensor_pm_resume */
-                my_pm_device_resume(MY_PM_DEV_GSENSOR);
+                // 通过电源管理模块恢复 G-Sensor 设备（会自动恢复 I2C21 总线），会调用 gsensor_pm_resume
+                gsensor_resume_and_read();
+                break;
+
+            case MY_MSG_GSENSOR_WAKEUP_INT:
+                // 检查保护时间，过滤配置期间产生的假唤醒
+                elapsed_ms = k_uptime_get() - g_gsensor_int_ctrl.wakeup_mode_enter_ms;
+                if (elapsed_ms < GSENSOR_WAKEUP_GUARD_MS)
+                {
+                    MY_LOG_INF("wakeup guard ignore elapsed=%lldms < %dms",
+                               elapsed_ms, GSENSOR_WAKEUP_GUARD_MS);
+                    break;
+                }
+
+                if (my_pm_device_get_state(MY_PM_DEV_GSENSOR) == MY_PM_STATE_SUSPENDED)
+                {
+                    gsensor_resume_and_read();
+                }
                 break;
 
             default:
@@ -528,9 +1097,10 @@ uint8_t get_chip_id(void)
 int my_gsensor_pwr_on(bool on)
 {
     int err;
+    static bool s_gsensor_power_state = false;  // false=关闭, true=开启
 
     /* 检查当前电源状态，避免重复操作 */
-    if (g_gsensor_power_state == on)
+    if (s_gsensor_power_state == on)
     {
         /* 状态相同，无需操作 */
         MY_LOG_INF("GSENSOR Power: already %s", on ? "ON" : "OFF");
@@ -542,7 +1112,7 @@ int my_gsensor_pwr_on(bool on)
     if (err == 0)
     {
         /* 操作成功，更新状态 */
-        g_gsensor_power_state = on;
+        s_gsensor_power_state = on;
         MY_LOG_INF("GSENSOR Power Control: %s", on ? "Power ON" : "Power OFF");
     }
     else
@@ -557,16 +1127,16 @@ int my_gsensor_read_data(struct gsensor_data *data)
 {
     int16_t data_raw[3];
 
-    if (!sensor_ready)
+    if (!g_gsensor_runtime_ctx.sensor_ready)
     {
         return -ENODEV;
     }
 
     if (lsm6dsv16x_acceleration_raw_get(&lsm_ctx, data_raw) == 0)
     {
-        data->x = data_raw[0];
-        data->y = data_raw[1];
-        data->z = data_raw[2];
+        data->acc_raw_x = data_raw[0];
+        data->acc_raw_y = data_raw[1];
+        data->acc_raw_z = data_raw[2];
         return 0;
     }
 
@@ -584,34 +1154,38 @@ static void gsensor_gpio_isr(const struct device *dev,
     if (pins & BIT(gsen_int.pin))
     {
         level = gpio_pin_get_dt(&gsen_int);
-        // MY_LOG_INF("gsen_int:%d", level);
-        //TODO 发消息给ctrl去再次获取该引脚电平状态，以及消抖处理
+
+        gsensor_int_edge_handler();
     }
 }
 
 int my_lsm6dsv16x_init(void)
 {
-    /* 等待芯片上电稳定 */
+    // 1.等待芯片上电稳定
     k_sleep(K_MSEC(50));
 
-    /* 3. 识别 LSM6DSV16X 传感器 */
+    // 2.识别 LSM6DSV16X 传感器
     if (lsm6dsv16x_check_id())
     {
-        sensor_ready = true;
+        g_gsensor_runtime_ctx.sensor_ready = true;
         MY_LOG_INF("GSENSOR identified as LSM6DSV16X");
 
-        /* 初始化 LSM6DSV16X */
+        // 3.初始化 LSM6DSV16X
         lsm6dsv16x_reset_set(&lsm_ctx, LSM6DSV16X_GLOBAL_RST);
-        k_sleep(K_MSEC(30));
-        lsm6dsv16x_block_data_update_set(&lsm_ctx, PROPERTY_ENABLE);
+        // 4.确保寄存器稳定后，才能设置寄存器
+        k_sleep(K_MSEC(20));
+        if (gsensor_apply_run_mode_config() != 0)
+        {
+            MY_LOG_ERR("Failed to configure GSENSOR run mode");
+            g_gsensor_runtime_ctx.sensor_ready = false;
+            return -EIO;
+        }
 
-        /* 配置加速度计：120Hz, 2g */
-        lsm6dsv16x_xl_data_rate_set(&lsm_ctx, LSM6DSV16X_ODR_AT_120Hz);
-        lsm6dsv16x_xl_full_scale_set(&lsm_ctx, LSM6DSV16X_2g);
+        // 5.确保陀螺仪启动稳定时间
+        k_sleep(K_MSEC(50));
 
-        /* 配置陀螺仪：120Hz, 250dps */
-        lsm6dsv16x_gy_data_rate_set(&lsm_ctx, LSM6DSV16X_ODR_AT_120Hz);
-        lsm6dsv16x_gy_full_scale_set(&lsm_ctx, LSM6DSV16X_250dps);
+        // 6.首次初始化时强制校准，确保零偏准确
+        gsensor_calibrate_gyro_bias();
     }
     else
     {
@@ -664,6 +1238,10 @@ int my_gsensor_init(k_tid_t *tid)
 
     gpio_init_callback(&gsensor_gpio_cb, gsensor_gpio_isr, BIT(gsen_int.pin));
     gpio_add_callback(gsen_int.port, &gsensor_gpio_cb);
+
+    k_timer_init(&g_gsensor_int_ctrl.timer, gsensor_int_timer_handler, NULL);
+    g_gsensor_int_ctrl.debouncing = false;
+    g_gsensor_int_ctrl.wakeup_mode_enter_ms = 0;
 
     /* 3. 初始化 LSM6DSV16X 传感器 */
     err = my_lsm6dsv16x_init();

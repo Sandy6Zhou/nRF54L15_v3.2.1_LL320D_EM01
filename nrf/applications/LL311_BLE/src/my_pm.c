@@ -231,7 +231,7 @@ static int my_pm_lte_uart_resume(void)
         MY_LOG_ERR("LTE UART runtime get failed: %d", ret);
         return ret;
     }
-	
+
     MY_LOG_DBG("LTE UART runtime get OK");
     return 0;
 }
@@ -260,7 +260,7 @@ static int my_pm_lte_uart_suspend(void)
         MY_LOG_ERR("LTE UART runtime put failed: %d", ret);
         return ret;
     }
-	
+
     MY_LOG_DBG("LTE UART runtime put OK");
     return 0;
 }
@@ -495,6 +495,7 @@ int my_pm_device_suspend(MY_PM_DEV_ID_T dev_id)
 {
     struct PM_DEVICE_CTX *ctx;
     int ret = 0;
+    int rollback_ret = 0;
 
     if (dev_id >= MY_PM_DEV_MAX)
     {
@@ -520,7 +521,18 @@ int my_pm_device_suspend(MY_PM_DEV_ID_T dev_id)
 
     MY_LOG_INF("Suspending device %d from state %d", dev_id, ctx->state);
 
-    /* 根据设备ID，调用相应的 suspend 函数 */
+    /* 先执行模块 suspend 回调，确保设备在总线仍可访问时完成寄存器配置或收尾动作 */
+    if (ctx->ops->suspend != NULL)
+    {
+        ret = ctx->ops->suspend();
+        if (ret < 0)
+        {
+            MY_LOG_ERR("Device %d suspend failed: %d", dev_id, ret);
+            return ret;
+        }
+    }
+
+    /* 再根据设备ID挂起对应总线，避免模块回调阶段访问已挂起的总线 */
     switch (dev_id)
     {
         case MY_PM_DEV_NFC:
@@ -536,52 +548,24 @@ int my_pm_device_suspend(MY_PM_DEV_ID_T dev_id)
             break;
 
         default:
-            MY_LOG_ERR("Device %d not supported", dev_id);
-            return -ENOTSUP;
+            MY_LOG_WRN("Device %d not supported", dev_id);
+            break;
     }
 
-    /* 检查 suspend 是否成功 */
+    // 总线挂起失败时尝试恢复模块到工作态，避免设备内部状态与总线状态不一致
     if (ret < 0)
     {
         MY_LOG_ERR("Device %d suspend failed: %d", dev_id, ret);
-        return ret;
-    }
 
-    /* 调用模块的 suspend 回调，如果有ops->suspend()，但回调失败，需要恢复设备状态，避免设备永久无法使用 */
-    if (ctx->ops->suspend != NULL)
-    {
-        ret = ctx->ops->suspend();
-        if (ret < 0)
+        if (ctx->ops->resume != NULL)
         {
-            MY_LOG_ERR("Device %d suspend failed: %d", dev_id, ret);
-
-            /* suspend 失败，尝试恢复设备状态，避免设备永久无法使用 */
-            switch (dev_id)
+            rollback_ret = ctx->ops->resume();
+            if (rollback_ret < 0)
             {
-                case MY_PM_DEV_NFC:
-                    ret = my_pm_i2c22_resume();
-                    break;
-
-                case MY_PM_DEV_GSENSOR:
-                    ret = my_pm_i2c21_resume();
-                    break;
-
-                case MY_PM_DEV_LTE:
-                    ret = my_pm_lte_uart_resume();
-                    break;
-
-                default:
-                    MY_LOG_ERR("Device %d not supported", dev_id);
-                    return -ENOTSUP;
+                MY_LOG_WRN("Device %d failed to rollback device state after suspend failure: %d", dev_id, rollback_ret);
             }
-
-            /* suspend 失败，尝试恢复设备状态也失败 */
-            if (ret < 0)
-            {
-                MY_LOG_WRN("Device %d Failed to rollback state after suspend failure: %d", dev_id, ret);
-            }
-            return ret;
         }
+        return ret;
     }
 
     /* 更新设备状态为 SUSPENDED */

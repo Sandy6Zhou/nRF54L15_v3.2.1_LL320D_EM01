@@ -163,6 +163,10 @@ typedef enum
     MY_TIMER_SCAN_LENGTH,     // 单次扫描时长定时器
     MY_TIMER_UPLOAD_INTERVAL, // 上报间隔定时器
 
+    // G-Sensor 专用定时器
+    MY_TIMER_GSENSOR_SAMPLE,  // G-Sensor 周期采样定时器
+    MY_TIMER_GSENSOR_BURST,   // G-Sensor 批量采样定时器
+
     MY_TIMER_MAX_ID,
 } MY_E_TIMER;
 
@@ -206,6 +210,7 @@ typedef enum
     MY_MSG_GSENSOR_PWRON,
     MY_MSG_GSENSOR_PWROFF,
     MY_MSG_GSENSOR_READ, /* G-Sensor 读取六轴数据 */
+    MY_MSG_GSENSOR_WAKEUP_INT, /* G-Sensor 唤醒中断消息 */
 
     /* NFC处理程序消息 */
     MY_MSG_NFC_START_POLL,   /* 启动NFC轮询 */
