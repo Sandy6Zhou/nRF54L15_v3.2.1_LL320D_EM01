@@ -91,6 +91,11 @@ const WorkModeConfig_t gDefaultWorkModeConfig =
     .workmode_config =                          // 默认工作模式配置
     {
         .current_mode = MY_MODE_SMART,          // 默认智能模式
+        .continuous_tracking = // 连续追踪模式
+        {
+            .reporting_interval_sec = 30,      // 默认30秒上报一次
+            .reporting_interval_dis = 100,    // 默认100米上报一次
+        },
         .long_battery = // 长电池模式
         {
             .reporting_interval_min = 240,      // 默认240分钟上报一次

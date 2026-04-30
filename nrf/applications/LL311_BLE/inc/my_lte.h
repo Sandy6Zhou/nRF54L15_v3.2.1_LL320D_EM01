@@ -33,6 +33,9 @@ typedef enum
     BLE_RSP_CMD,      // BLE+CMD=OK,<1111>,<command>
     BLE_RSP_TAG,      // BLE+TAG=OK,START/END/seq
     BLE_RSP_MACINFO,  // BLE+MACINFO=OK,START/END/seq
+    BLE_RSP_WMODE,    // BLE+WMODE=OK
+    BLE_RSP_POWOFF,   // BLE+POWOFF=OK
+    BLE_RSP_PULSE,    // BLE+PULSE=OK,<持续时间(分钟)>
     BLE_RSP_MAX
 } ble_rsp_type;
 
@@ -76,6 +79,9 @@ extern net_unlock_ctrl_t g_net_unlock;
 
 //全局经纬度存储点
 extern location_storage_t g_location_point;
+
+// 4G模块是否就绪标志位
+extern bool g_bLteReady;
 
 /* 循环缓冲区用于存储排队的LTE消息 */
 #define LTE_MSG_QUEUE_SIZE    10  /* 可排队的最大消息数 */

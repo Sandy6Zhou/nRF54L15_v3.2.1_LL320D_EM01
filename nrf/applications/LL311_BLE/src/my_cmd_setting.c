@@ -1562,8 +1562,15 @@ static int pwsave_cmd_handler(at_cmd_struc* msg)
             /* 根据指令说明，立即回复 "Poweroff OK" */
             msg->resp_length = snprintf(msg->resp_msg, remaining, "Poweroff OK");
 
-            // 启动关机定时器，让蓝牙接收到回复，10毫秒后触发关机
-            my_start_timer(MY_TIMER_SHUTDOWN, 10, false, shutdown_timeout_timer);
+            // 启动关机定时器，让蓝牙接收到回复，2秒后触发关机
+            my_start_timer(MY_TIMER_SHUTDOWN, 2000, false, shutdown_timeout_timer);
+
+            // 通知4G模块关机
+            #if RETRANSMIT_CHECK_ENABLED
+                lte_send_cmd_with_retry("POWOFF", "1");
+            #else
+                lte_send_command("POWOFF", "1");
+            #endif
 
             LOG_INF("PWRSAVE: Device will enter low-power transport state");
         }
@@ -3557,6 +3564,37 @@ static int modeset_cmd_handler(at_cmd_struc* msg)
             LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
             goto param_invalid;
         }
+        // 解析连续追踪模式参数
+        param_work_mode_config.continuous_tracking.reporting_interval_sec = atoi(msg->parm[2]);
+        param_work_mode_config.continuous_tracking.reporting_interval_dis = atoi(msg->parm[3]);
+
+        // 检查参数是否有效
+        if (param_work_mode_config.continuous_tracking.reporting_interval_sec < 5 || param_work_mode_config.continuous_tracking.reporting_interval_sec > 86400)
+        {
+            LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+            goto param_invalid;
+        }
+        if (param_work_mode_config.continuous_tracking.reporting_interval_dis !=0 &&
+            (param_work_mode_config.continuous_tracking.reporting_interval_dis < 5 ||
+            param_work_mode_config.continuous_tracking.reporting_interval_dis > 1000))
+        {
+            LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+            goto param_invalid;
+        }
+
+        // 设置连续追踪模式参数
+        gConfigParam.device_workmode_config.workmode_config.continuous_tracking.reporting_interval_sec = param_work_mode_config.continuous_tracking.reporting_interval_sec;
+        gConfigParam.device_workmode_config.workmode_config.continuous_tracking.reporting_interval_dis = param_work_mode_config.continuous_tracking.reporting_interval_dis;
+        gConfigParam.device_workmode_config.flag = FLAG_VALID;
+        /* 保存配置 */
+        my_user_data_write(ZMS_ID_WORK_MODE_CONFIG, &gConfigParam.device_workmode_config, sizeof(DeviceWorkModeConfig));
+
+        if (gConfigParam.device_workmode_config.workmode_config.current_mode == MY_MODE_CONTINUOUS)
+        {
+            // 切换到连续模式
+            send_work_mode_command(param_work_mode_config.current_mode);
+        }
+
         LOG_INF("%s,%s,%s,%s#", msg->parm[0], msg->parm[1], msg->parm[2], msg->parm[3]);
     }
     // 长续航模式处理
@@ -3582,6 +3620,12 @@ static int modeset_cmd_handler(at_cmd_struc* msg)
         gConfigParam.device_workmode_config.flag = FLAG_VALID;
         /* 保存配置 */
         my_user_data_write(ZMS_ID_WORK_MODE_CONFIG, &gConfigParam.device_workmode_config, sizeof(DeviceWorkModeConfig));
+
+        if (gConfigParam.device_workmode_config.workmode_config.current_mode == MY_MODE_LONG_LIFE)
+        {
+            // 切换到长续航模式
+            send_work_mode_command(param_work_mode_config.current_mode);
+        }
 
         LOG_INF("%s,%s,%s,%s#", msg->parm[0], msg->parm[1], msg->parm[2], msg->parm[3]);
     }
@@ -3618,11 +3662,14 @@ static int modeset_cmd_handler(at_cmd_struc* msg)
         /* 保存配置 */
         my_user_data_write(ZMS_ID_WORK_MODE_CONFIG, &gConfigParam.device_workmode_config, sizeof(DeviceWorkModeConfig));
 
+        if (gConfigParam.device_workmode_config.workmode_config.current_mode == MY_MODE_SMART)
+        {
+            // 切换到智能模式
+            send_work_mode_command(param_work_mode_config.current_mode);
+        }
+
         LOG_INF("%s,%s,%s,%s,%s,%s,%s#", msg->parm[0], msg->parm[1], msg->parm[2], msg->parm[3], msg->parm[4], msg->parm[5], msg->parm[6]);
     }
-
-    // 命令透传，发送个LTE模块
-    lte_cmd_handler(msg);
 
     /* 生成成功响应 */
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);

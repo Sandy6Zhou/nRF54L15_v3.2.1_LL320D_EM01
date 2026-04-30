@@ -157,6 +157,7 @@ typedef enum
     // MY_TIMER_WDT_FEED,       /* 看门狗喂狗定时器 */
     MY_TIMER_LTE_POWER,      // LTE电源控制定时器
     MY_TIMER_SHUTDOWN,       // 关机定时器
+    MY_TIMER_LTE_PULSE,       // LTE脉冲定时器
 
     /* 扫描定时器 */
     MY_TIMER_SCAN_INTERVAL,   // 周期扫描定时器
@@ -253,6 +254,7 @@ typedef enum
 
     MY_MSG_LTE_BLE_DATA,        /* 蓝牙指令数据 */
     MY_MSG_BLE_PACKET_TIMEOUT,  /* BLE包传输应答超时 */
+    MY_MSG_LTE_PULSE,             /* LTE脉冲消息 */
 
     MY_MSG_SHUTDOWN,            /* 关机消息 */
 

@@ -63,6 +63,13 @@ typedef enum
     MY_MODE_SHUTDOWN,       // 关机模式，该模式下所有功能关闭，只有按键可以唤醒设备，长按2秒开机，开机后智能模式，这种主要应用在仓储模式，进入超低功耗模式
 } MY_WORK_MODE;
 
+// 连续追踪模式参数结构体
+typedef struct
+{
+    uint32_t reporting_interval_sec;    // 上传间隔，单位：秒（非负整数）
+    uint32_t reporting_interval_dis;    // 上传距离，单位：米（非负整数）
+} ContinuousTrackingMode;
+
 // 长续航模式参数结构体
 typedef struct {
     uint32_t reporting_interval_min;    // 上传间隔，单位：分钟（非负整数）
@@ -81,7 +88,7 @@ typedef struct {
 // 设备工作模式配置结构体
 typedef struct {
     MY_WORK_MODE current_mode;
-    // 连续追踪模式的配置信息跟nordic无关,无需保存
+    ContinuousTrackingMode continuous_tracking; // 连续追踪模式
     LongBatteryMode long_battery;          // 长续航模式
     IntelligentMode intelligent;           // 智能模式
 } DeviceWorkModeConfig;
@@ -296,5 +303,13 @@ void handle_continuous_mode(void);
 **函数功能:  LTE唤醒定时器回调函数，用于唤醒LTE模块
 *********************************************************************/
 void awaken_lte_timer_callback(void *timer);
+
+/*********************************************************************
+**函数名称:  send_work_mode_command
+**入口参数:  mode     --  要切换到的工作模式
+**出口参数:  无
+**函数功能:  发送工作模式给LTE模块
+*********************************************************************/
+void send_work_mode_command(MY_WORK_MODE mode);
 
 #endif /* _MY_MAIN_H_ */

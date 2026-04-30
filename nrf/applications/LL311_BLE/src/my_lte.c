@@ -87,6 +87,9 @@ static const ble_rsp_cmd_map_t ble_rsp_cmd_table[] = {
     {"CMD",      BLE_RSP_CMD     },
     {"TAG",      BLE_RSP_TAG     },
     {"MACINFO",  BLE_RSP_MACINFO },
+    {"WMODE",    BLE_RSP_WMODE },
+    {"POWOFF",   BLE_RSP_POWOFF },
+    {"PULSE",    BLE_RSP_PULSE },
     {NULL,       BLE_RSP_UNKNOWN }
 };
 
@@ -166,9 +169,14 @@ CMD_STRUC AT_CMD_INNER[] = {
 
     {0, NULL,        NULL,                      NULL}
 };
+// 发送脉冲消息声明
+static void send_lte_pulse(void);
 
 // 网络解锁全局变量
 net_unlock_ctrl_t g_net_unlock;
+
+// 脉冲消息计数器
+static uint16_t g_lte_pulse_count = 0;
 
 /********************************************************************
 **函数名称:  init_async_queue
@@ -907,6 +915,7 @@ static void my_lte_task(void *p1, void *p2, void *p3)
                 if (g_lte_ota_in_progress == false || g_lte_factory == 0)
                 {
                     my_lte_pwr_on(false);
+                    my_stop_timer(MY_TIMER_LTE_PULSE);
                     g_bLteReady = 0;
                 }
 
@@ -967,6 +976,11 @@ static void my_lte_task(void *p1, void *p2, void *p3)
                     MY_FREE_BUFFER(msg.pData);
                     msg.pData = NULL;
                 }
+                break;
+
+            case MY_MSG_LTE_PULSE:
+                // 脉冲消息处理
+                send_lte_pulse();
                 break;
 
             default:
@@ -1581,6 +1595,41 @@ static int my_at_factory_cmd(char *pfactorycmd)
 }
 
 /********************************************************************
+**函数名称:  send_lte_pulse
+**入口参数:  无
+**出口参数:  无
+**函数功能:  发送脉冲消息
+**返 回 值:  无
+*********************************************************************/
+static void send_lte_pulse(void)
+{
+    char buf[10] = {0};
+
+    // 脉冲计数器增加
+    g_lte_pulse_count++;
+    // 构造脉冲消息: LTE+PULSE=<脉冲计数器>
+    snprintf(buf, sizeof(buf), "%d", g_lte_pulse_count);
+
+    #if RETRANSMIT_CHECK_ENABLED
+        lte_send_cmd_with_retry("PULSE", buf);
+    #else
+        lte_send_command("PULSE", buf);
+    #endif
+}
+
+/********************************************************************
+**函数名称:  lte_pulse_timer_handler
+**入口参数:  param    ---        定时器参数
+**出口参数:  无
+**函数功能:  脉冲定时器处理函数
+*********************************************************************/
+void lte_pulse_timer_handler(void *param)
+{
+    // 发送脉冲消息
+    my_send_msg(MOD_LTE, MOD_LTE, MY_MSG_LTE_PULSE);
+}
+
+/********************************************************************
 **函数名称:  my_lte_handle_power_on
 **入口参数:  data     ---        去掉协议头后的参数字符串(输入)
 **出口参数:  无
@@ -1631,8 +1680,15 @@ static int my_lte_handle_power_on(char *data)
 
     my_lte_send_msg(resp_buf, (uint16_t)nRespLen);
 
+    // 发送当前工作模式给LTE模块
+    send_work_mode_command(gConfigParam.device_workmode_config.workmode_config.current_mode);
+
     // 处理排队的消息
     my_lte_process_queued_msgs();
+
+    // 启动心跳定时器
+    g_lte_pulse_count = 0;
+    my_start_timer(MY_TIMER_LTE_PULSE, 60 * 1000, true, lte_pulse_timer_handler);
 
     return 0;
 }

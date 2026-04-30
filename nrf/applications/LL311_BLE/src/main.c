@@ -278,6 +278,50 @@ bool my_time_is_run(int timerId)
 }
 
 /*********************************************************************
+**函数名称:  send_work_mode_command
+**入口参数:  mode     --  要切换到的工作模式
+**出口参数:  无
+**函数功能:  发送工作模式给LTE模块
+*********************************************************************/
+void send_work_mode_command(MY_WORK_MODE mode)
+{
+    char buf[30];
+
+    switch (mode)
+    {
+        case MY_MODE_CONTINUOUS:
+            snprintf(buf, sizeof(buf), "%d,%d,%d", mode,
+            gConfigParam.device_workmode_config.workmode_config.continuous_tracking.reporting_interval_sec,
+            gConfigParam.device_workmode_config.workmode_config.continuous_tracking.reporting_interval_dis);
+            break;
+
+        case MY_MODE_LONG_LIFE:
+            snprintf(buf, sizeof(buf), "%d,%d,%s", mode,
+            gConfigParam.device_workmode_config.workmode_config.long_battery.reporting_interval_min,
+            gConfigParam.device_workmode_config.workmode_config.long_battery.start_time);
+            break;
+
+        case MY_MODE_SMART:
+            snprintf(buf, sizeof(buf), "%d,%d,%d,%d,%d,%d", mode,
+            gConfigParam.device_workmode_config.workmode_config.intelligent.stop_status_interval_sec,
+            gConfigParam.device_workmode_config.workmode_config.intelligent.land_status_interval_sec,
+            gConfigParam.device_workmode_config.workmode_config.intelligent.land_status_interval_dis,
+            gConfigParam.device_workmode_config.workmode_config.intelligent.sea_status_interval_sec,
+            gConfigParam.device_workmode_config.workmode_config.intelligent.sleep_switch);
+            break;
+        default:
+            return;
+    }
+
+    // 发送工作模式切换命令给LTE模块
+    #if RETRANSMIT_CHECK_ENABLED
+        lte_send_cmd_with_retry("WMODE", buf);
+    #else
+        lte_send_command("WMODE", buf);
+    #endif
+}
+
+/*********************************************************************
 **函数名称:  switch_work_mode
 **入口参数:  mode     --  要切换到的工作模式
 **出口参数:  无
@@ -285,7 +329,6 @@ bool my_time_is_run(int timerId)
 *********************************************************************/
 void switch_work_mode(MY_WORK_MODE mode)
 {
-    char buf[2];
     lte_boot_reason_t boot_reason;
 
     // 当前模式与目标模式相同，无需切换
@@ -323,13 +366,8 @@ void switch_work_mode(MY_WORK_MODE mode)
     gConfigParam.device_workmode_config.workmode_config.current_mode = mode;
     my_send_msg(MOD_MAIN, MOD_MAIN, MY_MSG_WORK_MODE_SWITCH);
 
-    snprintf(buf, sizeof(buf), "%d", mode);
-    // 发送工作模式切换命令给LTE模块
-#if RETRANSMIT_CHECK_ENABLED
-    lte_send_cmd_with_retry("MODESET", buf);
-#else
-    lte_send_command("MODESET", buf);
-#endif
+    // 4G模块已就绪，发送工作模式消息
+    send_work_mode_command(mode);
 
     // 工作模式切换时根据配置的扫描模式决定是否上报扫描数据
     my_scan_upload_on_lte_wakeup();

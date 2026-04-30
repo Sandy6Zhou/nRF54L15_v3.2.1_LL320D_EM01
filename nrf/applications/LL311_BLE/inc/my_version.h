@@ -12,7 +12,16 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260424"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260427"
+/* 软件版本:        V1.0
+** 完成日期:        2026.04.27
+** 作    者:        曹阳 (caoyang@jimiiot.com)
+** 修改内容:       1.更新串口协议指令(工作模式切换及设置统一走BLE+MODESET)、开机发送工作模式
+**                 2.优化进入超低功耗模式后，通知4G先关机
+**                 3.增加蓝牙1分钟定时给4G发送心跳指令
+***/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260424"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.04.24
 ** 作    者:        周森达 (zhousenda@jimiiot.com)
@@ -40,14 +49,14 @@
 **                 2.根据新的指令形式，改进TAG、MACINFO的串口指令发送流程
 ***/
 
-//#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260423"
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260423"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.04.23
 ** 作    者:        曹阳 (caoyang@jimiiot.com)
 ** 修改内容:       完善拆壳检测、非法解锁、锁状态变化事件触发上报
 ***/
 
-//#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260423"
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260423"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.04.23
 ** 作    者:        曹阳 (caoyang@jimiiot.com)
