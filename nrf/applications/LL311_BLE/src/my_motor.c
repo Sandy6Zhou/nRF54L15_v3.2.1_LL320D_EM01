@@ -22,7 +22,7 @@ static const struct gpio_dt_spec motor_pwr_en = GPIO_DT_SPEC_GET(DT_ALIAS(motor_
 static const struct gpio_dt_spec motor_pos_a = GPIO_DT_SPEC_GET(DT_ALIAS(motor_posdet_a), gpios);
 static const struct gpio_dt_spec motor_pos_b = GPIO_DT_SPEC_GET(DT_ALIAS(motor_posdet_b), gpios);
 
-#define LOCK_TIMEOUT_MAXTIME 5000   /* 暂定开/关锁最长时间：5000ms,后续根据实际情况调整 */
+#define LOCK_TIMEOUT_MAXTIME 5000   // 实测开关锁时间大概在3.8秒，这里设置开/关锁超时时间为5秒
 #define LOCK_DEBOUNCE_MS    100    /* 消抖时间：100ms */
 
 typedef enum
@@ -78,9 +78,9 @@ void req_open_lock_action(void)
     k_timer_stop(&motor_timeout_timer);
 
     MY_LOG_INF("%s:run", __func__);
-    /* A 高，B 低 -> 正转（具体取决于你的驱动电路） */
-    gpio_pin_set_dt(&motor_a, 1);
-    gpio_pin_set_dt(&motor_b, 0);
+    /* A 低，B 高 -> 正转（具体取决于你的驱动电路） */
+    gpio_pin_set_dt(&motor_a, 0);
+    gpio_pin_set_dt(&motor_b, 1);
     k_timer_start(&motor_timeout_timer, K_MSEC(LOCK_TIMEOUT_MAXTIME), K_NO_WAIT);
 }
 
@@ -96,9 +96,9 @@ void req_close_lock_action(void)
     k_timer_stop(&motor_timeout_timer);
 
     MY_LOG_INF("%s:run", __func__);
-    /* A 低，B 高 -> 反转 */
-    gpio_pin_set_dt(&motor_a, 0);
-    gpio_pin_set_dt(&motor_b, 1);
+    /* A 高，B 低 -> 反转 */
+    gpio_pin_set_dt(&motor_a, 1);
+    gpio_pin_set_dt(&motor_b, 0);
     k_timer_start(&motor_timeout_timer, K_MSEC(LOCK_TIMEOUT_MAXTIME), K_NO_WAIT);
 }
 
@@ -505,5 +505,9 @@ int motor_gpio_init(void)
 
     k_timer_init(&motor_timeout_timer, motor_timer_timeout_handler, NULL);
 
+    // 默认开启马达/蜂鸣器/NFC电源
+    motor_power_set(true);
+    // 默认高阻状态
+    stop_lock_action();
     return 0;
 }

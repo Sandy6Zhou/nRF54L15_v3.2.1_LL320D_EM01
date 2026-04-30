@@ -59,6 +59,9 @@ LOG_MODULE_REGISTER(my_battery, LOG_LEVEL_INF);
 #define CHG_BATT_FAIR_VAL 60    /**< 充电时电池电量中等的阈值，当电量低于此值时，充电状态为 CHG_POWER_FAIR */
 #define CHG_BATT_HIGH_VAL 85    /**< 充电时电池电量高的阈值，当电量低于此值时，充电状态为 CHG_POWER_HIGH */
 
+// 电压换算宏：根据分压采样值计算实际电压
+#define CALC_ACTUAL_MV(avg_mv)    ((avg_mv) * (2000 + 680) / 680)
+
 /* 通道 0：电池电压 */
 static const struct adc_dt_spec batt_adc = ADC_DT_SPEC_GET_BY_IDX(ZEPHYR_USER_NODE, 0);
 
@@ -465,6 +468,7 @@ int my_battery_read_mv(int32_t *mv)
     int32_t max_mv = 0;     // 最大电压值
     int32_t min_mv = 10000; // 最小电压值，初始化为一个较大的值
     int32_t sum_mv = 0;     // 电压总和
+    int32_t avg_mv = 0;
 
     // 进行多次采样
     for (i = 0; i < BATT_ADC_SAMPLE_NUM; i++)
@@ -493,8 +497,9 @@ int my_battery_read_mv(int32_t *mv)
         sum_mv += *mv;
     }
 
-    // 计算平均电压：去掉最大值和最小值后取平均，再乘以 2(硬件电路中的分压系数)
-    *mv = ((sum_mv-max_mv-min_mv) * 2) / (BATT_ADC_SAMPLE_NUM-2);
+    // 计算平均电压：去掉最大值和最小值后取平均，再乘以 (2000+680)/680(硬件电路中的分压系数)
+    avg_mv = ((sum_mv-max_mv-min_mv) / (BATT_ADC_SAMPLE_NUM-2));
+    *mv = CALC_ACTUAL_MV(avg_mv);
 
     return 0;  // 返回成功
 }

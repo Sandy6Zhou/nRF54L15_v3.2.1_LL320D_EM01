@@ -12,7 +12,15 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260428"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260429"
+/* 软件版本:        V1.0
+** 完成日期:        2026.04.29
+** 作    者:        周森达 (zhousenda@jimiiot.com)
+** 修改内容:        1.根据LL311实际硬件设计，统一修正按键/gsensor/电机引脚的有效电平和触发沿方向
+**                 2.修正电池采样分压计算公式，电机初始化后两控制IO置低，电机驱动输出恢复默认高阻态
+***/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260428"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.04.28
 ** 作    者:        吴楚庆 (wuchuqing@jimiiot.com)

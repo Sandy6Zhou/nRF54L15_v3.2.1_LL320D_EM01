@@ -635,7 +635,7 @@ static void key_timer_handler(struct k_timer *timer)
 
     int level = gpio_pin_get(fun_key.port, fun_key.pin);
 
-    if (level == 0)
+    if (level == 1)
     {
         /* 按键持续按下 */
         if (!key_ctrl.pressed)
@@ -952,8 +952,8 @@ static int misc_io_init(void)
         return -ENODEV;
     }
 
-    /* 配置为输入（fun_key 配置内部上拉） */
-    ret = gpio_pin_configure(fun_key.port, fun_key.pin, GPIO_INPUT | GPIO_PULL_UP);
+    /* 配置为输入（fun_key 配置内部下拉） */
+    ret = gpio_pin_configure(fun_key.port, fun_key.pin, GPIO_INPUT | GPIO_PULL_DOWN);
     if (ret)
     {
         MY_LOG_ERR("Failed to configure fun_key: %d", ret);
@@ -976,8 +976,8 @@ static int misc_io_init(void)
         return ret;
     }
 
-    /* 配置按键中断：下降沿触发 */
-    ret = gpio_pin_interrupt_configure_dt(&fun_key, GPIO_INT_EDGE_FALLING);
+    /* 配置按键中断：上升沿触发 */
+    ret = gpio_pin_interrupt_configure_dt(&fun_key, GPIO_INT_EDGE_RISING);
     if (ret)
     {
         MY_LOG_ERR("Failed to configure fun_key interrupt: %d", ret);
