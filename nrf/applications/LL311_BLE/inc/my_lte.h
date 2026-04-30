@@ -59,7 +59,8 @@ typedef struct
 typedef struct
 {
     int32_t lat;         // 纬度（微度，单位：1e-6度）
-    int32_t lon;         // 经度（微度，单位：1e-6度
+    int32_t lon;         // 经度（微度，单位：1e-6度）
+    float speed;       // GPS速度（单位：m/s）
     int64_t timestamp_s; // 获取时间戳（秒）
 } location_storage_t;
 

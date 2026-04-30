@@ -91,6 +91,8 @@ typedef struct
     float gyro_bias[3];                         // 陀螺仪三轴零偏（dps），静止时校准
 } gsensor_runtime_ctx_t;
 
+extern gsensor_runtime_ctx_t g_gsensor_runtime_ctx;
+
 /********************************************************************
 **函数名称:  my_gsensor_init
 **入口参数:  tid      ---        指向线程 ID 变量的指针

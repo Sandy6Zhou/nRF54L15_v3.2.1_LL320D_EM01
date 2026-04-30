@@ -33,6 +33,7 @@ char LTE_STATE[] = "LTE+STATE=";
 char LTE_CMD[] = "LTE+CMD=";
 char LTE_LOCATION[] = "LTE+LOCATION=";
 char LTE_FACTORY[] = "LTE+FACTORY=";
+char LTE_NET[] = "LTE+NET=";
 char BLE[] = "BLE+";
 
 // 经纬度存储点
@@ -177,6 +178,9 @@ net_unlock_ctrl_t g_net_unlock;
 
 // 脉冲消息计数器
 static uint16_t g_lte_pulse_count = 0;
+
+// 网络状态
+static uint8_t s_lte_net_flag = 0;
 
 /********************************************************************
 **函数名称:  init_async_queue
@@ -1906,10 +1910,10 @@ int my_lte_handle_cmd(char *data)
 
 /********************************************************************
 **函数名称:  my_lte_handle_location
-**入口参数:  data     --- 包含经纬度数据的源字符串 (<纬度>,<经度>)
+**入口参数:  data     --- 包含经纬度数据的源字符串 (<纬度>,<经度>,<GPS速度>)
 **出口参数:  无
 **函数功能:  处理位置信息更新请求，主要包括：
-**            1. 从源字符串中分离并提取纬度和经度字段
+**            1. 从源字符串中分离并提取纬度，经度，GPS速度字段
 **            2. 解析并校验经纬度数值的有效性 (遵循全有或全无原则)
 **            3. 更新全局位置存储点 (g_location_point) 及时间戳
 **            4. 构建应答消息 ("OK" 或 "FAIL") 并通过消息队列发送
@@ -1920,10 +1924,12 @@ static int my_lte_handle_location(char *data)
 {
     char lat[16] = {0};
     char lon[16] = {0};
+    char speed[16] = {0};
     int32_t lat_value;
     uint8_t lat_valid;
     int32_t lon_value;
     uint8_t lon_valid;
+    float speed_value;
     char *resp_data;
     char resp_str[32] = "LTE+LOCATION=FAIL\r\n"; // 默认失败
     int ret = -1;
@@ -1932,6 +1938,7 @@ static int my_lte_handle_location(char *data)
 
     my_get_str_at_pos(data, 0, ',', lat, sizeof(lat));
     my_get_str_at_pos(data, 1, ',', lon, sizeof(lon));
+    my_get_str_at_pos(data, 2, ',', speed, sizeof(speed));
 
     //经纬度参数解析和校验
     if (parse_coordinate_value(lat, 1, &lat_value, &lat_valid) != 0)
@@ -1952,10 +1959,26 @@ static int my_lte_handle_location(char *data)
         goto out;
     }
 
+    // 速度参数解析和校验
+    speed_value = atof(speed);
+    LOG_INF("speed: %f", speed_value);
+
     // 更新存储点
     g_location_point.lat = lat_value;
     g_location_point.lon = lon_value;
+    g_location_point.speed = speed_value;
     g_location_point.timestamp_s = my_get_system_time_sec();
+
+    // 速度大于0.3m/s，且当前状态为静止，认为是状态误判
+    if (g_location_point.speed > 20 && g_gsensor_runtime_ctx.current_gsensor_state == STATE_STATIC)
+    {
+        // 网络状态为0，认为是海运输状态
+        if (s_lte_net_flag == 0)
+        {
+            g_gsensor_runtime_ctx.current_gsensor_state = STATE_SEA_TRANSPORT;
+            LOG_INF("sea transport");
+        }
+    }
 
     strcpy(resp_str, "LTE+LOCATION=OK\r\n");
     ret = 0;
@@ -2233,6 +2256,38 @@ static int my_lte_handle_factory(char *data)
 }
 
 /********************************************************************
+**函数名称:  my_lte_handle_net
+**入口参数:  data      ---        接收到的原始指令字符串 (如 "0" 或 "1")LTE+NET=0/1
+**出口参数:  无
+**函数功能:  处理网络状态切换指令
+**返 回 值:  0表示处理成功，-1表示无效参数
+********************************************************************/
+static int my_lte_handle_net(char *data)
+{
+    char result[16] = {0};
+    uint8_t net = 0;
+
+    my_get_str_at_pos(data, 0, ',', result, sizeof(result));
+    net = atoi(result);
+
+    // 检查参数是否有效
+    if (net != 0 && net != 1)
+    {
+        MY_LOG_ERR("Invalid network flag: %d", net);
+        return -1;
+    }
+
+    // 切换网络状态
+    s_lte_net_flag = net;
+    LOG_INF("net: %d", net);
+
+    // 发送应答
+    my_lte_uart_send("LTE+NET=OK\r\n", strlen("LTE+NET=OK\r\n"));
+
+    return 0;
+}
+
+/********************************************************************
 **函数名称:  my_check_location_valid
 **入口参数:  point       ---        存储点指针
 **出口参数:  无
@@ -2407,6 +2462,11 @@ int my_lte_parse_cmd(char *cmd, int cmd_len)
     else if (CMD_MATCHED(cmd, LTE_FACTORY))
     {
         ret = my_lte_handle_factory(p + strlen(LTE_FACTORY));
+        goto END;
+    }
+    else if (CMD_MATCHED(cmd, LTE_NET))
+    {
+        ret = my_lte_handle_net(p + strlen(LTE_NET));
         goto END;
     }
     //处理4G应答

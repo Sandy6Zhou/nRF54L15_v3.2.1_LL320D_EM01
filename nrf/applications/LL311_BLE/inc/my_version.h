@@ -12,7 +12,15 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260427"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260428"
+/* 软件版本:        V1.0
+** 完成日期:        2026.04.28
+** 作    者:        曹阳 (caoyang@jimiiot.com)
+** 修改内容:       1.增加接收LTE+LOCATION指令后面携带GPS速度参数，用来区分静止和运动状态。
+**                 2.增加接收LTE+NET指令，保存网络状态，判断是否在海中。
+***/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260427"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.04.27
 ** 作    者:        曹阳 (caoyang@jimiiot.com)

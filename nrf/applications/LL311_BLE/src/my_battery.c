@@ -56,7 +56,7 @@ LOG_MODULE_REGISTER(my_battery, LOG_LEVEL_INF);
 #define BATT_HIGH_VAL 85    /**< 电池电量高的阈值，当电量低于此值时，电池状态为 BATT_HIGH */
 
 #define CHG_BATT_LOW_VAL 30     /**< 充电时电池电量低的阈值，当电量低于此值时，充电状态为 CHG_POWER_LOW */
-#define CHG_BATT_FAIR_VAL 65    /**< 充电时电池电量中等的阈值，当电量低于此值时，充电状态为 CHG_POWER_FAIR */
+#define CHG_BATT_FAIR_VAL 60    /**< 充电时电池电量中等的阈值，当电量低于此值时，充电状态为 CHG_POWER_FAIR */
 #define CHG_BATT_HIGH_VAL 85    /**< 充电时电池电量高的阈值，当电量低于此值时，充电状态为 CHG_POWER_HIGH */
 
 /* 通道 0：电池电压 */
