@@ -148,11 +148,14 @@ void send_alarm_message_to_lte(alarm_type_t alarm_type, const char *additional_i
             rpt = gConfigParam.lockerr_config.lockerr_report;
             break;
 
+        case ALARM_UNLOCK:
         case ALARM_LOCK:
             rpt = gConfigParam.lockstat_config.lockstat_report;
             break;
 
-        case ALARM_MOTION:
+        case ALARM_STILL:
+        case ALARM_SEA:
+        case ALARM_LAND:
             rpt = gConfigParam.motdet_config.motdet_report_type;
             break;
 
@@ -189,7 +192,12 @@ void send_alarm_message_to_lte(alarm_type_t alarm_type, const char *additional_i
             }
             break;
 
-        case ALARM_CHARGE:
+        case ALARM_CHARGE_OUT:
+        case ALARM_CHARGE_IN:
+            rpt = gConfigParam.batlevel_config.chargesta_report;
+            break;
+
+        case ALARM_CHARGE_FULL:
             rpt = gConfigParam.batlevel_config.chargesta_report;
             break;
 
@@ -205,7 +213,8 @@ void send_alarm_message_to_lte(alarm_type_t alarm_type, const char *additional_i
             rpt = gConfigParam.lockpincyt_config.lockpincyt_report;
             break;
 
-        case ALARM_LOCKPIN:
+        case ALARM_LOCKPIN_IN:
+        case ALARM_LOCKPIN_OUT:
             rpt = gConfigParam.pinstat_config.pinstat_report;
             break;
 
@@ -753,7 +762,7 @@ static void lock_pin_timer_handler(struct k_timer *timer)
 
                     my_send_msg(MOD_CTRL, MOD_LTE, MY_MSG_LTE_PWRON);
                     // 插入上报锁销状态为已插入
-                    send_alarm_message_to_lte(ALARM_LOCKPIN, "1");
+                    send_alarm_message_to_lte(ALARM_LOCKPIN_IN, NULL);
                 }
             }
             my_send_msg(MOD_CTRL, MOD_CTRL, msgID);
@@ -767,7 +776,7 @@ static void lock_pin_timer_handler(struct k_timer *timer)
 
                     my_send_msg(MOD_CTRL, MOD_LTE, MY_MSG_LTE_PWRON);
                     // 断开上报锁销状态为拔出
-                    send_alarm_message_to_lte(ALARM_LOCKPIN, "0");
+                    send_alarm_message_to_lte(ALARM_LOCKPIN_OUT, NULL);
                 }
             }
             /* 锁销被拔出时,检测到锁是关闭状态 */

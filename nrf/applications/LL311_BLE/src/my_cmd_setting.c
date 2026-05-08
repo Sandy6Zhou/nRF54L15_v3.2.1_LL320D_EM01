@@ -316,11 +316,7 @@ static int lte_cmd_handler(at_cmd_struc* msg)
     snprintf(lte_cmd_msg + offset, LTE_CMD_BUF_SIZE, "#");
 
     // 发送LTE命令
-#if RETRANSMIT_CHECK_ENABLED
-    lte_send_cmd_with_retry("CMD", lte_cmd_msg);
-#else
     ret = lte_send_command("CMD", lte_cmd_msg);
-#endif
 
     // 释放动态分配的内存
     if(lte_cmd_msg != NULL)

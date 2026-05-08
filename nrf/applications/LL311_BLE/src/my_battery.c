@@ -223,16 +223,30 @@ void chg_timer_handler(struct k_timer *timer)
 void my_chg_event_reporting()
 {
     static MY_CHG_STATE s_last_chg_state = CHARG_UNKNOWN;     // 上次充电状态
-    char cmd_param[2] = {0};                 // 命令参数缓冲区
 
     // 当充电状态发生变化且报告功能开启时，上报事件
     if (s_last_chg_state != g_charg_state)
     {
-        // 格式化命令参数：包含时间戳、报告配置和当前充电状态
-        snprintf(cmd_param, sizeof(cmd_param), "%d", g_charg_state);
+        switch (g_charg_state)
+        {
+            case CHARG_UNKNOWN:
+                break;
 
-        // 通过 LTE 发送 ALARM 命令
-        send_alarm_message_to_lte(ALARM_CHARGE, cmd_param);
+            case NO_CHARGING:
+                send_alarm_message_to_lte(ALARM_CHARGE_OUT, NULL);
+                break;
+
+            case CHARGING:
+                send_alarm_message_to_lte(ALARM_CHARGE_IN, NULL);
+                break;
+
+            case CHARG_FULL:
+                send_alarm_message_to_lte(ALARM_CHARGE_FULL, NULL);
+                break;
+
+            default:
+                break;
+        }
 
         // 更新上次充电状态
         s_last_chg_state = g_charg_state;

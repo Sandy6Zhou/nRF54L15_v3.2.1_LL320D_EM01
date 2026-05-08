@@ -113,14 +113,20 @@ typedef enum
 {
     ALARM_OPEN = 1,         // 拆壳告警
     ALARM_ILLEGALUNLOCK,    // 非法解锁告警
-    ALARM_LOCK,             // 锁状态告警
-    ALARM_MOTION,           // 运动状态告警
-    ALARM_BATT,             // 电池状态告警
-    ALARM_CHARGE,           // 充电状态告警
+    ALARM_UNLOCK,           // 开锁告警
+    ALARM_LOCK,             // 上锁告警
+    ALARM_STILL,            // 静止状态告警
+    ALARM_SEA,              // 海运状态告警
+    ALARM_LAND,             // 陆运状态告警
+    ALARM_CHARGE_OUT,        // 充电器拔出告警
+    ALARM_CHARGE_IN,        // 充电器插入告警
+    ALARM_CHARGE_FULL,      // 充满状态告警
     ALARM_IMPACT,           // 撞击检测告警
-    ALARM_NFC,              // NFC告警
     ALARM_CUT,              // 剪线告警
-    ALARM_LOCKPIN,          // 锁销状态告警
+    ALARM_LOCKPIN_IN,       // 锁销插入状态告警
+    ALARM_LOCKPIN_OUT,       // 锁销拔出状态告警
+    ALARM_NFC,              // NFC告警
+    ALARM_BATT,             // 电池状态告警
     ALARM_OTHER,            // 其他类型告警
 } alarm_type_t;
 
@@ -252,6 +258,7 @@ typedef enum
     MY_MSG_CTRL_OPENLOCKED,     /* 已开锁 */
     MY_MSG_CTRL_CLOSELOCKED,    /* 已关锁 */
     MY_MSG_BLE_LOCK_RESULT,     /* 蓝牙开/关锁结果通知消息 */
+    MY_MSG_BLE_CMD,             /* 指令透传回复消息 */
 
     MY_MSG_LTE_BLE_DATA,        /* 蓝牙指令数据 */
     MY_MSG_BLE_PACKET_TIMEOUT,  /* BLE包传输应答超时 */

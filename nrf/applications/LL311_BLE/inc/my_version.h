@@ -12,7 +12,15 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260506"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260508"
+/* 软件版本:        V1.0
+** 完成日期:        2026.05.08
+** 作    者:        曹阳 (caoyang@jimiiot.com)
+** 修改内容:       1.将告警逻辑拆分开，新增枚举类型,方便4G按类型识别告警
+**                2.移除指令透传重传机制，4G回复直接发送给蓝牙APP
+***/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260506"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.05.06
 ** 作    者:        曹阳 (caoyang@jimiiot.com)

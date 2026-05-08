@@ -33,6 +33,7 @@ char LTE_CMD[] = "LTE+CMD=";
 char LTE_LOCATION[] = "LTE+LOCATION=";
 char LTE_FACTORY[] = "LTE+FACTORY=";
 char LTE_NET[] = "LTE+NET=";
+char BLE_CMD[] = "BLE+CMD=";
 char BLE[] = "BLE+";
 
 // 经纬度存储点
@@ -70,7 +71,6 @@ Retransmission_Item g_retrans_queue[RETRANSMISSION_QUEUE_SIZE]; // 重传队列
 
 // ========== 需要特殊处理的指令前缀列表 ==========
 static const char *s_special_cmd_prefixes[] = {
-    "CMD",     // BLE+CMD=<command>,... → 存储为 CMD_<command>
     "MACINFO", // BLE+MACINFO=<seq>,... → 存储为 MACINFO_<seq> 或 MACINFO_START/END
     "TAG",     // BLE+TAG=<seq>,... → 存储为 TAG_<seq> 或 TAG_START/END
     NULL
@@ -84,7 +84,6 @@ static const ble_rsp_cmd_map_t ble_rsp_cmd_table[] = {
     {"LOCATION", BLE_RSP_LOCATION},
     {"LED",      BLE_RSP_LED     },
     {"TIME",     BLE_RSP_TIME    },
-    {"CMD",      BLE_RSP_CMD     },
     {"TAG",      BLE_RSP_TAG     },
     {"MACINFO",  BLE_RSP_MACINFO },
     {"WMODE",    BLE_RSP_WMODE },
@@ -2355,6 +2354,7 @@ int my_lte_parse_cmd(char *cmd, int cmd_len)
     int argc, num_commands;
     MSG_S msg;
     char *lte_cmd;
+    char *ble_cmd;
 
     if (0 == strlen(cmd) || 0 == cmd_len)
     {
@@ -2431,6 +2431,23 @@ int my_lte_parse_cmd(char *cmd, int cmd_len)
     else if (CMD_MATCHED(cmd, LTE_NET))
     {
         ret = my_lte_handle_net(p + strlen(LTE_NET));
+        goto END;
+    }
+    else if (CMD_MATCHED(cmd, BLE_CMD))
+    {
+        MY_MALLOC_BUFFER(ble_cmd, strlen(cmd) + 1 - strlen(BLE_CMD));
+        if (ble_cmd == NULL)
+        {
+            MY_LOG_ERR("ble_cmd malloc failed");
+            return 0;
+        }
+
+        strcpy(ble_cmd, cmd + strlen(BLE_CMD));
+
+        msg.msgID = MY_MSG_BLE_CMD;
+        msg.pData = ble_cmd;
+        msg.DataLen = strlen(ble_cmd);
+        my_send_msg_data(MOD_LTE, MOD_BLE, &msg);
         goto END;
     }
     //处理4G应答

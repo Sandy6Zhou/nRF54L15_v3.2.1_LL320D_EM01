@@ -1227,6 +1227,17 @@ static void my_ble_task(void *p1, void *p2, void *p3)
                 ble_comu_at_cmd_handle(shell_test_buff, strlen(shell_test_buff));
                 break;
 
+            // 处理BLE+CMD回复指令
+            case MY_MSG_BLE_CMD:
+                ble_packet_trans_send(msg.pData, msg.DataLen);
+                // 释放动态分配的内存
+                if(msg.pData != NULL)
+                {
+                    MY_FREE_BUFFER(msg.pData);
+                    msg.pData = NULL;
+                }
+                break;
+
             /* 蓝牙开/关锁结果通知 */
             case MY_MSG_BLE_LOCK_RESULT:
                 /* 根据数据大小动态使用单包或分包 */
