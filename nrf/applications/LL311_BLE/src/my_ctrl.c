@@ -92,7 +92,6 @@ typedef struct {
 } NfcCardCache;
 
 static BUZZER_Ctrl_S g_buzzer_ctrl = { 0 };
-int g_buzzer_mode = 0;//蜂鸣器状态，默认stop
 
 //处理NFC刷卡事件卡号索引
 uint8_t g_nfc_card_index = 0;
@@ -132,7 +131,6 @@ struct k_timer buzzer_timer;
 *********************************************************************/
 void send_alarm_message_to_lte(alarm_type_t alarm_type, const char *additional_info)
 {
-    const char *alarm_str = NULL;
     char alarm_msg[64] = {0};
     uint8_t rpt = 0;
 
@@ -143,27 +141,22 @@ void send_alarm_message_to_lte(alarm_type_t alarm_type, const char *additional_i
     switch(alarm_type)
     {
         case ALARM_OPEN:
-            alarm_str = "OPEN";
             rpt = gConfigParam.remalm_config.remalm_mode;
             break;
 
         case ALARM_ILLEGALUNLOCK:
-            alarm_str = "ILLEGALUNLOCK";
             rpt = gConfigParam.lockerr_config.lockerr_report;
             break;
 
         case ALARM_LOCK:
-            alarm_str = "LOCK";
             rpt = gConfigParam.lockstat_config.lockstat_report;
             break;
 
         case ALARM_MOTION:
-            alarm_str = "MOTION";
             rpt = gConfigParam.motdet_config.motdet_report_type;
             break;
 
         case ALARM_BATT:
-            alarm_str = "BATT";
             switch(atoi(additional_info))
             {
                 case BATT_EMPTY:
@@ -197,32 +190,22 @@ void send_alarm_message_to_lte(alarm_type_t alarm_type, const char *additional_i
             break;
 
         case ALARM_CHARGE:
-            alarm_str = "CHARGE";
             rpt = gConfigParam.batlevel_config.chargesta_report;
             break;
 
         case ALARM_IMPACT:
-            alarm_str = "IMPACT";
             rpt = gConfigParam.shockalarm_config.shockalarm_type;
             break;
 
-        case ALARM_SEPARATE:
-            alarm_str = "SEPARATE";
-            // TODO: 后续补充告警信息和上报方式。
-            break;
-
         case ALARM_NFC:
-            alarm_str = "NFC";
             rpt = REPORT_MODE_GPRS;//NFC刷卡事件上报固定方式为GPRS模式
             break;
 
         case ALARM_CUT:
-            alarm_str = "CUT";
             rpt = gConfigParam.lockpincyt_config.lockpincyt_report;
             break;
 
         case ALARM_LOCKPIN:
-            alarm_str = "LOCKPIN";
             rpt = gConfigParam.pinstat_config.pinstat_report;
             break;
 
@@ -238,12 +221,12 @@ void send_alarm_message_to_lte(alarm_type_t alarm_type, const char *additional_i
         if (additional_info != NULL && strlen(additional_info) > 0)
         {
             // 包含附加信息的格式："<告警类型>,<时间戳>,<上报方式>,<附加信息>"
-            snprintf(alarm_msg, sizeof(alarm_msg), "%s,%lld,%d,%s", alarm_str, my_get_system_time_sec(), rpt, additional_info);
+            snprintf(alarm_msg, sizeof(alarm_msg), "%d,%lld,%d,%s", alarm_type, my_get_system_time_sec(), rpt, additional_info);
         }
         else
         {
             // 不包含附加信息的格式："<告警类型>,<时间戳>,<上报方式>"
-            snprintf(alarm_msg, sizeof(alarm_msg), "%s,%lld,%d", alarm_str, my_get_system_time_sec(), rpt);
+            snprintf(alarm_msg, sizeof(alarm_msg), "%d,%lld,%d", alarm_type, my_get_system_time_sec(), rpt);
         }
 
         // 发送告警消息到LTE模块
@@ -1389,14 +1372,27 @@ void my_lock_led_msg_send(MY_LOCK_LED_MODE mode)
 **出口参数：  无
 **函数功能：  设置蜂鸣器工作模式并触发控制任务处理
 **返 回 值：  无
-**功能描述：  1. 将传入的模式值更新到全局变量 g_buzzer_mode，确立当前工作状态；
-**           2. 向控制模块 (MOD_CTRL) 发送消息 (MY_MSG_CTRL_BUZZER_MODE)
+**功能描述：  向控制模块 (MOD_CTRL) 发送消息 (MY_MSG_CTRL_BUZZER_MODE)
 ********************************************************************
 */
-void my_set_buzzer_mode(int buzzer_mode)
+void my_set_buzzer_mode(my_buzzer_mode buzzer_mode)
 {
-    g_buzzer_mode = buzzer_mode;
-    my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_CTRL_BUZZER_MODE);
+    MSG_S msg;
+    my_buzzer_mode *buzzer_mode_loc;
+
+    MY_MALLOC_BUFFER(buzzer_mode_loc, sizeof(my_buzzer_mode));
+    if(buzzer_mode_loc == NULL)
+    {
+        MY_LOG_ERR("buzzer_mode_loc malloc failed");
+        return;
+    }
+    *buzzer_mode_loc = buzzer_mode;
+
+    // 构建消息结构体并发送给MAIN模块
+    msg.msgID = MY_MSG_CTRL_BUZZER_MODE;
+    msg.pData = buzzer_mode_loc;
+
+    my_send_msg_data(MOD_CTRL, MOD_CTRL, &msg);
 }
 
 /**
@@ -1436,7 +1432,7 @@ void g_buzzer_ctrl_config(int on_time, int off_time, int repeat)
 **注意事项:  时间单位统一为 100ms。定时器周期固定为 100ms。
 ********************************************************************
 */
-void my_buzzer_play(int buzzer_mode)
+void my_buzzer_play(my_buzzer_mode buzzer_mode)
 {
     MY_LOG_INF("buzzer_mode = %d", buzzer_mode);
     switch(buzzer_mode)
@@ -1638,7 +1634,14 @@ static void my_ctrl_task(void *p1, void *p2, void *p3)
                 break;
 
             case MY_MSG_CTRL_BUZZER_MODE:
-                my_buzzer_play(g_buzzer_mode);
+                if (msg.pData)
+                {
+                    my_buzzer_play(*(my_buzzer_mode *)msg.pData);
+                    //释放内存
+                    MY_FREE_BUFFER(msg.pData);
+                    msg.pData = NULL;
+                }
+
                break;
 
             case MY_MSG_CTRL_BUZZER_ON:
@@ -1681,31 +1684,32 @@ static void my_ctrl_task(void *p1, void *p2, void *p3)
 *********************************************************************/
 int my_ctrl_init(k_tid_t *tid)
 {
-    /* 1. 初始化按键、光感、剪线、LED GPIO、motor、batt */
-    misc_io_init();
-    leds_init();
-    motor_gpio_init();
-    batt_gpio_init();
-    batt_adc_init();
-
-    /* 2. 初始化蜂鸣器 PWM */
-    if (!pwm_is_ready_dt(&buzzer))
-    {
-        MY_LOG_ERR("Buzzer PWM not ready");
-        return -ENODEV;
-    }
-
-    /* 3. 初始化消息队列 */
+    // 初始化消息队列
     my_init_msg_handler(MOD_CTRL, &my_ctrl_msgq);
 
-    /* 4. 启动控制线程 */
+    // 启动控制线程
     *tid = k_thread_create(&my_ctrl_task_data, my_ctrl_task_stack,
                            K_THREAD_STACK_SIZEOF(my_ctrl_task_stack),
                            my_ctrl_task, NULL, NULL, NULL,
                            MY_CTRL_TASK_PRIORITY, 0, K_NO_WAIT);
 
-    /* 5. 设置线程名称 */
+    // 设置线程名称
     k_thread_name_set(*tid, "MY_CTRL");
+
+    //  初始化按键、光感、剪线、LED GPIO、motor、batt
+    misc_io_init();
+    leds_init();
+    motor_gpio_init();
+    // 注：初始化中会立即开启定时器触发batt_update_timer_handler回调，会向ctrl发送消息（由于未初始化会丢消息），需放在ctrl初始化之后
+    batt_adc_init();
+    batt_gpio_init();
+
+    // 初始化蜂鸣器 PWM
+    if (!pwm_is_ready_dt(&buzzer))
+    {
+        MY_LOG_ERR("Buzzer PWM not ready");
+        return -ENODEV;
+    }
 
     /* 启动时响一声提示音 */
     my_ctrl_buzzer_play_tone(2000, 100);

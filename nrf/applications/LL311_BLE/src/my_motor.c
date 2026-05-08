@@ -73,6 +73,8 @@ void motor_power_set(bool on)
 *********************************************************************/
 void req_open_lock_action(void)
 {
+    //开启电机电源
+    motor_power_set(true);
     /* 标记正在开锁中 */
     s_bOpenLockingState = true;
     k_timer_stop(&motor_timeout_timer);
@@ -93,6 +95,8 @@ void req_open_lock_action(void)
 *********************************************************************/
 void req_close_lock_action(void)
 {
+    //开启电机电源
+    motor_power_set(true);
     k_timer_stop(&motor_timeout_timer);
 
     MY_LOG_INF("%s:run", __func__);
@@ -119,6 +123,9 @@ void stop_lock_action(void)
     /* 关掉方向输出 */
     gpio_pin_set_dt(&motor_a, 0);
     gpio_pin_set_dt(&motor_b, 0);
+
+    //关闭电机电源
+    motor_power_set(false);
 }
 
 void send_lock_result_event(const char *lock_msg_data)
@@ -223,8 +230,6 @@ static void openlock_posdet_timer_handler(struct k_timer *timer)
                 g_bBleLockState = LOCK_STOP;
 
                 send_lock_result_event(unlock_success);
-                // buzzer进行解锁成功提示
-                my_set_buzzer_mode(BUZZER_UNLOCK_SUCCESS);
             }
             // 如果是网络开锁触发，需走异步回复
             if (g_netLockState == UNLOCKING)
@@ -286,8 +291,6 @@ static void closelock_posdet_timer_handler(struct k_timer *timer)
             {
                 g_bBleLockState = LOCK_STOP;
                 send_lock_result_event(lock_success);
-                //buzzer进行关锁成功提示
-                my_set_buzzer_mode(BUZZER_EVENT_LOCK_SUCCESS);
             }
             // 如果是网络关锁触发，需走异步回复
             if (g_netLockState == LOCKING)
@@ -401,8 +404,6 @@ static void motor_timer_timeout_handler(struct k_timer *timer)
         g_bBleLockState = LOCK_STOP;
 
         send_lock_result_event(unlock_fail);
-        //buzzer进行解锁失败提示
-        my_set_buzzer_mode(BUZZER_EVENT_LOCK_FAIL);
     }
     /* 如果是蓝牙关锁触发，通知蓝牙线程关锁失败 */
     else if (g_bBleLockState == LOCKING)
@@ -410,8 +411,6 @@ static void motor_timer_timeout_handler(struct k_timer *timer)
         g_bBleLockState = LOCK_STOP;
 
         send_lock_result_event(lock_fail);
-        // buzzer进行关锁失败提示
-        my_set_buzzer_mode(BUZZER_EVENT_LOCK_FAIL);
     }
 
     if (g_netLockState == UNLOCKING)
@@ -463,7 +462,7 @@ int motor_gpio_init(void)
     ret = gpio_pin_configure_dt(&motor_b, GPIO_OUTPUT_INACTIVE);
     if (ret) return ret;
 
-    /* 电源默认关闭 */
+    //电源默认关闭(目前这个IO控制只用在电机，NFC和蜂鸣器直接电池供电)
     ret = gpio_pin_configure_dt(&motor_pwr_en, GPIO_OUTPUT_INACTIVE);
     if (ret) return ret;
 
@@ -505,8 +504,6 @@ int motor_gpio_init(void)
 
     k_timer_init(&motor_timeout_timer, motor_timer_timeout_handler, NULL);
 
-    // 默认开启马达/蜂鸣器/NFC电源
-    motor_power_set(true);
     // 默认高阻状态
     stop_lock_action();
     return 0;

@@ -325,7 +325,8 @@ void batt_chg_stat_handle(struct k_timer *timer)
 *********************************************************************/
 void batt_chg_det_handle(struct k_timer *timer)
 {
-    static int s_last_chg_det_level = 0;    // 上一次充电检测引脚电平，用于消抖处理
+    //-1默认未知状态有可能上电就是插着的状态
+    static int s_last_chg_det_level = -1;    // 上一次充电检测引脚电平，用于消抖处理
 
     // 如果当前检测到的电平与上一次保存的电平相同，说明是抖动，直接返回
     if (g_chg_det_level == s_last_chg_det_level)
@@ -553,7 +554,7 @@ int8_t my_battery_read_percent()
 }
 
 /*********************************************************************
-**函数名称:  my_battery_update_state
+**函数名称:  my_battery_event_reporting
 **入口参数:  无
 **出口参数:  无
 **函数功能:  通过比较当前电池状态与上次记录的电池状态，

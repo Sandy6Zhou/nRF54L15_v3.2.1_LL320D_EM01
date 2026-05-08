@@ -111,14 +111,13 @@ typedef enum
 /* ========== 告警类型枚举 ========== */
 typedef enum
 {
-    ALARM_OPEN = 0,         // 拆壳告警
+    ALARM_OPEN = 1,         // 拆壳告警
     ALARM_ILLEGALUNLOCK,    // 非法解锁告警
     ALARM_LOCK,             // 锁状态告警
     ALARM_MOTION,           // 运动状态告警
     ALARM_BATT,             // 电池状态告警
     ALARM_CHARGE,           // 充电状态告警
     ALARM_IMPACT,           // 撞击检测告警
-    ALARM_SEPARATE,         // 蓝牙分离告警
     ALARM_NFC,              // NFC告警
     ALARM_CUT,              // 剪线告警
     ALARM_LOCKPIN,          // 锁销状态告警

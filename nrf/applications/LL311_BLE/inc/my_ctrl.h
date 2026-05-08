@@ -37,10 +37,8 @@ typedef enum
     BUZZER_EVENT_LOCK_FAIL,             // 上锁/解锁失败提示(滑块异常): 3次长鸣, 每次1000ms, 间隔500ms
     BUZZER_EVENT_NFC_ACTIVATE,          // NFC激活提示: 蜂鸣器提示 100ms
 
-    BUZZER_EVENT_READ_NFC_SUCCESS        // 10: NFC 读卡成功 200ms
-} MY_BUZZER_MODE;
-
-extern int g_buzzer_mode;
+    BUZZER_EVENT_READ_NFC_SUCCESS        // 9: NFC 读卡成功 200ms
+} my_buzzer_mode;
 
 extern uint8_t g_nfc_card_index; // 处理NFC刷卡事件卡号索引
 extern int g_last_card_index;
@@ -167,7 +165,18 @@ void my_lock_led_msg_send(MY_LOCK_LED_MODE mode);
 *********************************************************************/
 bool get_lockpin_insert_state(void);
 
-void my_set_buzzer_mode(int buzzer_mode);
+/**
+********************************************************************
+**函数名称：  my_set_buzzer_mode
+**入口参数：  buzzer_mode - 蜂鸣器模式枚举值 (my_buzzer_mode)
+**                        例如: BUZZER_STOP, BUZZER_EVENT_NFC_SUCCESS 等
+**出口参数：  无
+**函数功能：  设置蜂鸣器工作模式并触发控制任务处理
+**返 回 值：  无
+**功能描述：  向控制模块 (MOD_CTRL) 发送消息 (MY_MSG_CTRL_BUZZER_MODE)
+********************************************************************
+*/
+void my_set_buzzer_mode(my_buzzer_mode buzzer_mode);
 
 /********************************************************************
 **函数名称:  send_alarm_message_to_lte

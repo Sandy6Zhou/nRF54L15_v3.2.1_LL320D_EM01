@@ -12,7 +12,18 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260429"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260506"
+/* 软件版本:        V1.0
+** 完成日期:        2026.05.06
+** 作    者:        吴楚庆 (wuchuqing@jimiiot.com)
+** 修改内容:        1.修复蜂鸣器全局变量竞态问题
+**                 2. 修复在充电状态下开机，LED灯会按正常显示，但是拔掉充电，LED还是按插着充电的情况显示和
+                    充电状态下开机，偶尔出现指示灯不显示（读取电量的线程跑不起来）
+**                 3.更改上报告警类型从字符串改为发枚举类型
+**                 4.在电机启动加上开启电机电源，停止关闭，初始化默认关闭
+***/
+
+//#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260429"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.04.29
 ** 作    者:        周森达 (zhousenda@jimiiot.com)

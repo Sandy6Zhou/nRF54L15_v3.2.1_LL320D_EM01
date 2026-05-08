@@ -923,9 +923,7 @@ static int cmd_buzzer_test(const struct shell *sh, size_t argc, char **argv)
     shell_test_buff[len] = 0;
 
     shell_print(sh, "param: %s, len: %d", argv[1], len);
-
-    g_buzzer_mode = atoi(argv[1]);
-    my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_CTRL_BUZZER_MODE);
+    my_set_buzzer_mode(atoi(argv[1]));
 
     return 0;
 }
