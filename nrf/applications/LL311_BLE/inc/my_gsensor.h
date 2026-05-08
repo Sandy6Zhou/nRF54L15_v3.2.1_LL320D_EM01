@@ -21,9 +21,8 @@
 // 建议根据实际场景实测调整：若频繁误唤醒可提高到 3~4（约366~488mg）
 #define GSENSOR_WAKEUP_THRESHOLD            2
 #define GSENSOR_WAKEUP_DURATION             2           // 唤醒持续时间（2=3个ODR周期@15Hz≈200ms，过滤瞬态噪声）
-#define GSENSOR_STATE_HYSTERESIS_COUNT      3           // 状态切换滞后次数：连续N次检测到相同状态才确认切换
 #define GSENSOR_SAMPLE_INTERVAL_MS          (60 * 1000) // 周期采样间隔60秒（智能模式下主定时器触发一次窗口采集）
-#define GSENSOR_BURST_SAMPLE_INTERVAL_MS    10          // 批量采样间隔10ms（窗口数据不足时高速连续采集直至窗口填满）
+#define GSENSOR_BURST_SAMPLE_INTERVAL_MS    40          // 批量采样间隔40ms（窗口数据不足时高速连续采集直至窗口填满）
 #define GSENSOR_INT_DEBOUNCE_MS             50          // INT1 唤醒中断消抖时间，避免电平抖动导致重复触发
 #define GSENSOR_WAKEUP_GUARD_MS             350         // 唤醒模式配置稳定期，覆盖200ms ODR稳定+50ms消抖+100ms余量
 
@@ -31,12 +30,7 @@
 #define LSM6DSVD_ACC_SENSITIVITY            0.061f     // 灵敏度 0.061 mg/LSB（±2g时，文档Table 3）
 #define LSM6DSVD_GYRO_SENSITIVITY           4.375f     // 灵敏度 4.375 mdps/LSB（±125dps量程，分辨率加倍）
 
-#define WINDOW_SIZE                         50         // 滑动窗口大小（约0.42秒数据，120Hz×50≈0.417s）
-
-/* 运动状态判决阈值（基于陆运/海运物理特征标定） */
-#define ACC_VAR_STATIC_THRESHOLD            0.0003f    // 静止判定：加速度方差上限（g²）
-#define ACC_VAR_MID_THRESHOLD               0.008f     // 中等振动：加速度方差上限（g²）
-#define ACC_VAR_STRONG_THRESHOLD            0.015f     // 强振动：加速度方差下限（g²）
+#define WINDOW_SIZE                         250         // 滑动窗口大小（约0.42秒数据，120Hz×50≈0.417s）
 
 /* 持续运动判定：合角速度均值下限（dps）
  * 阈值需覆盖陀螺仪噪声基底（±125dps量程下零偏校准后噪声约0.5~0.8dps）
@@ -68,27 +62,33 @@ struct gsensor_data
     int16_t gyro_raw_z;
 };
 
+/* ============================================================
+ *  IMU原始数据结构: 单个采样点的6轴数据
+ * ============================================================ */
+typedef struct {
+    float acc_x;
+    float acc_y;
+    float acc_z;                  /* 三轴加速度 (m/s^2) */
+    float gyro_x;
+    float gyro_y;
+    float gyro_z;               /* 三轴角速度 (rad/s) */
+} IMUReading;
+
 /* GSENSOR 运行时上下文结构体 */
 typedef struct
 {
     /* 滑动窗口相关 */
-    float acc_magnitude_window[WINDOW_SIZE];    // 合加速度滑动窗口数据（单位g）
-    float gyro_magnitude_window[WINDOW_SIZE];   // 合角速度滑动窗口数据（单位dps）
-    uint8_t window_index;                       // 当前窗口写入索引
+    IMUReading imu_readings[WINDOW_SIZE];
+    uint16_t window_index;                       // 当前窗口写入索引
 
     /* 传感器状态 */
     bool sensor_ready;                          // 传感器是否已初始化并就绪
 
     /* 运动状态判定相关 */
     uint32_t sample_count;                      // 累计采样次数，用于判断滑动窗口是否已填满
-    bool window_ready;                          // 滑动窗口是否已满，满后才能进行方差计算
+    bool window_ready;                          // 滑动窗口是否已满，满后才能进行状态判断
     gsensor_state_t last_gsensor_state;         // 上次上报的运动状态，用于检测状态变化避免重复上报
     gsensor_state_t current_gsensor_state;      // 当前运动状态（静止/陆运/海运/未知）
-    gsensor_state_t state_candidate;            // 状态切换候选状态，用于滞后机制
-    uint8_t state_hysteresis_count;             // 状态切换滞后计数，连续达到阈值才确认切换
-
-    /* 陀螺仪零偏校准 */
-    float gyro_bias[3];                         // 陀螺仪三轴零偏（dps），静止时校准
 } gsensor_runtime_ctx_t;
 
 extern gsensor_runtime_ctx_t g_gsensor_runtime_ctx;
@@ -147,6 +147,14 @@ bool lsm6dsv16x_check_id(void);
 *********************************************************************/
 uint8_t get_chip_id(void);
 
-extern gsensor_runtime_ctx_t g_gsensor_runtime_ctx;
+/********************************************************************
+**函数名称:  get_motion_status
+**入口参数:  无
+**出口参数:  无
+**函数功能:  获取当前运动状态，根据状态设置LTE电源定时器间隔
+**返 回 值:  无
+*********************************************************************/
+void get_motion_status(void);
+
 
 #endif /* _MY_GSENSOR_H_ */

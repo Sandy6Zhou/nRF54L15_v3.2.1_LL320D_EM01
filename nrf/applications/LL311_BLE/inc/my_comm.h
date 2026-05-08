@@ -278,6 +278,7 @@ typedef enum
 #include "my_lte.h"
 #include "my_nfc.h"
 #include "my_gsensor.h"
+#include "my_gsensor_algorithm.h"
 #include "my_motor.h"
 #include "my_battery.h"
 // #include "my_wdt.h"

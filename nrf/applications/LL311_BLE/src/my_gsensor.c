@@ -17,6 +17,8 @@
 #include "my_comm.h"
 #include "lsm6dsv16x_reg.h"
 
+#define GET_IMU_DATA 0 // 打开收集G_Sensor数据
+
 /* GSENSOR 中断消抖控制结构体 */
 typedef struct
 {
@@ -28,18 +30,17 @@ typedef struct
 /* GSENSOR 运行时上下文全局实例 */
 gsensor_runtime_ctx_t g_gsensor_runtime_ctx =
 {
-    .acc_magnitude_window = {0},
-    .gyro_magnitude_window = {0},
+    .imu_readings = {0},
     .window_index = 0,
     .sensor_ready = false,
     .sample_count = 0,
     .window_ready = false,
     .last_gsensor_state = STATE_UNKNOWN,
     .current_gsensor_state = STATE_STATIC,
-    .state_candidate = STATE_UNKNOWN,
-    .state_hysteresis_count = 0,
-    .gyro_bias = {0},
 };
+
+StateMachine sm_batch;                          // 状态机实例
+BayesianClassifier bayes_clf;                  /* 贝叶斯分类器实例 */
 
 /* 注册 G-Sensor 模块日志 */
 LOG_MODULE_REGISTER(my_gsensor, LOG_LEVEL_INF);
@@ -204,15 +205,13 @@ static void gsensor_start_sample_timer(void)
 *********************************************************************/
 static void gsensor_reset_sample_window(void)
 {
-    // 清零合加速度滑动窗口（环形缓存）
-    memset(g_gsensor_runtime_ctx.acc_magnitude_window, 0, sizeof(g_gsensor_runtime_ctx.acc_magnitude_window));
-    // 清零合角速度滑动窗口（环形缓存）
-    memset(g_gsensor_runtime_ctx.gyro_magnitude_window, 0, sizeof(g_gsensor_runtime_ctx.gyro_magnitude_window));
+    // 清零IMU滑动窗口（环形缓存）
+    memset(g_gsensor_runtime_ctx.imu_readings, 0, sizeof(g_gsensor_runtime_ctx.imu_readings));
     // 重置窗口写索引（从头开始填充）
     g_gsensor_runtime_ctx.window_index = 0;
     // 重置采样计数（窗口数据量归零）
     g_gsensor_runtime_ctx.sample_count = 0;
-    // 标记窗口未满（需重新填满50个数据点才可计算方差）
+    // 标记窗口未满（需重新填满500个数据点）
     g_gsensor_runtime_ctx.window_ready = false;
 }
 
@@ -226,12 +225,11 @@ static void gsensor_reset_sample_window(void)
 *********************************************************************/
 static void gsensor_reset_state(void)
 {
-    // 重置滞后计数
-    g_gsensor_runtime_ctx.state_hysteresis_count = 0;
-    // 清除当前运动状态（防止残留状态导致错误决策）
-    g_gsensor_runtime_ctx.current_gsensor_state = STATE_UNKNOWN;
-    // 重置状态切换候选
-    g_gsensor_runtime_ctx.state_candidate = STATE_UNKNOWN;
+    sm_batch.candidate_count = 0;           // 重置状态切换候选计数
+
+    sm_batch.current_mode = STATE_UNKNOWN; // 重置当前状态
+
+    sm_batch.candidate_mode = STATE_UNKNOWN; // 重置状态切换候选
 }
 
 /********************************************************************
@@ -406,138 +404,44 @@ static float gsensor_calc_window_mean(const float *window, uint8_t size)
 }
 
 /********************************************************************
-**函数名称:  gsensor_calibrate_gyro_bias
-**入口参数:  无
-**出口参数:  无
-**函数功能:  校准陀螺仪零偏
-**            在传感器初始化后、正常运行前调用，设备需保持静止
-**返 回 值:  无
-*********************************************************************/
-static void gsensor_calibrate_gyro_bias(void)
-{
-    int16_t gyro_raw[3];
-    float sum_x = 0.0f, sum_y = 0.0f, sum_z = 0.0f;
-    uint8_t i;
-    uint8_t success_count = 0;
-
-    // 连续采样50次计算零偏，仅统计成功读取的样本
-    for (i = 0; i < 50; i++)
-    {
-        if (lsm6dsv16x_angular_rate_raw_get(&lsm_ctx, gyro_raw) == 0)
-        {
-            sum_x += gyro_raw[0];
-            sum_y += gyro_raw[1];
-            sum_z += gyro_raw[2];
-            success_count++;
-        }
-        k_msleep(10);
-    }
-
-    if (success_count > 0)
-    {
-        // 计算平均值并转换为 dps
-        g_gsensor_runtime_ctx.gyro_bias[0] = (sum_x / success_count) * LSM6DSVD_GYRO_SENSITIVITY * 1e-3f;
-        g_gsensor_runtime_ctx.gyro_bias[1] = (sum_y / success_count) * LSM6DSVD_GYRO_SENSITIVITY * 1e-3f;
-        g_gsensor_runtime_ctx.gyro_bias[2] = (sum_z / success_count) * LSM6DSVD_GYRO_SENSITIVITY * 1e-3f;
-        MY_LOG_INF("GYRO_CALIB bias=[%.3f,%.3f,%.3f]dps raw=[%.0f,%.0f,%.0f]LSB sens=%.3f",
-               g_gsensor_runtime_ctx.gyro_bias[0],
-               g_gsensor_runtime_ctx.gyro_bias[1],
-               g_gsensor_runtime_ctx.gyro_bias[2],
-               (sum_x / success_count),
-               (sum_y / success_count),
-               (sum_z / success_count),
-               LSM6DSVD_GYRO_SENSITIVITY);
-    }
-    else
-    {
-        MY_LOG_INF("gyro calibration failed.");
-    }
-}
-
-/********************************************************************
-**函数名称:  gsensor_apply_state_hysteresis
-**入口参数:  detected_state    ---        本次检测到的原始状态（输入）
-**出口参数:  无
-**函数功能:  应用统一状态切换滞后机制，防止状态在边界抖动
-**返 回 值:  无
-**详细说明:  任何状态切换都需要连续 GSENSOR_STATE_HYSTERESIS_COUNT 次
-**           检测到相同候选状态才确认切换
-*********************************************************************/
-static void gsensor_apply_state_hysteresis(gsensor_state_t detected_state)
-{
-    MY_LOG_INF("%s:%d,%d,%d", __func__, detected_state,g_gsensor_runtime_ctx.state_candidate,g_gsensor_runtime_ctx.state_hysteresis_count);
-    if (detected_state == g_gsensor_runtime_ctx.state_candidate)
-    {
-        g_gsensor_runtime_ctx.state_hysteresis_count++;
-
-        if (g_gsensor_runtime_ctx.state_hysteresis_count >= GSENSOR_STATE_HYSTERESIS_COUNT)
-        {
-            g_gsensor_runtime_ctx.current_gsensor_state = detected_state;
-            g_gsensor_runtime_ctx.state_hysteresis_count = 0;
-        }
-    }
-    else
-    {
-        g_gsensor_runtime_ctx.state_candidate = detected_state;
-        g_gsensor_runtime_ctx.state_hysteresis_count = 1;
-    }
-}
-
-/********************************************************************
 **函数名称:  analyze_gsensor_state
 **入口参数:  data      ---        加速度原始数据指针（输入）
             gyro_raw  ---        陀螺仪原始数据指针（输入）
 **出口参数:  无
-**函数功能:  分析GSENSOR数据，采用加速度/陀螺仪二维判决矩阵判断运动状态
+**函数功能:  分析GSENSOR数据，采用贝叶斯分类器判断运动状态,并更新状态机状态
 **返 回 值:  -1:表示数据不足, 0:表示数据可用
-**
-**判决矩阵（加速度方差 + 陀螺仪均值 + 陀螺仪方差）：
-**
-**    加速度方差(g²)        │ 陀螺均值(dps) │ 陀螺方差(dps²) │ 判定结果       │ 物理依据
-**    ────────────────────┼───────────────┼───────────────┼───────────────┼────────────────────────────────
-**    < 0.0003            │ < 1.5         │ -             │ STATE_STATIC  │ 完全静止
-**    < 0.0003            │ >= 1.5        │ -             │ STATE_SEA     │ 有持续角速度但加速度小 → 海运低频晃动
-**    0.0003 ~ 0.008      │ < 1.5         │ -             │ STATE_STATIC  │ 弱扰动静止（室内/仓库/静止船上）
-**    0.0003 ~ 0.008      │ >= 1.5        │ < 2.5         │ STATE_SEA     │ 低频振动 + 规律摇摆（海运核心区）
-**    0.0003 ~ 0.008      │ >= 1.5        │ >= 2.5        │ STATE_LAND    │ 弱振动但紊乱（车怠速/缓行）
-**    0.008 ~ 0.015       │ -             │ -             │ STATE_LAND    │ 中等振动（公路典型）
-**    >= 0.015            │ < 1.5         │ -             │ STATE_LAND    │ 强冲击振动（陆运）
-**    >= 0.015            │ >= 1.5        │ < 2.5         │ STATE_SEA     │ 大浪 + 强规律摇摆
-**    >= 0.015            │ >= 1.5        │ >= 2.5        │ STATE_LAND    │ 强颠簸 + 乱转
-**
-**阈值说明：
-**    ACC_VAR_STATIC_THRESHOLD = 0.0003 g²    静止判定上限
-**    ACC_VAR_MID_THRESHOLD    = 0.008 g²     中等振动上限
-**    ACC_VAR_STRONG_THRESHOLD = 0.015 g²     强振动下限
-**    GYRO_MEAN_MOTION_THRESHOLD = 1.5 dps    持续运动下限（需覆盖噪声基底0.5~0.8dps，海运通常>2dps）
-**    GYRO_VAR_SEA_THRESHOLD   = 2.5 dps²     海运方差上限
-**
 *********************************************************************/
 static int analyze_gsensor_state(const struct gsensor_data *data)
 {
-    float ax, ay, az, magnitude;
-    float gx, gy, gz, gyro_mag;
+    static gsensor_state_t last_state = STATE_UNKNOWN;
+    float ax, ay, az;
+    float gx, gy, gz;
     float acc_var, gyro_mean = 0.0f, gyro_var = 0.0f;
+    float raw_prob[NUM_MODES] = {0};      /* 构造状态机输入概率 */
+    float rem = 0.0f;                     /* 剩余概率 */
+    int m = 0;                            /* 模式索引 */
+    ClassificationResult br = {0};
 
-    gsensor_state_t detected_state;
-
-    // 1. 原始数据转换为实际加速度（单位：g）
-    ax = data->acc_raw_x * LSM6DSVD_ACC_SENSITIVITY * 1e-3f;
-    ay = data->acc_raw_y * LSM6DSVD_ACC_SENSITIVITY * 1e-3f;
-    az = data->acc_raw_z * LSM6DSVD_ACC_SENSITIVITY * 1e-3f;
-    magnitude = sqrtf(ax*ax + ay*ay + az*az);
-
-    // 2. 更新加速度滑动窗口
-    g_gsensor_runtime_ctx.acc_magnitude_window[g_gsensor_runtime_ctx.window_index] = magnitude;
+    // 1. 原始数据转换为实际加速度（单位：m/s^2）
+    ax = data->acc_raw_x * LSM6DSVD_ACC_SENSITIVITY * 1e-3f * 10.0f;
+    ay = data->acc_raw_y * LSM6DSVD_ACC_SENSITIVITY * 1e-3f * 10.0f;
+    az = data->acc_raw_z * LSM6DSVD_ACC_SENSITIVITY * 1e-3f * 10.0f;
 
     // 3.角速度减去零偏
-    gx = data->gyro_raw_x * LSM6DSVD_GYRO_SENSITIVITY * 1e-3f - g_gsensor_runtime_ctx.gyro_bias[0];
-    gy = data->gyro_raw_y * LSM6DSVD_GYRO_SENSITIVITY * 1e-3f - g_gsensor_runtime_ctx.gyro_bias[1];
-    gz = data->gyro_raw_z * LSM6DSVD_GYRO_SENSITIVITY * 1e-3f - g_gsensor_runtime_ctx.gyro_bias[2];
-    gyro_mag = sqrtf(gx*gx + gy*gy + gz*gz);
+    gx = data->gyro_raw_x * LSM6DSVD_GYRO_SENSITIVITY * 1e-3f;
+    gy = data->gyro_raw_y * LSM6DSVD_GYRO_SENSITIVITY * 1e-3f;
+    gz = data->gyro_raw_z * LSM6DSVD_GYRO_SENSITIVITY * 1e-3f;
 
-    // 4. 更新角速度滑动窗口
-    g_gsensor_runtime_ctx.gyro_magnitude_window[g_gsensor_runtime_ctx.window_index] = gyro_mag;
+    #if GET_IMU_DATA
+    LOG_INF("%f, %f, %f, %f, %f, %f", ax, ay, az, gx, gy, gz);
+    #endif
+    // 4. 更新IMU数据滑动窗口
+    g_gsensor_runtime_ctx.imu_readings[g_gsensor_runtime_ctx.window_index].acc_x = ax;
+    g_gsensor_runtime_ctx.imu_readings[g_gsensor_runtime_ctx.window_index].acc_y = ay;
+    g_gsensor_runtime_ctx.imu_readings[g_gsensor_runtime_ctx.window_index].acc_z = az;
+    g_gsensor_runtime_ctx.imu_readings[g_gsensor_runtime_ctx.window_index].gyro_x = gx;
+    g_gsensor_runtime_ctx.imu_readings[g_gsensor_runtime_ctx.window_index].gyro_y = gy;
+    g_gsensor_runtime_ctx.imu_readings[g_gsensor_runtime_ctx.window_index].gyro_z = gz;
 
     // 5. 推进环形索引
     g_gsensor_runtime_ctx.window_index++;
@@ -557,79 +461,23 @@ static int analyze_gsensor_state(const struct gsensor_data *data)
 
     g_gsensor_runtime_ctx.window_ready = true;
 
-    // 计算合加速度滑动窗口的方差，反映振动剧烈程度（方差越大 → 运动越剧烈）
-    acc_var = gsensor_calc_window_variance(g_gsensor_runtime_ctx.acc_magnitude_window, WINDOW_SIZE);
+    bayes_set_dynamic_prior(&bayes_clf, last_state); /* 设置动态先验 */
+    br = classify_bayesian(&bayes_clf, g_gsensor_runtime_ctx.imu_readings, WINDOW_SIZE); /* 贝叶斯分类 */
+    last_state = br.mode;
+    LOG_INF("br.mode = %d, br.confidence = %f", br.mode, br.confidence);
 
-    // 计算合角速度滑动窗口的均值与方差，均值反映是否存在持续旋转，方差反映旋转的稳定性
-    gyro_mean = gsensor_calc_window_mean(g_gsensor_runtime_ctx.gyro_magnitude_window, WINDOW_SIZE);
-    gyro_var = gsensor_calc_window_variance(g_gsensor_runtime_ctx.gyro_magnitude_window, WINDOW_SIZE);
-
-    MY_LOG_INF("window full acc_var=%.6f gyro_mean=%.3f gyro_var=%.3f bias=[%.3f,%.3f,%.3f]",
-                (double)acc_var, (double)gyro_mean, (double)gyro_var,
-                (double)g_gsensor_runtime_ctx.gyro_bias[0],
-                (double)g_gsensor_runtime_ctx.gyro_bias[1],
-                (double)g_gsensor_runtime_ctx.gyro_bias[2]);
-
-    if (acc_var < ACC_VAR_STATIC_THRESHOLD)
-    {
-        // 完全静止
-        if (gyro_mean < GYRO_MEAN_MOTION_THRESHOLD)
+    raw_prob[mode_to_best(br.mode)] = br.confidence;     /* 主模式概率 = 置信度 */
+    rem = 1.0f - br.confidence;      /* 剩余概率 */
+    for (m = 0; m < NUM_MODES; m++)
+    {  /* 分配剩余概率 */
+        if (m != mode_to_best(br.mode))
         {
-            detected_state = STATE_STATIC;
-        }
-        else
-        {
-            // 有持续角速度但加速度小 → 海运低频晃动
-            detected_state = STATE_SEA_TRANSPORT;
+            raw_prob[m] = rem / 2.0f; /* 非主模式均分剩余 */
         }
     }
-    else if (acc_var < ACC_VAR_MID_THRESHOLD)
-    {
-        // 弱振动区间（0.0003~0.008 g²）
-        if (gyro_mean < GYRO_MEAN_MOTION_THRESHOLD)
-        {
-            // 无持续角速度 → 弱扰动静止
-            detected_state = STATE_STATIC;
-        }
-        else if (gyro_var < GYRO_VAR_SEA_THRESHOLD)
-        {
-            // 有持续角速度 + 低方差 → 海运
-            detected_state = STATE_SEA_TRANSPORT;
-        }
-        else
-        {
-            // 有持续角速度 + 高方差 → 紊乱，陆运
-            detected_state = STATE_LAND_TRANSPORT;
-        }
-    }
-    else if (acc_var < ACC_VAR_STRONG_THRESHOLD)
-    {
-        // 中等振动（0.008~0.015 g²）→ 陆运
-        detected_state = STATE_LAND_TRANSPORT;
-    }
-    else
-    {
-        // 强振动（>= 0.015 g²）
-        if (gyro_mean < GYRO_MEAN_MOTION_THRESHOLD)
-        {
-            // 无持续角速度 → 陆运强冲击
-            detected_state = STATE_LAND_TRANSPORT;
-        }
-        else if (gyro_var < GYRO_VAR_SEA_THRESHOLD)
-        {
-            // 有持续角速度 + 低方差 → 海运大浪
-            detected_state = STATE_SEA_TRANSPORT;
-        }
-        else
-        {
-            // 有持续角速度 + 高方差 → 陆运强颠簸
-            detected_state = STATE_LAND_TRANSPORT;
-        }
-    }
-    MY_LOG_INF("detected_state:%d", detected_state);
-    // 7. 应用统一状态切换滞后机制
-    gsensor_apply_state_hysteresis(detected_state);
-
+    g_gsensor_runtime_ctx.last_gsensor_state = g_gsensor_runtime_ctx.current_gsensor_state;
+    g_gsensor_runtime_ctx.current_gsensor_state = sm_update(&sm_batch, raw_prob); /* 状态机更新 */
+    LOG_INF("g_gsensor_runtime_ctx.current_gsensor_state = %d", g_gsensor_runtime_ctx.current_gsensor_state);
     return 0;
 }
 
@@ -905,6 +753,7 @@ static void gsensor_handle_read_msg(void)
         return;
     }
 
+
     // GSENSOR 仅在智能模式下生效，非智能模式直接返回
     if (gsensor_is_smart_mode() != true)
     {
@@ -1010,6 +859,8 @@ static void my_gsensor_task(void *p1, void *p2, void *p3)
 
     MY_LOG_INF("G-Sensor thread started");
 
+    LOG_INF("Training complete!\n");
+
     for (;;)
     {
         my_recv_msg(&my_gsensor_msgq, (void *)&msg, sizeof(MSG_S), K_FOREVER);
@@ -1053,10 +904,6 @@ static void my_gsensor_task(void *p1, void *p2, void *p3)
                 {
                     gsensor_resume_and_read();
                 }
-                break;
-
-            case MY_MSG_MODESET_UPDATE:
-                get_motion_status();
                 break;
 
             default:
@@ -1187,9 +1034,6 @@ int my_lsm6dsv16x_init(void)
 
         // 5.确保陀螺仪启动稳定时间
         k_sleep(K_MSEC(50));
-
-        // 6.首次初始化时强制校准，确保零偏准确
-        gsensor_calibrate_gyro_bias();
     }
     else
     {
@@ -1254,6 +1098,9 @@ int my_gsensor_init(k_tid_t *tid)
         my_gsensor_pwr_on(false);
         return err;
     }
+
+    bayes_init(&bayes_clf);                        /* 初始化分类器, 加载模型参数 */
+    sm_init(&sm_batch);                            /* 初始化状态机 */
 
     /* 4. 初始化消息队列 */
     my_init_msg_handler(MOD_GSENSOR, &my_gsensor_msgq);

@@ -34,8 +34,9 @@
 #define BLE_LOG_MOD_TOOL    11 /* 工具模块 */
 #define BLE_LOG_MOD_PARAM   12 /* 参数模块 */
 #define BLE_LOG_MOD_WDT     13 /* 看门狗模块 */
-#define BLE_LOG_MOD_OTHER   14 /* 其他模块 */
-#define BLE_LOG_MOD_MAX     15 /* 最大模块数 */
+#define BLE_LOG_MOD_ALGORITHM 14 /* 算法模块 */
+#define BLE_LOG_MOD_OTHER   15 /* 其他模块 */
+#define BLE_LOG_MOD_MAX     16 /* 最大模块数 */
 
 /* 获取指定模块在 mod_en bitmap 中的开关状态
  * 使用32位bitmap，mod_id 直接对应位位置 (0-31) */
