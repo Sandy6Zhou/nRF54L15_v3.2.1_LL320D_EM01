@@ -219,7 +219,7 @@ typedef enum
     MY_MSG_GSENSOR_PWRON,
     MY_MSG_GSENSOR_PWROFF,
     MY_MSG_GSENSOR_READ, /* G-Sensor 读取六轴数据 */
-    MY_MSG_GSENSOR_WAKEUP_INT, /* G-Sensor 唤醒中断消息 */
+    MY_MSG_GSENSOR_FIFO_INT, /* G-Sensor FIFO中断消息 */
     MY_MSG_MODESET_UPDATE,  // 处理智能模式下参数设置更新
 
     /* NFC处理程序消息 */

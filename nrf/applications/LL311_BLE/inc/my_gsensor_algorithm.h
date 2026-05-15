@@ -11,7 +11,7 @@
 
 #include "my_gsensor.h"
 
-#define IMU_SAMPLE_RATE  (1000.0 / GSENSOR_BURST_SAMPLE_INTERVAL_MS)                   /* IMU采样率: 50Hz, 即每秒100个采样点 */
+#define IMU_SAMPLE_RATE  30.0                   /* IMU采样率: 30Hz, 即每秒30个采样点, extract_features函数需要用它做除法转换float,不然除数为0，所以后面要加.0 */
 #define PI 3.14159265358979323846                /* 圆周率常量 */
 #define NUM_MODES 3                              /* 运输模式数量: 静止/陆运/海运 */
 #define FEATURE_DIM 8                            /* 特征向量维度: 8个关键特征 */

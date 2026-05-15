@@ -330,12 +330,15 @@ void send_work_mode_command(MY_WORK_MODE mode)
 void switch_work_mode(MY_WORK_MODE mode)
 {
     lte_boot_reason_t boot_reason;
+    static MY_WORK_MODE last_mode = MY_MODE_SHUTDOWN;
 
     // 当前模式与目标模式相同，无需切换
-    if (gConfigParam.device_workmode_config.workmode_config.current_mode == mode)
+    if (last_mode == mode)
     {
         return;
     }
+
+    last_mode = mode;
 
     // 根据工作模式设置对应的开机原因
     switch (mode)
@@ -366,8 +369,15 @@ void switch_work_mode(MY_WORK_MODE mode)
     gConfigParam.device_workmode_config.workmode_config.current_mode = mode;
     my_send_msg(MOD_MAIN, MOD_MAIN, MY_MSG_WORK_MODE_SWITCH);
 
-    // 4G模块已就绪，发送工作模式消息
-    send_work_mode_command(mode);
+    if (g_bLteReady == true)
+    {
+        // 4G模块已就绪，发送工作模式消息
+        send_work_mode_command(mode);
+    }
+    else
+    {
+        my_send_msg(MOD_MAIN, MOD_LTE, MY_MSG_LTE_PWRON);  // 发送开启 LTE 电源的消息
+    }
 
     // 工作模式切换时根据配置的扫描模式决定是否上报扫描数据
     my_scan_upload_on_lte_wakeup();
@@ -719,6 +729,8 @@ int main(void)
 
     /* 初始化主线程消息队列 */
     my_init_msg_handler(MOD_MAIN, &my_main_msgq);
+
+    switch_work_mode(gConfigParam.device_workmode_config.workmode_config.current_mode);
 
     /* 主循环：等待并处理消息，逻辑已迁移至各线程 */
     for (;;)

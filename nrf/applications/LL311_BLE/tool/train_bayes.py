@@ -26,7 +26,7 @@ import math
 import random
 from collections import defaultdict
 
-SAMPLE_RATE = 25.00
+SAMPLE_RATE = 30.00
 WINDOW_SIZE = 250
 FEATURE_DIM = 8
 PI = 3.14159265358979323846

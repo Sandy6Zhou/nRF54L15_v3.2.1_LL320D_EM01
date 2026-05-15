@@ -16,31 +16,14 @@
 /* 智能模式时间间隔定义（单位：秒） */
 #define STATIC_INTERVAL         (24 * 60 * 60)   // 静止状态：24小时
 
-// 唤醒阈值（LSB单位，±2g量程下约122mg/LSB，值2≈244mg）
-// 注意：244mg 阈值偏低，静止船只的缓慢海浪或环境微振动可能误触发唤醒
-// 建议根据实际场景实测调整：若频繁误唤醒可提高到 3~4（约366~488mg）
-#define GSENSOR_WAKEUP_THRESHOLD            2
-#define GSENSOR_WAKEUP_DURATION             2           // 唤醒持续时间（2=3个ODR周期@15Hz≈200ms，过滤瞬态噪声）
 #define GSENSOR_SAMPLE_INTERVAL_MS          (60 * 1000) // 周期采样间隔60秒（智能模式下主定时器触发一次窗口采集）
-#define GSENSOR_BURST_SAMPLE_INTERVAL_MS    40          // 批量采样间隔40ms（窗口数据不足时高速连续采集直至窗口填满）
 #define GSENSOR_INT_DEBOUNCE_MS             50          // INT1 唤醒中断消抖时间，避免电平抖动导致重复触发
-#define GSENSOR_WAKEUP_GUARD_MS             350         // 唤醒模式配置稳定期，覆盖200ms ODR稳定+50ms消抖+100ms余量
 
 // 传感器相关宏定义（基于LSM6DSVD文档特性）
 #define LSM6DSVD_ACC_SENSITIVITY            0.061f     // 灵敏度 0.061 mg/LSB（±2g时，文档Table 3）
 #define LSM6DSVD_GYRO_SENSITIVITY           4.375f     // 灵敏度 4.375 mdps/LSB（±125dps量程，分辨率加倍）
 
 #define WINDOW_SIZE                         250         // 滑动窗口大小（约0.42秒数据，120Hz×50≈0.417s）
-
-/* 持续运动判定：合角速度均值下限（dps）
- * 阈值需覆盖陀螺仪噪声基底（±125dps量程下零偏校准后噪声约0.5~0.8dps）
- * 海运持续角速度通常>2dps，陆运静止时<0.5dps，1.5dps为可靠分界
- */
-#define GYRO_MEAN_MOTION_THRESHOLD          1.5f
-/* 海运判定：合角速度方差上限（dps²）
- * 海运低频规律摇摆方差小，陆运频繁转向方差大
- */
-#define GYRO_VAR_SEA_THRESHOLD              2.5f
 
 /* 智能模式状态枚举 */
 typedef enum

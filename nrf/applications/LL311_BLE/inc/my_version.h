@@ -12,7 +12,15 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260508"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260511"
+/* 软件版本:        V1.0
+** 完成日期:        2026.05.11
+** 作    者:        曹阳 (caoyang@jimiiot.com)
+** 修改内容:       1.修复系统启动后没有按预设模式运行的bug
+**                2.将软件轮询读取G-Sensor数据改为FIFO中断触发读取
+***/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260508"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.05.08
 ** 作    者:        周森达 (zhousenda@jimiiot.com)
