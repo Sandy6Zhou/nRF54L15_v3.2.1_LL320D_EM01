@@ -132,7 +132,7 @@ typedef struct                              // 存储的防拆报警配置参数
 {
     uint8_t flag;                           // 参数有效标志
     uint8_t remalm_sw;                      // 防拆报警开关: 0-OFF, 1-ON
-    uint8_t remalm_mode;                    // 报警上报方式: 0-GPRS, 1-GPRS+SMS, 2-GPRS+SMS+CALL
+    uint8_t remalm_mode;                    // 报警上报方式: 0-不上报, 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
 } RemAlmConfig_t;
 
 typedef struct                              // 存储的锁销非法拔除报警配置参数

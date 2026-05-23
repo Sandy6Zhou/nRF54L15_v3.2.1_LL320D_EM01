@@ -321,7 +321,7 @@ static int gsensor_apply_run_mode_config(void)
     GSENSOR_REG_CHECK(ret);
 
     // 等待陀螺仪启动稳定
-    k_sleep(K_MSEC(30));
+    k_sleep(K_MSEC(50));
 
     // 配置 FIFO 水印阈值
     ret = lsm6dsv16x_fifo_watermark_set(&lsm_ctx, FIFO_WATERMARK);

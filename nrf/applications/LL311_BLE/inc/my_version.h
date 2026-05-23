@@ -12,7 +12,20 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260518"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260521"
+/* 软件版本:        V1.0
+** 完成日期:        2026.05.21
+** 作    者:        曹阳 (caoyang@jimiiot.com)
+** 修改内容:       1. 修复拆壳检测的上报方式以及不告警的情况
+**                 2.修复进入超低功耗模式后按键不能唤醒的问题
+**                 3.修复蓝牙设置功率配置错误的问题
+**                 4.修复NFC刷卡解锁扫描时间不对的问题
+**                 5.修复设置NFC卡为管理员卡，但是还是不能用卡解锁的问题
+**                 6.修复BT_UPDATA#指令收集TAG数据的参数配置重新上电后丢失的问题
+**                 7.修改了一些注释有歧义的地方
+***/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260518"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.05.18
 ** 作    者:        曹阳 (caoyang@jimiiot.com)

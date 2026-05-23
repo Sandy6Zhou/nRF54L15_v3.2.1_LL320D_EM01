@@ -191,7 +191,7 @@ int batt_adc_init(void)
     return 0;
 }
 
-/* 电池使能：true=打开，false=关闭 */
+/* 充电使能：true=打开，false=关闭 */
 void batt_enable(bool on)
 {
     gpio_pin_set_dt(&batt_pwr_en, on ? 1 : 0);
@@ -338,7 +338,7 @@ void my_battery_show_chgled()
     {
         k_timer_stop(g_chg_led_ctrl.timer);  // 停止充电LED控制定时器
         g_charg_state = NO_CHARGING;  // 设置充电状态为未充电
-        batt_enable(true);  // 启用电池电源
+        batt_enable(true);  // 充电使能
         batt_led_set_level(0);  // 关闭所有电池LED
         LOG_INF("The charger is not plugged in.");
     }
@@ -434,7 +434,7 @@ void batt_update_timer_handler(struct k_timer *timer)
     // 消除充电电压对电池电压抬高效应的影响。在采集电池电压输出高1s关闭充电路径，采集完毕输出低打开供电路径
     if (g_batt_disable_flag == true && g_chg_led_ctrl.state > CHG_BATT_FAIR)
     {
-        batt_enable(false);  // 禁用电池电源
+        batt_enable(false);  // 禁用充电使能
     }
 
     // 发送电池状态更新消息到控制模块
@@ -484,7 +484,6 @@ int batt_gpio_init(void)
     /* 一个回调处理两个引脚 */
     gpio_init_callback(&batt_gpio_cb, batt_gpio_isr,
                        BIT(charge_state.pin) | BIT(charge_det.pin));
-    gpio_add_callback(charge_state.port, &batt_gpio_cb);
     gpio_add_callback(charge_det.port, &batt_gpio_cb);
 
     // 初始化正常状态LED控制定时器

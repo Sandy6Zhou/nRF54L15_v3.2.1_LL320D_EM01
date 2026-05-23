@@ -786,7 +786,7 @@ uint16_t run_lte_cmd(at_cmd_struc *at_cmd_msg)
 **函数功能:  处理REMALM指令：设置设备防拆报警功能
 **指令格式:  REMALM,<SW>,<M>#
 **参数说明:  <SW> - 功能开关: ON/OFF
-**           <M> - 报警上报方式: 0-GPRS, 1-GPRS+SMS, 2-GPRS+SMS+CALL
+**           <M> - 报警上报方式: 0-不上报，1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
 **返 回 值:  BLE数据类型
 *********************************************************************/
 static int remalm_cmd_handler(at_cmd_struc* msg)
@@ -833,7 +833,7 @@ static int remalm_cmd_handler(at_cmd_struc* msg)
 
     /* 解析M参数 */
     m_value = atoi(msg->parm[2]);
-    if (m_value < 0 || m_value > 2)
+    if (m_value < 0 || m_value > 3)
     {
         LOG_INF("%s=>invalid M param: %s", __func__, msg->parm[2]);
         goto param_invalid;
@@ -2942,7 +2942,7 @@ static int nfcauth_cmd_handler(at_cmd_struc* msg)
         strcpy(gConfigParam.nfcauth_config.nfcauth_cards[index].start_time, "");
         strcpy(gConfigParam.nfcauth_config.nfcauth_cards[index].end_time, "");
         gConfigParam.nfcauth_config.nfcauth_cards[index].time_valid = 0;
-        gConfigParam.nfcauth_config.nfcauth_cards[index].unlock_times = 0;
+        gConfigParam.nfcauth_config.nfcauth_cards[index].unlock_times = -1;
         gConfigParam.nfcauth_config.flag = FLAG_VALID;
 
         /* 保存配置 */

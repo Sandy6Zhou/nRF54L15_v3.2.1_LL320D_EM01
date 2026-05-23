@@ -35,8 +35,8 @@ struct my_nfc_context
     uint32_t poll_timeout_s; /* 轮询超时时间（秒） */
 };
 
-/* 默认轮询超时时间：30秒 */
-#define NFC_DEFAULT_POLL_TIMEOUT_S 30
+/* 默认轮询超时时间：10秒 */
+#define NFC_DEFAULT_POLL_TIMEOUT_S 10
 
 /* 定时器用于轮询超时 */
 static struct k_timer nfc_poll_timer;

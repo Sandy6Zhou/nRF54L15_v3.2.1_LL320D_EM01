@@ -311,7 +311,11 @@ const uint8_t *bt_get_mac_addr(void)
 int ble_set_tx_power(int8_t tx_power)
 {
     int err;
+    int i = 0;
     struct net_buf *buf, *rsp = NULL;
+    struct bt_hci_cp_vs_write_tx_power_level *cp = NULL;
+    struct bt_hci_rp_vs_write_tx_power_level *rp = NULL;
+    uint8_t adv_handle = 0;
 
     /* 限制功率范围: nRF54L15 支持 -40 ~ +8 dBm */
     if (tx_power < -10)
@@ -323,36 +327,48 @@ int ble_set_tx_power(int8_t tx_power)
         tx_power = 7;
     }
 
-    /* 使用 Nordic VS HCI 命令设置发射功率
-     * Opcode: 0xFC0F (VS_WRITE_TX_POWER_LEVEL)
-     * 参数: handle_type(1B) + handle(2B) + tx_power_level(1B)
-     * bt_hci_cmd_create(0xFC0F, 4)函数已弃用。替换为bt_hci_cmd_alloc(K_FOREVER)
-     */
-    buf = bt_hci_cmd_alloc(K_FOREVER);
-    if (!buf)
+    for (i = 0; i < 3; i++)
     {
-        LOG_ERR("Failed to create HCI command buffer");
-        return -ENOMEM;
+        // 获取广播集 handle
+        err = bt_hci_get_adv_handle(ext_adv[i], &adv_handle);
+        if (err)
+        {
+            LOG_ERR("Failed to get adv handle (err %d)", err);
+            continue;
+        }
+
+        /* 使用 Nordic VS HCI 命令设置发射功率
+        * Opcode: 0xFC0F (VS_WRITE_TX_POWER_LEVEL)
+        * 参数: handle_type(1B) + handle(2B) + tx_power_level(1B)
+        * bt_hci_cmd_create(0xFC0F, 4)函数已弃用。替换为bt_hci_cmd_alloc(K_FOREVER)
+        */
+        buf = bt_hci_cmd_alloc(K_FOREVER);
+        if (!buf)
+        {
+            LOG_ERR("Failed to create HCI command buffer");
+            return -ENOMEM;
+        }
+
+        cp = net_buf_add(buf, sizeof(*cp));
+        cp->handle_type = BT_HCI_VS_LL_HANDLE_TYPE_ADV; // 广播类型
+        cp->handle = sys_cpu_to_le16(adv_handle);        // 每个广播集的 handle
+        cp->tx_power_level = tx_power;
+
+        err = bt_hci_cmd_send_sync(BT_HCI_OP_VS_WRITE_TX_POWER_LEVEL, buf, &rsp);
+        if (err)
+        {
+            LOG_ERR("Failed to set TX power (err %d)", err);
+            return err;
+        }
+
+        if (rsp)
+        {
+            rp = (void *)rsp->data;
+            LOG_INF("Adv set %d TX Power: %d dBm", i, rp->selected_tx_power);
+            net_buf_unref(rsp);
+        }
     }
 
-    /* handle_type = 0 (Advertising), handle = 0, tx_power_level */
-    net_buf_add_u8(buf, 0);      /* handle_type: Advertising */
-    net_buf_add_le16(buf, 0);    /* handle: 0 */
-    net_buf_add_u8(buf, tx_power);  /* tx_power_level */
-
-    err = bt_hci_cmd_send_sync(0xFC0F, buf, &rsp);
-    if (err)
-    {
-        LOG_ERR("Failed to set TX power (err %d)", err);
-        return err;
-    }
-
-    if (rsp)
-    {
-        net_buf_unref(rsp);
-    }
-
-    LOG_INF("BLE TX power set to %d dBm", tx_power);
     return 0;
 }
 
@@ -1101,9 +1117,6 @@ int my_ble_core_start(void)
 
     LOG_DBG("Bluetooth initialized");
 
-    /* 根据ZMS参数设置蓝牙发射功率 */
-    ble_set_tx_power_by_param();
-
     k_sem_give(&ble_init_ok);
 
     if (IS_ENABLED(CONFIG_SETTINGS))
@@ -1178,6 +1191,9 @@ int my_ble_core_start(void)
 
     // 初始状态：根据tag_sw判断是否开启不可连接广播
     my_no_con_start_adv(gConfigParam.tag_config.tag_sw);
+
+    /* 根据ZMS参数设置蓝牙发射功率 */
+    ble_set_tx_power_by_param();
 
     start_adv(&con_adv_obj_hdl, true);
 

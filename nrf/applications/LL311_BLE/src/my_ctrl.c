@@ -548,8 +548,8 @@ void handle_nfc_card_event(uint8_t *card_id, uint8_t id_len)
 *********************************************************************/
 static void enable_wakeup_pin(void)
 {
-    /*  配置 P1.9 为输入，并根据外部电路选择上拉/下拉,配置 SENSE 条件，低电平唤醒*/
-    nrf_gpio_cfg_sense_input(NRF_GPIO_PIN_MAP(1, 9), NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_SENSE_LOW);
+    /*  配置 P1.9 为输入，并根据外部电路选择上拉/下拉,配置 SENSE 条件，高电平唤醒*/
+    nrf_gpio_cfg_sense_input(NRF_GPIO_PIN_MAP(1, 9), NRF_GPIO_PIN_PULLDOWN, NRF_GPIO_PIN_SENSE_HIGH);
 
 }
 
@@ -690,7 +690,7 @@ static void light_sensor_timer_handler(struct k_timer *timer)
         msg.msgID = new_state ? MY_MSG_CTRL_LIGHT_SENSOR_BRIGHT : MY_MSG_CTRL_LIGHT_SENSOR_DARK;
         msg.pData = NULL;
         msg.DataLen = 0;
-        my_send_msg_data(MOD_CTRL, MOD_MAIN, &msg);
+        my_send_msg_data(MOD_CTRL, MOD_CTRL, &msg);
     }
 
     light_sensor.debouncing = false;
@@ -976,8 +976,8 @@ static int misc_io_init(void)
         return ret;
     }
 
-    /* 光感检测配置：配置光感中断：下降沿触发 */
-    ret = gpio_pin_interrupt_configure_dt(&light_det, GPIO_INT_EDGE_FALLING);
+    /* 光感检测配置：配置光感中断：双边沿触发 */
+    ret = gpio_pin_interrupt_configure_dt(&light_det, GPIO_INT_EDGE_BOTH);
     if (ret)
     {
         MY_LOG_ERR("Failed to configure light_det interrupt: %d", ret);
@@ -1243,7 +1243,7 @@ void lock_led_set(bool on)
 }
 
 /*********************************************************************
-**函数名称:  my_battery_show_chgled
+**函数名称:  lock_led_timer_handler
 **入口参数:  timer  ---        输入，定时器句柄（未使用）
 **出口参数:  无
 **函数功能:  作为锁 LED 控制定时器的回调函数，用于控制锁 LED 的闪烁模式，
@@ -1664,7 +1664,10 @@ static void my_ctrl_task(void *p1, void *p2, void *p3)
             case MY_MSG_CTRL_LIGHT_SENSOR_BRIGHT:
                 MY_LOG_INF("Light sensor detected: BRIGHT");
                 //上报拆除检测告警
-                send_alarm_message_to_lte(ALARM_OPEN, NULL);
+                if(gConfigParam.remalm_config.remalm_sw)
+                {
+                    send_alarm_message_to_lte(ALARM_OPEN, NULL);
+                }
                 break;
 
             case MY_MSG_CTRL_LIGHT_SENSOR_DARK:

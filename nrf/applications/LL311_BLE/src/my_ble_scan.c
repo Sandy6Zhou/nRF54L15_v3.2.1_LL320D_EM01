@@ -1251,6 +1251,9 @@ int my_scan_init(void)
         return err;
     }
 
+    my_scan_set_config(s_scan_config.mode, s_scan_config.scan_interval,
+                       s_scan_config.scan_length, s_scan_config.upload_interval);
+
     LOG_INF("scan module initialized");
     return 0;
 }
