@@ -12,7 +12,16 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260525"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260526"
+/* 软件版本:        V1.0
+** 完成日期:        2026.05.26
+** 作    者:        曹阳 (caoyang@jimiiot.com)
+** 修改内容:       1. 修复蓝牙发送指令即使不带‘#’结尾也能响应的问题
+**                 2. 统一蓝牙回复格式
+**                 3. 修复蓝牙发送查询指令时回复乱码的问题
+***/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260525"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.05.24
 ** 作    者:       周森达 (zhousenda@jimiiot.com)
