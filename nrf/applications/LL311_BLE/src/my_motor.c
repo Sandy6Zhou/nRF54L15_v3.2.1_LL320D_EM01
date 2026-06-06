@@ -46,8 +46,6 @@ static struct k_timer s_motor_timeout_timer;
 static lock_posdet_t s_openlock_posdet;
 /* 关锁位置检测结构，用于检测关锁限位状态 */
 static lock_posdet_t s_closelock_posdet;
-/* 开锁状态标志，true表示正在开锁 */
-static bool s_bOpenLockingState = false;
 
 // 蓝牙操作锁状态：默认停止锁操作
 lock_state_t g_bBleLockState = LOCK_STOP;
@@ -135,8 +133,6 @@ void req_open_lock_action(void)
 
     //开启电机电源
     motor_power_set(true);
-    /* 标记正在开锁中 */
-    s_bOpenLockingState = true;
     k_timer_stop(&s_motor_timeout_timer);
 
     MY_LOG_INF("%s:run", __func__);
@@ -179,8 +175,6 @@ void req_close_lock_action(void)
 *********************************************************************/
 void stop_lock_action(void)
 {
-    /* 清空开锁中的状态 */
-    s_bOpenLockingState = false;
     k_timer_stop(&s_motor_timeout_timer);
 
     MY_LOG_INF("%s:run", __func__);
@@ -380,30 +374,6 @@ static void closelock_posdet_timer_handler(struct k_timer *timer)
 #if LOCK_INTERNAL_PULLUP
             motor_det_irq_disable(&motor_pos_b, 0);
 #endif
-        }
-        else
-        {
-            /* 非法解锁:没执行开锁动作,关锁的限位检测却断开(锁没有完全关掉) */
-            if (!s_bOpenLockingState)
-            {
-                // TODO 非法解锁上报,直接发消息给LTE线程,由4G判断是否要上报
-                send_alarm_message_to_lte(ALARM_ILLEGALUNLOCK, NULL);
-
-                /* 蜂鸣器报警方式 */
-                if (gConfigParam.lockerr_config.lockerr_buzzer == ALARM_TEMPORARY)
-                {
-                    //发消息到ctrl线程,报警30s
-                    my_set_buzzer_mode(BUZZER_GENERAL_ALARM);
-                }
-                else if (gConfigParam.lockerr_config.lockerr_buzzer == ALARM_CONTINUOUS)
-                {
-                    //发消息到ctrl线程,持续报警直到收到关闭蜂鸣器报警指令
-                    my_set_buzzer_mode(BUZZER_CONTINUOUS_ALARM);
-                }
-            }
-
-            /* 清空开锁中的状态 */
-            s_bOpenLockingState = false;
         }
     }
 

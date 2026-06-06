@@ -12,7 +12,15 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260529"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260602"
+/* 软件版本:        V1.0
+** 完成日期:        2026.06.02
+** 作    者:        曹阳 (caoyang@jimiiot.com)
+** 修改内容:       1. 删除非法解锁相关逻辑
+**                2. 重复刷卡检测从1s改为60s
+***/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260529"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.05.29
 ** 作    者:        曹阳 (caoyang@jimiiot.com)

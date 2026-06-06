@@ -56,7 +56,6 @@ typedef enum                           // 参数ID定义
     ZMS_ID_WORK_MODE_CONFIG,           // 设备工作模式配置参数ID
     ZMS_ID_REM_ALM_CONFIG,             // 防拆报警配置参数ID
     ZMS_ID_LOCK_PIN_CYT_CONFIG,        // 锁销非法拔除报警配置参数ID
-    ZMS_ID_LOCK_ERR_CONFIG,            // 锁状态异常报警配置参数ID
     ZMS_ID_PIN_STAT_CONFIG,            // 锁销状态报警配置参数ID
     ZMS_ID_LOCK_STAT_CONFIG,           // 锁状态报警配置参数ID
     ZMS_ID_MOT_DET_CONFIG,             // 运动检测报警配置参数ID
@@ -141,13 +140,6 @@ typedef struct                              // 存储的锁销非法拔除报警
     uint8_t lockpincyt_report;              // 锁销非法拔除上报方式: 0-不上报, 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
     uint8_t lockpincyt_buzzer;              // 锁销非法拔除蜂鸣器报警方式: 0-不报警, 1-报警30s, 2-持续报警
 } lockpin_cyt_config_t;
-
-typedef struct                              // 存储的锁状态异常报警配置参数
-{
-    uint8_t flag;                           // 参数有效标志
-    uint8_t lockerr_report;                 // 锁状态异常上报方式: 0-不上报, 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
-    uint8_t lockerr_buzzer;                 // 锁状态异常蜂鸣器报警方式: 0-不报警, 1-报警30s, 2-持续报警
-} lock_err_config_t;
 
 typedef struct                              // 存储的锁销状态报警配置参数
 {
@@ -276,7 +268,6 @@ typedef struct
     work_mode_config_t          device_workmode_config;     // 设备工作模式配置
     remalm_config_t             remalm_config;              // 防拆报警配置
     lockpin_cyt_config_t        lockpincyt_config;          // 锁销非法拔除报警配置
-    lock_err_config_t           lockerr_config;             // 锁状态异常报警配置
     pin_stat_config_t           pinstat_config;             // 锁销状态报警配置
     lock_stat_config_t          lockstat_config;            // 锁状态报警配置
     mot_det_config_t            motdet_config;              // 运动检测报警配置

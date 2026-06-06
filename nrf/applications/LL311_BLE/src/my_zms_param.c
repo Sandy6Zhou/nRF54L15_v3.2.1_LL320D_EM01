@@ -126,13 +126,6 @@ const lockpin_cyt_config_t gDefaultLockPinCytConfig =
     .lockpincyt_buzzer = ALARM_TEMPORARY,             /* 默认报警30s */
 };
 
-const lock_err_config_t gDefaultLockErrConfig =
-{
-    .flag = FLAG_VALID,
-    .lockerr_report = REPORT_MODE_GPRS,               /* 默认GPRS */
-    .lockerr_buzzer = ALARM_TEMPORARY,               /* 默认报警30s */
-};
-
 const pin_stat_config_t gDefaultPinStatConfig =
 {
     .flag = FLAG_VALID,
@@ -492,21 +485,6 @@ void my_param_load_config(void)
     {
         MY_LOG_INF("Lock pin cyt config loaded: lockpincyt_buzzer(%d), lockpincyt_report(%d)",
                     gConfigParam.lockpincyt_config.lockpincyt_buzzer, gConfigParam.lockpincyt_config.lockpincyt_report);
-    }
-
-    //--------Load Lock Err Config ---------------------
-    length = sizeof(lock_err_config_t);
-    ret = my_user_data_read(ZMS_ID_LOCK_ERR_CONFIG, &gConfigParam.lockerr_config, length);
-    if (ret != length)
-    {
-        memcpy(&gConfigParam.lockerr_config, &gDefaultLockErrConfig, length);
-        MY_LOG_INF("Lock err config not found. Use default:lockerr_buzzer(%d), lockerr_report(%d)",
-                    gConfigParam.lockerr_config.lockerr_buzzer, gConfigParam.lockerr_config.lockerr_report);
-    }
-    else
-    {
-        MY_LOG_INF("Lock err config loaded: lockerr_buzzer(%d), lockerr_report(%d)",
-                    gConfigParam.lockerr_config.lockerr_buzzer, gConfigParam.lockerr_config.lockerr_report);
     }
 
     //--------Load Pin Stat Config ---------------------

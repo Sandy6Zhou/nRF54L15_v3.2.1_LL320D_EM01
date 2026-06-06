@@ -31,8 +31,8 @@ LOG_MODULE_REGISTER(my_ctrl, LOG_LEVEL_INF);
 #define LOCK_PIN_DEBOUNCE_MS 100
 /* 定义NFC刷卡记录缓存的最大数量（可根据实际需求调整） */
 #define NFC_CACHE_MAX_NUM 10
-/* 重复刷卡判断时间阈值：1秒 */
-#define NFC_REPEAT_INTERVAL 1
+/* 重复刷卡判断时间阈值：60秒 */
+#define NFC_REPEAT_INTERVAL 60
 
 /* 硬件设备树定义 */
 static const struct gpio_dt_spec fun_key = GPIO_DT_SPEC_GET(DT_ALIAS(fun_key), gpios);
@@ -163,10 +163,6 @@ void send_alarm_message_to_lte(alarm_type_t alarm_type, const char *additional_i
     {
         case ALARM_OPEN:
             rpt = gConfigParam.remalm_config.remalm_mode;
-            break;
-
-        case ALARM_ILLEGALUNLOCK:
-            rpt = gConfigParam.lockerr_config.lockerr_report;
             break;
 
         case ALARM_UNLOCK:
@@ -371,7 +367,7 @@ static int is_need_location_upload(const uint8_t *card_id, uint8_t id_len)
         time_diff = now - s_nfc_card_cache[index].last_swipe_time;
         if (time_diff >= 0 && time_diff <= NFC_REPEAT_INTERVAL)
         {
-            // 1秒内重复刷卡，无需定位上传
+            // NFC_REPEAT_INTERVAL秒内重复刷卡，无需定位上传
             return 0;
         }
     }
@@ -494,14 +490,13 @@ void handle_nfc_card_event(uint8_t *card_id, uint8_t id_len)
 
     /* 重复刷卡缓存记录检查 */
     ret = is_need_location_upload(card_id, id_len);
+    /* 将二进制卡号转换为十六进制字符串，以与配置中的字符串格式匹配 */
+    hex2hexstr(card_id, id_len, (uint8_t *)card_id_str, sizeof(card_id_str));
     if (ret == 0)
     {
         MY_LOG_INF("repeated swiping of the card id:%s", card_id_str);
         return ;
     }
-
-    /* 将二进制卡号转换为十六进制字符串，以与配置中的字符串格式匹配 */
-    hex2hexstr(card_id, id_len, (uint8_t *)card_id_str, sizeof(card_id_str));
 
     //发消息到蓝牙线程处理（涉及NFC联调指令，会调用at_recv_cmd_handler此函数）
     MY_MALLOC_BUFFER(nfctrig_cmd, sizeof(nfctrig_cmd_t));

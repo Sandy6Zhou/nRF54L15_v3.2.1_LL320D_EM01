@@ -200,7 +200,7 @@ static void my_nfc_task(void *p1, void *p2, void *p3)
                 s_nfc_ctx.is_working = true;
                 s_nfc_ctx.card_present = false;
                 nfc_api_poll_start();
-				k_timer_start(&s_nfc_poll_timer, K_MSEC(timeout_ms), K_NO_WAIT);
+                k_timer_start(&s_nfc_poll_timer, K_MSEC(timeout_ms), K_NO_WAIT);
 
                 /* 开始轮询后闪烁LED*/
                 my_lock_led_msg_send(LOCK_LED_NFC_START);
@@ -224,14 +224,6 @@ static void my_nfc_task(void *p1, void *p2, void *p3)
                 my_pm_device_suspend(MY_PM_DEV_NFC);
 
                 MY_LOG_INF("NFC stopped and suspended");
-                break;
-
-            case MY_MSG_NFC_LED_SHOW:
-                if (s_nfc_ctx.is_working)
-                {
-                    my_lock_led_msg_send(LOCK_LED_NFC_START);
-                    MY_LOG_INF("NFC polling already running");
-                }
                 break;
 
             default:

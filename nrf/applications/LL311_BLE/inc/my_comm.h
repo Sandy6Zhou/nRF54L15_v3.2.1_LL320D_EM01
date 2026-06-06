@@ -115,7 +115,6 @@ typedef enum
 typedef enum
 {
     ALARM_OPEN = 1,         // 拆壳告警
-    ALARM_ILLEGALUNLOCK,    // 非法解锁告警
     ALARM_UNLOCK,           // 开锁告警
     ALARM_LOCK,             // 上锁告警
     ALARM_STILL,            // 静止状态告警
@@ -229,7 +228,6 @@ typedef enum
     MY_MSG_NFC_STOP_POLL,    /* 停止NFC轮询 */
     MY_MSG_NFC_CARD_EVENT,   /* NFC卡片事件 */
     MY_MSG_NFC_POLL_TIMEOUT, /* NFC轮询超时 */
-    MY_MSG_NFC_LED_SHOW,     /* NFC启动LED 显示 */
 
     /* CTRL处理程序消息 */
     MY_MSG_CTRL_KEY_SHORT_PRESS,       /* 按键短按事件 */

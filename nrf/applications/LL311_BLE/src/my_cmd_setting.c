@@ -78,7 +78,6 @@ static const at_cmd_attr_t at_cmd_attr_table[] =
 {
     {"REMALM",         remalm_cmd_handler},
     {"LOCKPINCYT",     lockpincyt_cmd_handler},
-    {"LOCKERR",        lockerr_cmd_handler},
     {"PINSTAT",        pinstat_cmd_handler},
     {"LOCKSTAT",       lockstat_cmd_handler},
     {"MOTDET",         motdet_cmd_handler},
@@ -944,82 +943,6 @@ static int lockpincyt_cmd_handler(at_cmd_t* msg)
     LOG_INF("LOCKPINCYT: Report=%d, Buzzer=%d",
            gConfigParam.lockpincyt_config.lockpincyt_report,
            gConfigParam.lockpincyt_config.lockpincyt_buzzer);
-
-    //TODO 具体逻辑处理
-
-    return BLE_DATA_TYPE_PACKET_MULTIPLE;
-
-param_invalid:
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-    return BLE_DATA_TYPE_PACKET_MULTIPLE;
-}
-
-/********************************************************************
-**函数名称:  lockerr_cmd_handler
-**入口参数:  msg      ---        AT指令结构体指针
-**出口参数:  msg->resp_msg  ---  响应消息
-**           msg->resp_length --- 响应长度
-**函数功能:  处理LOCKERR指令：设置锁状态异常事件上报与响应
-**指令格式:  LOCKERR,[参数1],[参数2]#
-**参数说明:  [参数1](Report) - 上报方式: 0-不上报, 1-GPRS(默认), 2-GPRS+SMS, 3-GPRS+SMS+CALL
-**           [参数2](Buzzer) - 蜂鸣器报警方式: 0-不报警(默认), 1-报警30s, 2-持续报警
-**返 回 值:  BLE数据类型
-*********************************************************************/
-static int lockerr_cmd_handler(at_cmd_t* msg)
-{
-    uint16_t remaining;
-    int report_value;
-    int buzzer_value;
-
-    remaining = RESP_STRING_LENGTH_MAX;
-
-    //无参数即查询
-    if (msg->parm_count == 0)
-    {
-        msg->resp_length = snprintf(msg->resp_msg, remaining, "%s:%d,%d", msg->parm[0],
-                            gConfigParam.lockerr_config.lockerr_report, gConfigParam.lockerr_config.lockerr_buzzer);
-        return BLE_DATA_TYPE_PACKET_MULTIPLE;
-    }
-
-    /* 检查参数数量 */
-    if (msg->parm_count != 2)
-    {
-        LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
-        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-        return BLE_DATA_TYPE_PACKET_MULTIPLE;
-    }
-
-    /* 解析Report参数 */
-    report_value = atoi(msg->parm[1]);
-    if (report_value < 0 || report_value > 3)
-    {
-        LOG_INF("%s=>invalid Report param: %s", __func__, msg->parm[1]);
-        goto param_invalid;
-    }
-
-    /* 解析Buzzer参数 */
-    buzzer_value = atoi(msg->parm[2]);
-    if (buzzer_value < 0 || buzzer_value > 2)
-    {
-        LOG_INF("%s=>invalid Buzzer param: %s", __func__, msg->parm[2]);
-        goto param_invalid;
-    }
-
-    /* 所有参数验证通过,统一赋值 */
-    gConfigParam.lockerr_config.flag = FLAG_VALID;
-    gConfigParam.lockerr_config.lockerr_report = (uint8_t)report_value;
-    gConfigParam.lockerr_config.lockerr_buzzer = (uint8_t)buzzer_value;
-
-    /* 保存配置 */
-    my_user_data_write(ZMS_ID_LOCK_ERR_CONFIG, &gConfigParam.lockerr_config, sizeof(lock_err_config_t));
-
-    LOG_INF("%s=>%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2]);
-
-    /* 生成成功响应 */
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
-    LOG_INF("LOCKERR: Report=%d, Buzzer=%d",
-           gConfigParam.lockerr_config.lockerr_report,
-           gConfigParam.lockerr_config.lockerr_buzzer);
 
     //TODO 具体逻辑处理
 
