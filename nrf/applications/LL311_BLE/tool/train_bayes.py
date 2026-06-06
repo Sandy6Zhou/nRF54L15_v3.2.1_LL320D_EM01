@@ -26,6 +26,7 @@ import math
 import random
 from collections import defaultdict
 
+# Fixed: Match C code sample rate and window size
 SAMPLE_RATE = 30.00
 WINDOW_SIZE = 250
 FEATURE_DIM = 8
@@ -197,7 +198,8 @@ def extract_features(readings):
     gm = arr_mean(gyro_mag)
     gyro_detrend = [gyro_mag[i] - gm for i in range(n)]
 
-    max_lag = int(5.0 * SAMPLE_RATE)
+    # Fixed: Increase periodicity detection window to cover sea sway periods (6-20s)
+    max_lag = int(10.0 * SAMPLE_RATE)  # Changed from 5.0 to 10.0 seconds
     if max_lag > n // 2:
         max_lag = n // 2
     acc_periodicity = autocorr_max(acc_detrend, max_lag)
@@ -255,16 +257,35 @@ def generate_land(n):
 
 
 def generate_sea(n):
+    """
+    Improved sea data generation with realistic ship motion:
+    - Roll/pitch periods vary in 6-20s range
+    - Gravity vector rotates with ship tilt
+    - Angular velocity derived from angle derivatives
+    """
     readings = []
     t = 0.0
     dt = 1.0 / SAMPLE_RATE
     for _ in range(n):
-        ax = 0.03 * math.sin(2 * PI * 0.08 * t) + 0.02 * math.sin(2 * PI * 0.15 * t + 0.3) + rand_normal(0, 0.02)
-        ay = 0.04 * math.sin(2 * PI * 0.12 * t + 0.7) + 0.03 * math.sin(2 * PI * 0.06 * t + 1.1) + rand_normal(0, 0.03)
-        az = 9.81 + 0.06 * math.sin(2 * PI * 0.10 * t + 1.2) + 0.04 * math.sin(2 * PI * 0.08 * t + 0.5) + rand_normal(0, 0.03)
-        gx = 0.030 * math.sin(2 * PI * 0.08 * t) + 0.020 * math.sin(2 * PI * 0.12 * t + 0.4) + rand_normal(0, 0.005)
-        gy = 0.025 * math.sin(2 * PI * 0.12 * t + 0.5) + 0.015 * math.sin(2 * PI * 0.06 * t + 1.2) + rand_normal(0, 0.004)
-        gz = 0.015 * math.sin(2 * PI * 0.10 * t + 1.0) + 0.010 * math.sin(2 * PI * 0.08 * t + 0.8) + rand_normal(0, 0.003)
+        # Simulate realistic ship sway periods (slowly varying)
+        roll_period = 8.0 + 3.0 * math.sin(2 * PI * 0.01 * t)   # Roll: 8¡À3 seconds
+        pitch_period = 10.0 + 4.0 * math.sin(2 * PI * 0.008 * t) # Pitch: 10¡À4 seconds
+        heave_period = 7.0 + 2.0 * math.sin(2 * PI * 0.012 * t)  # Heave: 7¡À2 seconds
+
+        # Calculate roll and pitch angles (radians)
+        roll = 0.15 * math.sin(2 * PI * t / roll_period)   # Roll: ~8.6 degrees
+        pitch = 0.10 * math.sin(2 * PI * t / pitch_period + 0.5)  # Pitch: ~5.7 degrees
+
+        # Gravity vector rotates with ship tilt
+        ax = 9.81 * math.sin(pitch) + rand_normal(0, 0.02)
+        ay = 9.81 * math.sin(roll) + rand_normal(0, 0.02)
+        az = 9.81 * math.cos(roll) * math.cos(pitch) + 0.05 * math.sin(2 * PI * t / heave_period) + rand_normal(0, 0.02)
+
+        # Angular velocity = derivative of angles
+        gx = (2 * PI / roll_period) * 0.15 * math.cos(2 * PI * t / roll_period) + rand_normal(0, 0.003)
+        gy = (2 * PI / pitch_period) * 0.10 * math.cos(2 * PI * t / pitch_period + 0.5) + rand_normal(0, 0.003)
+        gz = 0.005 * math.sin(2 * PI * 0.02 * t) + rand_normal(0, 0.002)
+
         readings.append((ax, ay, az, gx, gy, gz))
         t += dt
     return readings
@@ -313,7 +334,7 @@ def slice_windows(readings, window_size):
         i += window_size
     remainder = len(readings) % window_size
     if remainder > 0:
-        print(f"    Warning: {remainder} samples discarded (not a full window)")
+        print("    Warning: %d samples discarded (not a full window)" % remainder)
     return windows
 
 
@@ -331,20 +352,21 @@ def train_bayes(feature_vectors, labels):
 
     for mode in range(3):
         if mode not in class_features or len(class_features[mode]) == 0:
-            print(f"  WARNING: No samples for mode {MODE_NAMES[mode]}!")
+            print("  WARNING: No samples for mode %s!" % MODE_NAMES[mode])
             continue
 
         samples = class_features[mode]
         n = len(samples)
-        print(f"  {MODE_NAMES[mode]}: {n} windows")
+        print("  %s: %d windows" % (MODE_NAMES[mode], n))
 
         for d in range(FEATURE_DIM):
             vals = [s[d] for s in samples]
             m = sum(vals) / n
             var = sum((v - m) ** 2 for v in vals) / n
             s = math.sqrt(var)
-            if s < 0.001:
-                s = 0.001
+            # Fixed: Lower clamping threshold to allow smaller std for periodicity features
+            if s < 1e-6:
+                s = 1e-6
             mean[mode][d] = m
             std[mode][d] = s
 
@@ -388,21 +410,21 @@ def generate_c_header(mean, std):
 
     lines.append("/* Feature vector order (must match features_to_vector()):")
     for i, name in enumerate(FEATURE_NAMES):
-        lines.append(f" *   vec[{i}] = {name}")
+        lines.append(" *   vec[%d] = %s" % (i, name))
     lines.append(" */")
     lines.append("")
 
     lines.append("static const float s_model_mean[NUM_MODES][FEATURE_DIM] = {")
     for m in range(3):
-        vals = ", ".join(f"{mean[m][d]:.6f}f" for d in range(FEATURE_DIM))
-        lines.append(f"    {{ {vals} }},  /* {MODE_NAMES[m]} */")
+        vals = ", ".join("%0.6ff" % mean[m][d] for d in range(FEATURE_DIM))
+        lines.append("    { %s },  /* %s */" % (vals, MODE_NAMES[m]))
     lines.append("};")
     lines.append("")
 
     lines.append("static const float s_model_std[NUM_MODES][FEATURE_DIM] = {")
     for m in range(3):
-        vals = ", ".join(f"{std[m][d]:.6f}f" for d in range(FEATURE_DIM))
-        lines.append(f"    {{ {vals} }},  /* {MODE_NAMES[m]} */")
+        vals = ", ".join("%0.6ff" % std[m][d] for d in range(FEATURE_DIM))
+        lines.append("    { %s },  /* %s */" % (vals, MODE_NAMES[m]))
     lines.append("};")
     lines.append("")
 
@@ -415,7 +437,7 @@ def print_feature_stats(mean, std):
     print("\n" + "=" * 80)
     print("  Feature Statistics by Transport Mode")
     print("=" * 80)
-    print(f"  {'Feature':<25s} | {'Still':>10s} | {'Land':>10s} | {'Sea':>10s} | {'Discrim.':>10s}")
+    print("  %-25s | %10s | %10s | %10s | %10s" % ("Feature", "Still", "Land", "Sea", "Discrim."))
     print("  " + "-" * 75)
 
     for d in range(FEATURE_DIM):
@@ -424,20 +446,20 @@ def print_feature_stats(mean, std):
         min_val = min(vals)
         max_idx = vals.index(max_val)
         discrim = (max_val - min_val) / std[max_idx][d] if std[max_idx][d] > 0 else 0
-        print(f"  {FEATURE_NAMES[d]:<25s} | {vals[0]:>10.4f} | {vals[1]:>10.4f} | {vals[2]:>10.4f} | {discrim:>10.2f}s")
+        print("  %-25s | %10.4f | %10.4f | %10.4f | %10.2fs" % (FEATURE_NAMES[d], vals[0], vals[1], vals[2], discrim))
 
     print("  " + "-" * 75)
-    print(f"  {'(std for each feature):':<25s}")
-    print(f"  {'Feature':<25s} | {'Still':>10s} | {'Land':>10s} | {'Sea':>10s} |")
+    print("  %-25s" % "(std for each feature):")
+    print("  %-25s | %10s | %10s | %10s |" % ("Feature", "Still", "Land", "Sea"))
     print("  " + "-" * 75)
     for d in range(FEATURE_DIM):
         vals = [std[m][d] for m in range(3)]
-        print(f"  {FEATURE_NAMES[d]:<25s} | {vals[0]:>10.6f} | {vals[1]:>10.6f} | {vals[2]:>10.6f} |")
+        print("  %-25s | %10.6f | %10.6f | %10.6f |" % (FEATURE_NAMES[d], vals[0], vals[1], vals[2]))
 
 
 def run_accuracy_test(mean, std, n_test=100):
     print("\n" + "=" * 80)
-    print(f"  Accuracy Test ({n_test} windows/class, simulated data)")
+    print("  Accuracy Test (%d windows/class, simulated data)" % n_test)
     print("=" * 80)
 
     random.seed(999)
@@ -456,23 +478,23 @@ def run_accuracy_test(mean, std, n_test=100):
                 correct[mi] += 1
             confusion[mi][pred] += 1
 
-    print(f"\n  {'Mode':<10s} | {'Correct':>8s} | {'Total':>6s} | {'Accuracy':>8s}")
+    print("\n  %-10s | %8s | %6s | %8s" % ("Mode", "Correct", "Total", "Accuracy"))
     print("  " + "-" * 45)
     for mi in range(3):
         acc = correct[mi] / total[mi] * 100 if total[mi] > 0 else 0
-        print(f"  {MODE_NAMES[mi]:<10s} | {correct[mi]:>8d} | {total[mi]:>6d} | {acc:>7.1f}%")
+        print("  %-10s | %8d | %6d | %7.1f%%" % (MODE_NAMES[mi], correct[mi], total[mi], acc))
 
     total_correct = sum(correct)
     total_all = sum(total)
     print("  " + "-" * 45)
-    print(f"  {'Total':<10s} | {total_correct:>8d} | {total_all:>6d} | {total_correct / total_all * 100:>7.1f}%")
+    print("  %-10s | %8d | %6d | %7.1f%%" % ("Total", total_correct, total_all, total_correct / total_all * 100))
 
-    print(f"\n  Confusion Matrix (rows=true, cols=predicted):")
-    print(f"  {'':>10s} | {'Still':>8s} | {'Land':>8s} | {'Sea':>8s}")
+    print("\n  Confusion Matrix (rows=true, cols=predicted):")
+    print("  %10s | %8s | %8s | %8s" % ("", "Still", "Land", "Sea"))
     print("  " + "-" * 45)
     for mi in range(3):
-        row = " | ".join(f"{confusion[mi][j]:>8d}" for j in range(3))
-        print(f"  {MODE_NAMES[mi]:>10s} | {row}")
+        row = " | ".join("%8d" % confusion[mi][j] for j in range(3))
+        print("  %10s | %s" % (MODE_NAMES[mi], row))
 
 
 def main():
@@ -497,18 +519,18 @@ def main():
 
     print("=" * 80)
     print("  IMU Bayesian Classifier Trainer")
-    print(f"  Mode: {args.mode}")
+    print("  Mode: %s" % args.mode)
     print("=" * 80)
 
     all_feature_vectors = []
     all_labels = []
 
     if args.mode == "simulate":
-        print(f"\n[1] Generating simulated data ({args.samples} windows/class)...")
+        print("\n[1] Generating simulated data (%d windows/class)..." % args.samples)
 
         generators = [generate_still, generate_land, generate_sea]
         for mi, gen in enumerate(generators):
-            print(f"  Generating {MODE_NAMES[mi]}...", end=" ", flush=True)
+            print("  Generating %s..." % MODE_NAMES[mi], end=" ", flush=True)
             for _ in range(args.samples):
                 readings = gen(WINDOW_SIZE)
                 vec = extract_features(readings)
@@ -526,7 +548,7 @@ def main():
             print("ERROR: Must provide exactly 3 CSV files (still, land, sea)")
             sys.exit(1)
 
-        print(f"\n[1] Loading data from: {args.dir}/")
+        print("\n[1] Loading data from: %s/" % args.dir)
         print("  (Missing CSV files will use simulated data)\n")
 
         for mi, fname in enumerate(filenames):
@@ -534,15 +556,15 @@ def main():
             use_simulated = False
 
             if os.path.exists(filepath):
-                print(f"  {MODE_NAMES[mi]}: {fname}...", end=" ", flush=True)
+                print("  %s: %s..." % (MODE_NAMES[mi], fname), end=" ", flush=True)
                 readings = load_csv(filepath)
-                print(f"{len(readings)} samples", end=" ", flush=True)
+                print("%d samples" % len(readings), end=" ", flush=True)
 
                 if len(readings) < WINDOW_SIZE:
-                    print(f"\n    WARNING: Need at least {WINDOW_SIZE} samples, got {len(readings)}, using SIMULATED")
+                    print("\n    WARNING: Need at least %d samples, got %d, using SIMULATED" % (WINDOW_SIZE, len(readings)))
                     use_simulated = True
             else:
-                print(f"  {MODE_NAMES[mi]}: {fname} NOT FOUND, using SIMULATED")
+                print("  %s: %s NOT FOUND, using SIMULATED" % (MODE_NAMES[mi], fname))
                 use_simulated = True
 
             if use_simulated:
@@ -553,15 +575,15 @@ def main():
 
             windows = slice_windows(readings, WINDOW_SIZE)
             if not use_simulated:
-                print(f"-> {len(windows)} windows")
+                print("-> %d windows" % len(windows))
 
             for win in windows:
                 vec = extract_features(win)
                 all_feature_vectors.append(vec)
                 all_labels.append(mi)
 
-    print(f"\n[2] Training Bayesian classifier...")
-    print(f"  Total samples: {len(all_feature_vectors)}")
+    print("\n[2] Training Bayesian classifier...")
+    print("  Total samples: %d" % len(all_feature_vectors))
 
     mean, std = train_bayes(all_feature_vectors, all_labels)
 
@@ -569,21 +591,21 @@ def main():
 
     run_accuracy_test(mean, std, args.test)
 
-    print(f"\n[3] Generating C header: {args.output}")
+    print("\n[3] Generating C header: %s" % args.output)
     header_content = generate_c_header(mean, std)
     with open(args.output, "w") as f:
         f.write(header_content)
-    print(f"  Written to: {args.output}")
+    print("  Written to: %s" % args.output)
 
     print("\n[4] C code snippet (copy to imu_classifier_core.c):")
     print("  " + "-" * 60)
     for m in range(3):
-        vals = ", ".join(f"{mean[m][d]:.6f}f" for d in range(FEATURE_DIM))
-        print(f"  mean[{MODE_NAMES[m]}] = {{ {vals} }}")
+        vals = ", ".join("%0.6ff" % mean[m][d] for d in range(FEATURE_DIM))
+        print("  mean[%s] = { %s }" % (MODE_NAMES[m], vals))
     print()
     for m in range(3):
-        vals = ", ".join(f"{std[m][d]:.6f}f" for d in range(FEATURE_DIM))
-        print(f"  std[{MODE_NAMES[m]}]  = {{ {vals} }}")
+        vals = ", ".join("%0.6ff" % std[m][d] for d in range(FEATURE_DIM))
+        print("  std[%s]  = { %s }" % (MODE_NAMES[m], vals))
     print("  " + "-" * 60)
 
     print("\nDone!")

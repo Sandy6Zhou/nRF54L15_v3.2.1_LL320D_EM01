@@ -150,10 +150,8 @@ const lock_stat_config_t gDefaultLockStatConfig =
 const mot_det_config_t gDefaultMotDetConfig =
 {
     .flag = FLAG_VALID,
-    .motdet_static_g = 10,             /* 默认10 mg */
-    .motdet_land_g = 2000,             /* 默认2000 mg */
-    .motdet_static_land_length = 50,   /* 默认50 s */
-    .motdet_sea_transport_time = 10,   /* 默认10 s */
+    .motdet_transition_count = 3,           /* 默认3次 */
+    .motdet_detection_interval = 300,      /* 默认300秒 */
     .motdet_report_type = REPORT_MODE_GPRS,           /* 默认GPRS */
 };
 
@@ -209,12 +207,6 @@ const locked_config_t gDefaultLockedConfig =
 {
     .flag = FLAG_VALID,
     .lockcd_countdown = 3,             /* 默认3秒 */
-};
-
-const led_config_t gDefaultLedConfig =
-{
-    .flag = FLAG_VALID,
-    .led_display = 0,                  /* 默认关闭 */
 };
 
 const buzzer_config_t gDefaultBuzzerConfig =
@@ -553,19 +545,13 @@ void my_param_load_config(void)
     if (ret != length)
     {
         memcpy(&gConfigParam.motdet_config, &gDefaultMotDetConfig, length);
-        MY_LOG_INF("Mot det config not found. Use default:motdet_land_g(%d), motdet_report_type(%d), "
-                   "motdet_sea_transport_time(%d), motdet_static_g(%d), motdet_static_land_length(%d)",
-                    gConfigParam.motdet_config.motdet_land_g, gConfigParam.motdet_config.motdet_report_type,
-                    gConfigParam.motdet_config.motdet_sea_transport_time, gConfigParam.motdet_config.motdet_static_g,
-                    gConfigParam.motdet_config.motdet_static_land_length);
+        MY_LOG_INF("Mot det config not found. Use default:motdet_transition_count(%d), motdet_detection_interval(%d), motdet_report_type(%d)",
+                    gConfigParam.motdet_config.motdet_transition_count, gConfigParam.motdet_config.motdet_detection_interval, gConfigParam.motdet_config.motdet_report_type);
     }
     else
     {
-        MY_LOG_INF("Mot det config loaded: motdet_land_g(%d), motdet_report_type(%d), "
-                    "motdet_sea_transport_time(%d), motdet_static_g(%d), motdet_static_land_length(%d)",
-                    gConfigParam.motdet_config.motdet_land_g, gConfigParam.motdet_config.motdet_report_type,
-                    gConfigParam.motdet_config.motdet_sea_transport_time, gConfigParam.motdet_config.motdet_static_g,
-                    gConfigParam.motdet_config.motdet_static_land_length);
+        MY_LOG_INF("Mot det config loaded: motdet_transition_count(%d), motdet_detection_interval(%d), motdet_report_type(%d)",
+                    gConfigParam.motdet_config.motdet_transition_count, gConfigParam.motdet_config.motdet_detection_interval, gConfigParam.motdet_config.motdet_report_type);
     }
 
     //--------Load Batlevel Config ---------------------
@@ -675,19 +661,6 @@ void my_param_load_config(void)
     else
     {
         MY_LOG_INF("Locked config loaded: locked_countdown(%d)", gConfigParam.locked_config.lockcd_countdown);
-    }
-
-    //--------Load Led Config ---------------------
-    length = sizeof(led_config_t);
-    ret = my_user_data_read(ZMS_ID_LED_CONFIG, &gConfigParam.led_config, length);
-    if (ret != length)
-    {
-        memcpy(&gConfigParam.led_config, &gDefaultLedConfig, length);
-        MY_LOG_INF("Led config not found. Use default:led_display(%d)", gConfigParam.led_config.led_display);
-    }
-    else
-    {
-        MY_LOG_INF("Led config loaded: led_display(%d)", gConfigParam.led_config.led_display);
     }
 
     //--------Load Buzzer Config ---------------------

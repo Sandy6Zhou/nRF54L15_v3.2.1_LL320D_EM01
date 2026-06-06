@@ -159,18 +159,16 @@ typedef struct                              // 存储的锁销状态报警配置
 typedef struct                              // 存储的锁状态报警配置参数
 {
     uint8_t flag;                           // 参数有效标志
-    uint8_t lockstat_report;                // 锁状态上报方式: 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
+    uint8_t lockstat_report;                // 锁状态上报方式: 0-不上报, 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
     uint8_t lockstat_trigger;               // 锁状态触发方式: 0-都不触发, 1-上锁触发, 2-解锁触发, 3-上锁解锁均触发
 } lock_stat_config_t;
 
 typedef struct                              // 存储的运动检测报警配置参数
 {
     uint8_t flag;                           // 参数有效标志
-    uint16_t motdet_static_g;               // 静止G值方差阈值 (1-500 mg)
-    uint16_t motdet_land_g;                 // 陆运G值方差阈值 (1-3000 mg)
-    uint16_t motdet_static_land_length;     // 静止进入陆运投票时长 (30-600 s)
-    uint16_t motdet_sea_transport_time;     // 进入海运投票时长 (10-600 s)
-    uint8_t  motdet_report_type;            // 模式切换上报方式: 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
+    uint8_t motdet_transition_count;        // 运动检测状态切换次数阈值 (1-100)
+    uint16_t motdet_detection_interval;      // 运动检测状态切换时间间隔 (5~3600)
+    uint8_t motdet_report_type;            // 模式切换上报方式: 0-不上报, 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
 } mot_det_config_t;
 
 typedef struct                              // 存储的电池状态和充电状态报警配置参数
@@ -190,7 +188,7 @@ typedef struct                              // 存储的撞击报警配置参数
     uint8_t flag;                           // 参数有效标志
     uint8_t shockalarm_sw;                  // 撞击报警开关: 0-OFF, 1-ON
     uint8_t shockalarm_level;               // 撞击力度阈值: 1-5 (1最不敏感,5最敏感)
-    uint8_t shockalarm_type;                // 告警上报方式: 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
+    uint8_t shockalarm_type;                // 告警上报方式: 0-不上报, 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
 } shock_alarm_config_t;
 
 typedef struct                              // 存储的数据记录功能配置参数
@@ -226,12 +224,6 @@ typedef struct                              // 存储的自动上锁配置参数
     uint8_t flag;                           // 参数有效标志
     uint16_t lockcd_countdown;              // 插入后上锁倒计时: 0-3600秒, 0代表不自动上锁
 } locked_config_t;
-
-typedef struct                              // 存储的LED显示配置参数
-{
-    uint8_t flag;                           // 参数有效标志
-    uint8_t led_display;                    // LED显示开关: 0-OFF, 1-ON
-} led_config_t;
 
 typedef struct                              // 存储的蜂鸣器配置参数
 {
@@ -295,7 +287,6 @@ typedef struct
     bt_updata_config_t          bt_updata_config;           // 蓝牙数据上传配置
     tag_config_t                tag_config;                 // Tag定位功能配置
     locked_config_t             locked_config;              // 自动上锁配置
-    led_config_t                led_config;                 // LED显示配置
     buzzer_config_t             buzzer_config;              // 蜂鸣器配置
     nfctrig_config_t            nfctrig_config;             // NFC触发规则配置
     nfcauth_config_t            nfcauth_config;             // NFC卡权限配置

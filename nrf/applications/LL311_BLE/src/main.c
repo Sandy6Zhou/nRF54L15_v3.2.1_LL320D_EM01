@@ -614,6 +614,84 @@ void handle_verify_unlock(ble_rsp_result_t *result)
 }
 
 /********************************************************************
+**函数名称:  print_reset_reason
+**入口参数:  无
+**出口参数:  无
+**函数功能:  打印系统复位原因
+**返 回 值:  无
+*********************************************************************/
+void print_reset_reason(void)
+{
+    uint32_t supported = 0U;
+    uint32_t cause = 0U;
+    int err;
+
+    err = hwinfo_get_supported_reset_cause(&supported);
+    if (err == 0)
+    {
+        LOG_INF("Reset causes supported: 0x%08X", supported);
+    }
+
+    err = hwinfo_get_reset_cause(&cause);
+    if (err == 0)
+    {
+        LOG_INF("Reset cause bitmask: 0x%08X", cause);
+
+        if (cause == 0)
+        {
+            LOG_INF("Power-on reset");
+        }
+        if (cause & RESET_PIN)
+        {
+            LOG_INF("PIN reset");
+        }
+        if (cause & RESET_WATCHDOG)
+        {
+            LOG_INF("Watchdog reset");
+        }
+        if (cause & RESET_SOFTWARE)
+        {
+            LOG_INF("Software reset");
+        }
+        if (cause & RESET_CPU_LOCKUP)
+        {
+            LOG_INF("CPU lockup reset");
+        }
+        if (cause & RESET_BROWNOUT)
+        {
+            LOG_INF("Brownout reset");
+        }
+        if (cause & RESET_DEBUG)
+        {
+            LOG_INF("Debug interface reset");
+        }
+        if (cause & RESET_SECURITY)
+        {
+            LOG_INF("Security violation reset");
+        }
+        if (cause & RESET_LOW_POWER_WAKE)
+        {
+            LOG_INF("Wakeup from low power mode");
+        }
+        if (cause & RESET_CLOCK)
+        {
+            LOG_INF("Clock error / GRTC wakeup");
+        }
+
+        /* 清除复位原因，以便下次重启能获取最新原因 */
+        err = hwinfo_clear_reset_cause();
+        if (err)
+        {
+            LOG_INF("Reset cause clear failed (err %d)", err);
+        }
+    }
+    else
+    {
+        LOG_INF("hwinfo_get_reset_cause failed (err %d)", err);
+    }
+}
+
+/********************************************************************
 **函数名称:  main
 **入口参数:  无
 **出口参数:  无
@@ -627,6 +705,7 @@ int main(void)
 
     // 设置自定义日志时间戳格式化函数
     log_custom_timestamp_set(custom_timestamp_formatter);
+    print_reset_reason();
 
     my_param_load_config();
 

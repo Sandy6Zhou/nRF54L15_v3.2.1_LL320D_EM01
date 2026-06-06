@@ -39,6 +39,7 @@
 #include <zephyr/drivers/pwm.h>
 #include <zephyr/drivers/uart.h>
 #include <zephyr/drivers/adc.h>
+#include <zephyr/drivers/hwinfo.h>
 
 /* Zephyr系统功能 */
 #include <zephyr/logging/log.h>
@@ -200,8 +201,6 @@ typedef enum
     MY_MSG_SHOW_CHARG, // 充电状态显示LED消息
     MY_MSG_UPDATE_BATTERY, // 更新电池状态消息
     MY_MSG_CTRL_LOCK_LED, // 锁LED控制消息
-    MY_MSG_CLOSE_LED_SHOW, // 关闭所有LED显示功能消息
-    MY_MSG_OPEN_LED_SHOW, // 打开所有LED显示功能消息
     MY_MSG_VERIFY_UNLOCK, // 处理开锁规则
 
 

@@ -35,7 +35,7 @@
 LOG_MODULE_REGISTER(my_cmd_setting, LOG_LEVEL_INF);
 
 // 标记lte_cmd来的,用于区分蓝牙下发的还是lte过来的(某些指令只能网络发蓝牙不能执行)
-uint8_t g_lte_cmdSource;
+uint8_t g_lte_cmdSource = 0;
 
 // 用于存储整包返回的数据内容(仅在蓝牙线程使用)
 char g_resp_buf[RESP_STRING_LENGTH_MAX];
@@ -58,7 +58,6 @@ static int tag_cmd_handler(at_cmd_t* msg);
 static int jatag_cmd_handler(at_cmd_t* msg);
 static int jgtag_cmd_handler(at_cmd_t* msg);
 static int lockcd_cmd_handler(at_cmd_t* msg);
-static int led_cmd_handler(at_cmd_t* msg);
 static int buzzer_cmd_handler(at_cmd_t* msg);
 static int nfctrig_cmd_handler(at_cmd_t* msg);
 static int nfcauth_cmd_handler(at_cmd_t* msg);
@@ -95,7 +94,6 @@ static const at_cmd_attr_t at_cmd_attr_table[] =
     {"JATAG",          jatag_cmd_handler},
     {"JGTAG",          jgtag_cmd_handler},
     {"LOCKCD",         lockcd_cmd_handler},
-    {"LED",            led_cmd_handler},
     {"BUZZER",         buzzer_cmd_handler},
     {"NFCTRIG",        nfctrig_cmd_handler},
     {"NFCAUTH",        nfcauth_cmd_handler},
@@ -125,6 +123,7 @@ static const char* lte_cmd_attr_table[] =
     "HBT",
     "SERVER",
     "SIMPRI",
+    "LED",
 };
 
 /*********************************************************************
@@ -702,6 +701,10 @@ uint16_t at_recv_cmd_handler(at_cmd_t *at_cmd_msg)
             return cmd_type;
         }
     }
+
+    // 未匹配指令，返回错误回复
+    at_cmd_msg->resp_length = snprintf(at_cmd_msg->resp_msg, RESP_STRING_LENGTH_MAX, "CMD Error");
+
     return cmd_type;
 }
 
@@ -1110,7 +1113,7 @@ param_invalid:
 **           msg->resp_length --- 响应长度
 **函数功能:  处理LOCKSTAT指令：设置锁状态检测与上报
 **指令格式:  LOCKSTAT,[Report],[Trigger]#
-**参数说明:  [Report] - 上报方式: 0-GPRS, 1-GPRS+SMS, 2-GPRS+SMS+CALL
+**参数说明:  [Report] - 上报方式: 0-不上报, 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
 **           [Trigger] - 触发上报方式: 0-都不触发, 1-上锁触发, 2-解锁触发, 3-上锁解锁均触发
 **返 回 值:  BLE数据类型
 *********************************************************************/
@@ -1140,7 +1143,7 @@ static int lockstat_cmd_handler(at_cmd_t* msg)
 
     /* 解析Report参数 */
     report_value = atoi(msg->parm[1]);
-    if (report_value < 0 || report_value > 2)
+    if (report_value < 0 || report_value > 3)
     {
         LOG_INF("%s=>invalid Report param: %s", __func__, msg->parm[1]);
         goto param_invalid;
@@ -1185,21 +1188,17 @@ param_invalid:
 **出口参数:  msg->resp_msg  ---  响应消息
 **           msg->resp_length --- 响应长度
 **函数功能:  处理MOTDET指令：设置运动检测参数
-**指令格式:  MOTDET,[Static G],[Land G],[Static-Land Length],[Sea Tranceport time],[Report Type]#
-**参数说明:  [Static G] - 静止G值方差阈值: 1-500 mg (默认10)
-**           [Land G] - 陆运G值方差阈值: 1-3000 mg (默认2000)
-**           [Static-Land Length] - 静止进入陆运投票时长: 30-600 s (默认50)
-**           [Sea Tranceport time] - 进入海运投票时长: 10-600 s (默认10)
-**           [Report Type] - 模式切换上报方式: 0-GPRS, 1-GPRS+SMS, 2-GPRS+SMS+CALL
+**指令格式:  MOTDET,[Transition Count],[Detection Interval],[Report Type]#
+**参数说明:  [Transition Count] - 运动切换次数: 1-10 (默认5)
+**           [Detection Interval] - 检测间隔: 5-3600 s (默认300)
+**           [Report Type] - 模式切换上报方式: 0-不上报，1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
 **返 回 值:  BLE数据类型
 *********************************************************************/
 static int motdet_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
-    int static_g_value;
-    int land_g_value;
-    int static_land_length_value;
-    int sea_transport_time_value;
+    int transition_count_value;
+    int detection_interval_value;
     int report_type_value;
 
     remaining = RESP_STRING_LENGTH_MAX;
@@ -1207,70 +1206,50 @@ static int motdet_cmd_handler(at_cmd_t* msg)
     //无参数即查询
     if (msg->parm_count == 0)
     {
-        msg->resp_length = snprintf(msg->resp_msg, remaining, "%s:%d,%d,%d,%d,%d",
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "%s:%d,%d,%d",
                             msg->parm[0],
-                            gConfigParam.motdet_config.motdet_static_g,
-                            gConfigParam.motdet_config.motdet_land_g,
-                            gConfigParam.motdet_config.motdet_static_land_length,
-                            gConfigParam.motdet_config.motdet_sea_transport_time,
+                            gConfigParam.motdet_config.motdet_transition_count,
+                            gConfigParam.motdet_config.motdet_detection_interval,
                             gConfigParam.motdet_config.motdet_report_type);
         return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 检查参数数量 */
-    if (msg->parm_count != 5)
+    if (msg->parm_count != 3)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
         return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
-    /* 解析Static G参数 */
-    static_g_value = atoi(msg->parm[1]);
-    if (static_g_value < 1 || static_g_value > 500)
+    /* 解析Transition Count参数 */
+    transition_count_value = atoi(msg->parm[1]);
+    if (transition_count_value < 1 || transition_count_value > 10)
     {
-        LOG_INF("%s=>invalid Static G param: %s", __func__, msg->parm[1]);
+        LOG_INF("%s=>invalid Transition Count param: %s", __func__, msg->parm[1]);
         goto param_invalid;
     }
 
-    /* 解析Land G参数 */
-    land_g_value = atoi(msg->parm[2]);
-    if (land_g_value < 1 || land_g_value > 3000)
+    /* 解析Detection Interval参数 */
+    detection_interval_value = atoi(msg->parm[2]);
+    if (detection_interval_value < 5 || detection_interval_value > 3600)
     {
-        LOG_INF("%s=>invalid Land G param: %s", __func__, msg->parm[2]);
-        goto param_invalid;
-    }
-
-    /* 解析Static-Land Length参数 */
-    static_land_length_value = atoi(msg->parm[3]);
-    if (static_land_length_value < 30 || static_land_length_value > 600)
-    {
-        LOG_INF("%s=>invalid Static-Land Length param: %s", __func__, msg->parm[3]);
-        goto param_invalid;
-    }
-
-    /* 解析Sea Transport time参数 */
-    sea_transport_time_value = atoi(msg->parm[4]);
-    if (sea_transport_time_value < 10 || sea_transport_time_value > 600)
-    {
-        LOG_INF("%s=>invalid Sea Transport time param: %s", __func__, msg->parm[4]);
+        LOG_INF("%s=>invalid Detection Interval param: %s", __func__, msg->parm[2]);
         goto param_invalid;
     }
 
     /* 解析Report Type参数 */
-    report_type_value = atoi(msg->parm[5]);
-    if (report_type_value < 0 || report_type_value > 2)
+    report_type_value = atoi(msg->parm[3]);
+    if (report_type_value < 0 || report_type_value > 3)
     {
-        LOG_INF("%s=>invalid Report Type param: %s", __func__, msg->parm[5]);
+        LOG_INF("%s=>invalid Report Type param: %s", __func__, msg->parm[3]);
         goto param_invalid;
     }
 
     /* 所有参数验证通过,统一赋值 */
     gConfigParam.motdet_config.flag = FLAG_VALID;
-    gConfigParam.motdet_config.motdet_static_g = (uint16_t)static_g_value;
-    gConfigParam.motdet_config.motdet_land_g = (uint16_t)land_g_value;
-    gConfigParam.motdet_config.motdet_static_land_length = (uint16_t)static_land_length_value;
-    gConfigParam.motdet_config.motdet_sea_transport_time = (uint16_t)sea_transport_time_value;
+    gConfigParam.motdet_config.motdet_transition_count = (uint16_t)transition_count_value;
+    gConfigParam.motdet_config.motdet_detection_interval = (uint16_t)detection_interval_value;
     gConfigParam.motdet_config.motdet_report_type = (uint8_t)report_type_value;
 
     /* 保存配置 */
@@ -1281,11 +1260,9 @@ static int motdet_cmd_handler(at_cmd_t* msg)
 
     /* 生成成功响应 */
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
-    LOG_INF("MOTDET: StaticG=%d, LandG=%d, StaticLandLen=%d, SeaTime=%d, ReportType=%d",
-           gConfigParam.motdet_config.motdet_static_g,
-           gConfigParam.motdet_config.motdet_land_g,
-           gConfigParam.motdet_config.motdet_static_land_length,
-           gConfigParam.motdet_config.motdet_sea_transport_time,
+    LOG_INF("MOTDET: TransitionCount=%d, DetectionInterval=%d, ReportType=%d",
+           gConfigParam.motdet_config.motdet_transition_count,
+           gConfigParam.motdet_config.motdet_detection_interval,
            gConfigParam.motdet_config.motdet_report_type);
 
     //TODO 具体逻辑处理
@@ -1450,7 +1427,7 @@ param_invalid:
 **指令格式:  SHOCKALARM,[SW],[Level],[Type of Alarm]#
 **参数说明:  [SW] - 功能开关: ON/OFF (默认OFF)
 **           [Level] - 撞击力度阈值: 1-5 (默认3; 5最敏感,1最不敏感)
-**           [Type of Alarm] - 告警上报方式: 0-GPRS, 1-GPRS+SMS, 2-GPRS+SMS+CALL
+**           [Type of Alarm] - 告警上报方式: 0-不上报, 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
 **返 回 值:  BLE数据类型
 *********************************************************************/
 static int shockalarm_cmd_handler(at_cmd_t* msg)
@@ -1509,7 +1486,7 @@ static int shockalarm_cmd_handler(at_cmd_t* msg)
 
     /* 解析Type of Alarm参数 */
     type_value = atoi(msg->parm[3]);
-    if (type_value < 0 || type_value > 2)
+    if (type_value < 0 || type_value > 3)
     {
         LOG_INF("%s=>invalid Type of Alarm param: %s", __func__, msg->parm[3]);
         goto param_invalid;
@@ -2255,95 +2232,6 @@ static int lockcd_cmd_handler(at_cmd_t* msg)
     /* 生成成功响应 */
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
     LOG_INF("LOCKCD: Countdown=%u", gConfigParam.locked_config.lockcd_countdown);
-
-    //TODO 具体逻辑处理
-
-    return BLE_DATA_TYPE_PACKET_MULTIPLE;
-
-param_invalid:
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-    return BLE_DATA_TYPE_PACKET_MULTIPLE;
-}
-
-/********************************************************************
-**函数名称:  led_cmd_handler
-**入口参数:  msg      ---        AT指令结构体指针
-**出口参数:  msg->resp_msg  ---  响应消息
-**           msg->resp_length --- 响应长度
-**函数功能:  处理LED指令：控制设备LED指示灯的显示状态
-**指令格式:  LED,A#
-**参数说明:  A - 设备LED是否全时显示，可选值：OFF(关闭，默认)、ON(开启)
-**返 回 值:  BLE数据类型
-*********************************************************************/
-static int led_cmd_handler(at_cmd_t* msg)
-{
-    uint16_t remaining;
-    int display_value;
-
-    remaining = RESP_STRING_LENGTH_MAX;
-
-    // 无参数即查询
-    if (msg->parm_count == 0)
-    {
-        const char* state_str = gConfigParam.led_config.led_display ? "ON" : "OFF";
-        msg->resp_length = snprintf(msg->resp_msg, remaining, "%s:%s",
-                                    msg->parm[0],
-                                    state_str
-        );
-        return BLE_DATA_TYPE_PACKET_MULTIPLE;
-    }
-
-    /* 检查参数数量 */
-    if (msg->parm_count != 1)
-    {
-        LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
-        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-        return BLE_DATA_TYPE_PACKET_MULTIPLE;
-    }
-
-    /* 解析A参数 */
-    if (strcmp(msg->parm[1], "ON") == 0)
-    {
-        display_value = 1;
-
-        #if RETRANSMIT_CHECK_ENABLED
-            lte_send_cmd_with_retry("LED", "1");
-        #else
-            lte_send_command("LED", "1");
-        #endif
-
-        my_send_msg(MOD_BLE, MOD_CTRL, MY_MSG_OPEN_LED_SHOW);
-    }
-    else if (strcmp(msg->parm[1], "OFF") == 0)
-    {
-        display_value = 0;
-
-        #if RETRANSMIT_CHECK_ENABLED
-            lte_send_cmd_with_retry("LED", "0");
-        #else
-            lte_send_command("LED", "0");
-        #endif
-
-        my_send_msg(MOD_BLE, MOD_CTRL, MY_MSG_CLOSE_LED_SHOW);
-    }
-    else
-    {
-        LOG_INF("%s=>invalid A param: %s", __func__, msg->parm[1]);
-        goto param_invalid;
-    }
-
-    /* 所有参数验证通过,统一赋值 */
-    gConfigParam.led_config.flag = FLAG_VALID;
-    gConfigParam.led_config.led_display = (uint8_t)display_value;
-
-    /* 保存配置 */
-    my_user_data_write(ZMS_ID_LED_CONFIG, &gConfigParam.led_config, sizeof(led_config_t));
-
-    LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
-
-    /* 生成成功响应 */
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
-    LOG_INF("LED: Display=%d", gConfigParam.led_config.led_display);
 
     //TODO 具体逻辑处理
 
@@ -3213,6 +3101,11 @@ static int bkey_cmd_handler(at_cmd_t* msg)
     /* 判断指令类型 */
     if (strcmp(msg->parm[0], "BKEY_RESET") == 0)
     {
+        if (!g_lte_cmdSource)
+        {
+            msg->resp_length = snprintf(msg->resp_msg, remaining, "CMD Error");
+            return BLE_DATA_TYPE_PACKET_MULTIPLE;
+        }
         /* BKEY_RESET# - 重置为默认密钥 */
         if (msg->parm_count != 0)
         {
@@ -3877,7 +3770,8 @@ static int cunlock_cmd_handler(at_cmd_t* msg)
     // 此指令不允许蓝牙发
     if (!g_lte_cmdSource)
     {
-        return 0;
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "CMD Error");
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     // 无参数即查询
@@ -4076,7 +3970,8 @@ static int clock_cmd_handler(at_cmd_t *msg)
     // 此指令不允许蓝牙发
     if (!g_lte_cmdSource)
     {
-        return 0;
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "CMD Error");
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     // 检查参数数量

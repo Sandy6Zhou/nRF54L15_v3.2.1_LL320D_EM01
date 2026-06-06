@@ -308,6 +308,10 @@ static int gsensor_apply_run_mode_config(void)
     ret = lsm6dsv16x_xl_full_scale_set(&lsm_ctx, LSM6DSV16X_2g);
     GSENSOR_REG_CHECK(ret);
 
+    // 进入正常运行模式
+    ret = lsm6dsv16x_xl_mode_set(&lsm_ctx, LSM6DSV16X_XL_HIGH_PERFORMANCE_MD);
+    GSENSOR_REG_CHECK(ret);
+
     // 配置陀螺仪数据速率为60Hz（与加速度计同步，便于运动状态融合分析）
     ret = lsm6dsv16x_gy_data_rate_set(&lsm_ctx, LSM6DSV16X_ODR_AT_60Hz);
     GSENSOR_REG_CHECK(ret);
@@ -483,7 +487,7 @@ static int analyze_gsensor_state(const gsensor_data_t *data)
     LOG_INF("g_gsensor_runtime_ctx.current_gsensor_state = %d", g_gsensor_runtime_ctx.current_gsensor_state);
 
     // 启动 GSENSOR 周期采样定时器
-    my_start_timer(MY_TIMER_GSENSOR_SAMPLE, GSENSOR_SAMPLE_INTERVAL_MS, false, gsensor_sample_timer_cb);
+    my_start_timer(MY_TIMER_GSENSOR_SAMPLE, gConfigParam.motdet_config.motdet_detection_interval * 1000, false, gsensor_sample_timer_cb);
 
     return 0;
 }
@@ -505,16 +509,19 @@ void get_motion_status(void)
         case STATE_STATIC:
             timer_interval = gConfigParam.device_workmode_config.workmode_config.intelligent.stop_status_interval_sec;  // 静止状态：默认86400秒（24小时）
             MY_LOG_INF("Smart mode: STATIC state, interval = %d", timer_interval);
+            send_alarm_message_to_lte(ALARM_STILL, NULL);
             break;
 
         case STATE_LAND_TRANSPORT:
             timer_interval = gConfigParam.device_workmode_config.workmode_config.intelligent.land_status_interval_sec;  // 陆运状态：默认15秒
             MY_LOG_INF("Smart mode: LAND TRANSPORT state, interval = %d", timer_interval);
+            send_alarm_message_to_lte(ALARM_LAND, NULL);
             break;
 
         case STATE_SEA_TRANSPORT:
             timer_interval = gConfigParam.device_workmode_config.workmode_config.intelligent.sea_status_interval_sec;  // 海运状态：默认14400秒（4小时）
             MY_LOG_INF("Smart mode: SEA TRANSPORT state, interval = %d", timer_interval);
+            send_alarm_message_to_lte(ALARM_SEA, NULL);
             break;
 
         default:

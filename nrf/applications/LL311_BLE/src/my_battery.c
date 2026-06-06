@@ -331,13 +331,10 @@ void my_battery_show_chgled()
         }
 
         my_battery_update_state();      // 更新电池状态
-        // 检查 LED 显示功能是否启用
-        if (gConfigParam.led_config.led_display == 1)
-        {
-            g_chg_led_ctrl.time_count = 0;  // 重置充电LED控制定时器的时间计数
-            // 启动充电LED控制定时器，立即执行一次，然后以 CHG_CTRL_LED_MS 为周期重复执行
-            k_timer_start(g_chg_led_ctrl.timer, K_MSEC(0), K_MSEC(CHG_CTRL_LED_MS));
-        }
+
+        g_chg_led_ctrl.time_count = 0;  // 重置充电LED控制定时器的时间计数
+        // 启动充电LED控制定时器，立即执行一次，然后以 CHG_CTRL_LED_MS 为周期重复执行
+        k_timer_start(g_chg_led_ctrl.timer, K_MSEC(0), K_MSEC(CHG_CTRL_LED_MS));
 
         // 检查正常情况下的电池状态LED控制定时器是否正在运行
         if (k_timer_remaining_get(g_batt_led_ctrl.timer) != 0)
@@ -854,12 +851,9 @@ void my_battery_show()
         return;  // 直接返回，不进行后续的电池状态检查
     }
 
-    // 检查 LED 显示功能是否启用
-    if (gConfigParam.led_config.led_display == 1)
-    {
-        //当按键重复按下时，重新开始定时器
-        g_batt_led_ctrl.time_count = 0;  // 重置时间计数器
-        // 启动电池状态LED控制定时器，立即执行一次，然后以 100ms 为周期重复执行
-        k_timer_start(g_batt_led_ctrl.timer, K_MSEC(0), K_MSEC(BATT_TIMER_MS));
-    }
+
+    //当按键重复按下时，重新开始定时器
+    g_batt_led_ctrl.time_count = 0;  // 重置时间计数器
+    // 启动电池状态LED控制定时器，立即执行一次，然后以 100ms 为周期重复执行
+    k_timer_start(g_batt_led_ctrl.timer, K_MSEC(0), K_MSEC(BATT_TIMER_MS));
 }

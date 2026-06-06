@@ -17,7 +17,6 @@
 #define STATIC_INTERVAL         (24 * 60 * 60)   // 静止状态：24小时
 
 #define GSENSOR_WAKEUP_DURATION             2           // 唤醒持续时间（2=3个ODR周期@15Hz≈200ms，过滤瞬态噪声）
-#define GSENSOR_SAMPLE_INTERVAL_MS          (60 * 1000) // 周期采样间隔60秒（智能模式下主定时器触发一次窗口采集）
 #define GSENSOR_INT_DEBOUNCE_MS             50          // INT1 唤醒中断消抖时间，避免电平抖动导致重复触发
 
 // 传感器相关宏定义（基于LSM6DSVD文档特性）
