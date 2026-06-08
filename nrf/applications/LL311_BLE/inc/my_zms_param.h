@@ -181,6 +181,7 @@ typedef struct                              // 存储的撞击报警配置参数
     uint8_t shockalarm_sw;                  // 撞击报警开关: 0-OFF, 1-ON
     uint8_t shockalarm_level;               // 撞击力度阈值: 1-5 (1最不敏感,5最敏感)
     uint8_t shockalarm_type;                // 告警上报方式: 0-不上报, 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
+    uint16_t shockalarm_time;               // 告警时间间隔: 10-600秒
 } shock_alarm_config_t;
 
 typedef struct                              // 存储的数据记录功能配置参数

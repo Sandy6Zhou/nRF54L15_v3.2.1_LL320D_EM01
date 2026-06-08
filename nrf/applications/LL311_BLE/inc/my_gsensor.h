@@ -16,6 +16,7 @@
 /* 智能模式时间间隔定义（单位：秒） */
 #define STATIC_INTERVAL         (24 * 60 * 60)   // 静止状态：24小时
 
+#define SHOCKALARM_TAP_STEP_THRESHOLD       4           // 敲击步进阈值
 #define GSENSOR_WAKEUP_DURATION             2           // 唤醒持续时间（2=3个ODR周期@15Hz≈200ms，过滤瞬态噪声）
 #define GSENSOR_INT_DEBOUNCE_MS             50          // INT1 唤醒中断消抖时间，避免电平抖动导致重复触发
 

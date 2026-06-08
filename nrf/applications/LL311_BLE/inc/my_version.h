@@ -12,7 +12,15 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260602"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260608"
+/* 软件版本:        V1.0
+** 完成日期:        2026.06.08
+** 作    者:        曹阳 (caoyang@jimiiot.com)
+** 修改内容:       1. 增加撞击检测指令和相关逻辑及报警功能
+                  2. 为降低功耗，在撞击检测关闭，设备进入低功耗模式时关闭G-SENSOR电源
+***/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260602"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.06.02
 ** 作    者:        曹阳 (caoyang@jimiiot.com)

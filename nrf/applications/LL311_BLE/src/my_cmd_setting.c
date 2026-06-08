@@ -42,7 +42,6 @@ char g_resp_buf[RESP_STRING_LENGTH_MAX];
 
 static int remalm_cmd_handler(at_cmd_t* msg);
 static int lockpincyt_cmd_handler(at_cmd_t* msg);
-static int lockerr_cmd_handler(at_cmd_t* msg);
 static int pinstat_cmd_handler(at_cmd_t* msg);
 static int lockstat_cmd_handler(at_cmd_t* msg);
 static int motdet_cmd_handler(at_cmd_t* msg);
@@ -1347,10 +1346,11 @@ param_invalid:
 **出口参数:  msg->resp_msg  ---  响应消息
 **           msg->resp_length --- 响应长度
 **函数功能:  处理SHOCKALARM指令：设置撞击检测报警功能
-**指令格式:  SHOCKALARM,[SW],[Level],[Type of Alarm]#
+**指令格式:  SHOCKALARM,[SW],[Level],[Type of Alarm],[Silence duration]#
 **参数说明:  [SW] - 功能开关: ON/OFF (默认OFF)
 **           [Level] - 撞击力度阈值: 1-5 (默认3; 5最敏感,1最不敏感)
 **           [Type of Alarm] - 告警上报方式: 0-不上报, 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
+**           [Silence duration] - 静默时间: 10-600秒 (默认60秒)
 **返 回 值:  BLE数据类型
 *********************************************************************/
 static int shockalarm_cmd_handler(at_cmd_t* msg)
@@ -1359,6 +1359,7 @@ static int shockalarm_cmd_handler(at_cmd_t* msg)
     int level_value;
     int type_value;
     int sw_value;
+    int time_value;
 
     remaining = RESP_STRING_LENGTH_MAX;
 
@@ -1367,17 +1368,18 @@ static int shockalarm_cmd_handler(at_cmd_t* msg)
     {
         // 根据 shockalarm_sw 的值选择 "ON" 或 "OFF"
         const char* state_str = gConfigParam.shockalarm_config.shockalarm_sw ? "ON" : "OFF";
-        msg->resp_length = snprintf(msg->resp_msg, remaining, "%s:%s,%d,%d",
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "%s:%s,%d,%d,%d",
                             msg->parm[0],
                             state_str,
                             gConfigParam.shockalarm_config.shockalarm_level,
-                            gConfigParam.shockalarm_config.shockalarm_type
+                            gConfigParam.shockalarm_config.shockalarm_type,
+                            gConfigParam.shockalarm_config.shockalarm_time
         );
         return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 检查参数数量 */
-    if (msg->parm_count != 3)
+    if (msg->parm_count != 4)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
@@ -1415,23 +1417,37 @@ static int shockalarm_cmd_handler(at_cmd_t* msg)
         goto param_invalid;
     }
 
+    /* 解析Time参数 */
+    time_value = atoi(msg->parm[4]);
+    if (time_value < 10 || time_value > 600)
+    {
+        LOG_INF("%s=>invalid Time param: %s", __func__, msg->parm[4]);
+        goto param_invalid;
+    }
+
     /* 所有参数验证通过,统一赋值 */
     gConfigParam.shockalarm_config.flag = FLAG_VALID;
     gConfigParam.shockalarm_config.shockalarm_sw = (uint8_t)sw_value;
     gConfigParam.shockalarm_config.shockalarm_level = (uint8_t)level_value;
     gConfigParam.shockalarm_config.shockalarm_type = (uint8_t)type_value;
+    gConfigParam.shockalarm_config.shockalarm_time = time_value;
 
     /* 保存配置 */
     my_user_data_write(ZMS_ID_SHOCK_ALARM_CONFIG, &gConfigParam.shockalarm_config, sizeof(shock_alarm_config_t));
 
-    LOG_INF("%s=>%s,%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2], msg->parm[3]);
+    /* 通知 G-Sensor 更新配置 */
+    my_send_msg(MOD_GSENSOR, MOD_GSENSOR, MY_MSG_SHOCK_SW);
+
+    LOG_INF("%s=>%s,%s,%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2], msg->parm[3], msg->parm[4]);
 
     /* 生成成功响应 */
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
-    LOG_INF("SHOCKALARM: SW=%d, Level=%d, Type=%d",
+    LOG_INF("SHOCKALARM: SW=%d, Level=%d, Type=%d, Silence=%d ",
            gConfigParam.shockalarm_config.shockalarm_sw,
            gConfigParam.shockalarm_config.shockalarm_level,
-           gConfigParam.shockalarm_config.shockalarm_type);
+           gConfigParam.shockalarm_config.shockalarm_type,
+           gConfigParam.shockalarm_config.shockalarm_time
+        );
 
     //TODO 具体逻辑处理
 

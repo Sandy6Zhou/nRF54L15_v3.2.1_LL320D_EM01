@@ -89,23 +89,6 @@ static int cmd_reboot(const struct shell *shell, size_t argc, char **argv)
 }
 
 /********************************************************************
-**函数名称:  cmd_gsensor_read
-**入口参数:  shell   ---        Shell 实例指针
-**           argc    ---        参数数量
-**           argv    ---        参数数组
-**出口参数:  无
-**函数功能:  触发 G-Sensor 读取六轴数据
-**返 回 值:  0 表示成功
-*********************************************************************/
-static int cmd_gsensor_read(const struct shell *shell, size_t argc, char **argv)
-{
-    my_send_msg(MOD_MAIN, MOD_GSENSOR, MY_MSG_GSENSOR_READ);
-    shell_print(shell, "G-Sensor read command sent");
-
-    return 0;
-}
-
-/********************************************************************
 **函数名称:  cmd_switch_mode
 **入口参数:  sh      ---        Shell 实例指针
 **           argc    ---        参数数量
@@ -1263,7 +1246,6 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_app,
     SHELL_CMD(sysinfo, NULL, "Display system information", cmd_system_info),
     SHELL_CMD(bleinfo, NULL, "Display BLE status", cmd_ble_info),
     SHELL_CMD(memstat, NULL, "Display memory statistics", cmd_mem_stat),
-    SHELL_CMD(gsensor, NULL, "Read G-Sensor 6-axis data", cmd_gsensor_read),
     SHELL_CMD(reboot, NULL, "Reboot system", cmd_reboot),
     SHELL_CMD(switchmode, NULL, "Switch work mode", cmd_switch_mode),
     SHELL_CMD(settime, NULL, "settime unix seconds ", cmd_set_time),

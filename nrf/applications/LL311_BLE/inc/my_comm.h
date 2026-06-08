@@ -172,8 +172,9 @@ typedef enum
     MY_TIMER_UPLOAD_INTERVAL, // 上报间隔定时器
 
     // G-Sensor 专用定时器
-    MY_TIMER_GSENSOR_SAMPLE,  // G-Sensor 周期采样定时器
-    MY_TIMER_GSENSOR_BURST,   // G-Sensor 批量采样定时器
+    MY_TIMER_GSENSOR_SAMPLE,        // G-Sensor 周期采样定时器
+    MY_TIMER_GSENSOR_BURST,         // G-Sensor 批量采样定时器
+    MY_TIMER_GSENSOR_SHOCK_ALARM,   // G-Sensor 撞击告警定时器
 
     MY_TIMER_MAX_ID,
 } MY_E_TIMER;
@@ -216,12 +217,14 @@ typedef enum
     MY_MSG_ADD_RETRANS_QUEUE,
 
     /* G-Sensor处理程序消息 */
-    MY_MSG_GSENSOR_PWROFF,
-    MY_MSG_GSENSOR_READ, /* G-Sensor 读取六轴数据 */
-    MY_MSG_GSENSOR_FIFO_INT, /* G-Sensor FIFO中断消息 */
-    MY_MSG_MODESET_UPDATE,  // 处理智能模式下参数设置更新
-    MY_MSG_GSENSOR_SAMPLE,  // G-Sensor 周期采样消息
-    MY_MSG_GPS_SPEED_UPDATE , // 处理GPS速度消息
+    MY_MSG_GSENSOR_LOW_POWER,       /* G-Sensor 模式切换进入低功耗模式 */
+    MY_MSG_GSENSOR_INT,             /* G-Sensor INT1 中断消息 */
+    MY_MSG_GSENSOR_FIFO_INT,        /* G-Sensor FIFO中断消息 */
+    MY_MSG_GSENSOR_SHOCK_INT,       /* G-Sensor 撞击检测中断消息 */
+    MY_MSG_MODESET_UPDATE,          /* 处理智能模式下参数设置更新 */
+    MY_MSG_GSENSOR_SAMPLE,          /* G-Sensor 周期采样消息 */
+    MY_MSG_GPS_SPEED_UPDATE ,       /* 处理GPS速度消息 */
+    MY_MSG_SHOCK_SW,                /* 处理撞击检测开关消息 */
 
     /* NFC处理程序消息 */
     MY_MSG_NFC_START_POLL,   /* 启动NFC轮询 */

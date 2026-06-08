@@ -389,7 +389,7 @@ void awaken_lte_timer_callback(void *timer)
 void handle_long_life_mode(void)
 {
     /* 关闭GSENSOR */
-    my_send_msg(MOD_MAIN, MOD_GSENSOR, MY_MSG_GSENSOR_PWROFF);
+    my_send_msg(MOD_MAIN, MOD_GSENSOR, MY_MSG_GSENSOR_LOW_POWER);
 
     /* 开启LTE */
     my_send_msg(MOD_MAIN, MOD_LTE, MY_MSG_LTE_PWRON);
@@ -428,7 +428,7 @@ void handle_continuous_mode(void)
     my_stop_timer(MY_TIMER_LTE_POWER);
 
     /* 关闭GSENSOR */
-    my_send_msg(MOD_MAIN, MOD_GSENSOR, MY_MSG_GSENSOR_PWROFF);
+    my_send_msg(MOD_MAIN, MOD_GSENSOR, MY_MSG_GSENSOR_LOW_POWER);
 
     /* 开启LTE */
     my_send_msg(MOD_MAIN, MOD_LTE, MY_MSG_LTE_PWRON);

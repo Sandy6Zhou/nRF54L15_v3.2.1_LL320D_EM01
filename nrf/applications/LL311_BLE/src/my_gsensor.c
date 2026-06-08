@@ -123,6 +123,10 @@ static const pm_device_ops_t gsensor_pm_ops =
 };
 
 static uint8_t s_chip_id = 0; // 存储识别到的芯片ID
+
+static lsm6dsv16x_pin_int_route_t s_int1_route = { 0 };     // 存储INT1引脚路由配置
+static bool s_shock_alarm_flag = false;                     // 敲击报警延时标志位
+
 /********************************************************************
 **函数名称:  gsensor_is_smart_mode
 **入口参数:  无
@@ -164,7 +168,7 @@ static void gsensor_int_timer_handler(struct k_timer *timer)
     level = gpio_pin_get_dt(&gsen_int);
     if (level == 1)
     {
-        my_send_msg(MOD_GSENSOR, MOD_GSENSOR, MY_MSG_GSENSOR_FIFO_INT);
+        my_send_msg(MOD_GSENSOR, MOD_GSENSOR, MY_MSG_GSENSOR_INT);
     }
 
     s_gsensor_int_ctrl.debouncing = false;
@@ -224,19 +228,99 @@ static void gsensor_reset_state(void)
 }
 
 /********************************************************************
-**函数名称:  gsensor_apply_wakeup_mode_config
+**函数名称:  gsensor_apply_shock_config
 **入口参数:  无
 **出口参数:  无
-**函数功能:  配置 G-Sensor 为低功耗唤醒待机模式
-**返 回 值:  0 表示成功，负值表示错误码
+**函数功能:  进行G-Sensor 敲击报警配置，包括时间窗口、阈值、优先级等
+**返 回 值:  无
 *********************************************************************/
-static int gsensor_apply_wakeup_mode_config(void)
+static int gsensor_apply_shock_config(void)
 {
     int ret;
-    lsm6dsv16x_wake_up_ths_t wake_up_ths = { 0 };
-    lsm6dsv16x_wake_up_dur_t wake_up_dur = { 0 };
-    lsm6dsv16x_pin_int_route_t int1_route = { 0 };
+    uint8_t value;
+    lsm6dsv16x_tap_dur_t tap_dur = { 0 };
     lsm6dsv16x_interrupt_mode_t int_mode = { 0 };
+    lsm6dsv16x_tap_cfg0_t tap_cfg0 = { 0 };
+
+    // 根据存储的配置是否打开中断功能
+    if (gConfigParam.shockalarm_config.shockalarm_sw)
+    {
+        //配置敲击时间窗口
+        // TAP_DUR (0x5A) 寄存器
+        tap_dur.shock = 0x00;      // SHOCK[1:0]: 冲击时间窗口（00=4/ODR, 01=8/ODR, 10=12/ODR, 11=16/ODR）
+        tap_dur.quiet = 0x02;      // QUIET[1:0]: 静音时间（00=2/ODR, 01=4/ODR, 10=6/ODR, 11=8/ODR）
+        tap_dur.dur = 0x03;        // DUR[3:0]: 双击最大时间间隔（0000=16/ODR, 其他=n*32/ODR）
+        ret = lsm6dsv16x_write_reg(&lsm_ctx, LSM6DSV16X_TAP_DUR, (uint8_t *)&tap_dur, 1);
+        GSENSOR_REG_CHECK(ret);
+
+        // 配置 Z 轴敲击阈值 + 轴优先级
+        // TAP_CFG1 (0x57) 寄存器
+        // bit4-0: TAP_TS_Z[4:0] - Z轴敲击阈值（0-31）
+        value = gConfigParam.shockalarm_config.shockalarm_level * SHOCKALARM_TAP_STEP_THRESHOLD + 9;// 敲击步进阈值,9以下阈值过小，摇晃设备容易误判，从9开始阈值增加
+        ret = lsm6dsv16x_write_reg(&lsm_ctx, LSM6DSV16X_TAP_CFG1, &value, 1);
+        GSENSOR_REG_CHECK(ret);
+
+        // 配置 Y 轴敲击阈值
+        // TAP_CFG2 (0x58) 寄存器
+        // bit7-5: 保留（必须为0）
+        // bit4-0: TAP_TS_Y[4:0] - Y轴敲击阈值（0-31）
+        ret = lsm6dsv16x_write_reg(&lsm_ctx, LSM6DSV16X_TAP_CFG2, &value, 1);
+        GSENSOR_REG_CHECK(ret);
+
+        // 配置 X 轴敲击阈值
+        // TAP_THS_6D (0x59) 寄存器
+        // bit4-0: TAP_TS_X[4:0] - X轴敲击阈值（0-31）
+        ret = lsm6dsv16x_write_reg(&lsm_ctx, LSM6DSV16X_TAP_THS_6D, &value, 1);
+        GSENSOR_REG_CHECK(ret);
+
+        // 使能xyz轴的敲击检测
+        tap_cfg0.tap_x_en = 1;
+        tap_cfg0.tap_y_en = 1;
+        tap_cfg0.tap_z_en = 1;
+        ret = lsm6dsv16x_write_reg(&lsm_ctx, LSM6DSV16X_TAP_CFG0, (uint8_t *)&tap_cfg0, 1);
+        GSENSOR_REG_CHECK(ret);
+
+        int_mode.enable = 1;
+        int_mode.lir = 1;
+        ret = lsm6dsv16x_interrupt_enable_set(&lsm_ctx, int_mode);
+        GSENSOR_REG_CHECK(ret);
+
+        // 配置INT1引脚路由到wakeup事件（运动超阈值时拉高INT1唤醒主控）
+        // s_int1_route.freefall = 1;
+        s_int1_route.single_tap = 1;
+        ret = lsm6dsv16x_pin_int1_route_set(&lsm_ctx, &s_int1_route);
+        GSENSOR_REG_CHECK(ret);
+    }
+    else
+    {
+        // s_int1_route.freefall = 0;
+        s_int1_route.single_tap = 0;
+        ret = lsm6dsv16x_pin_int1_route_set(&lsm_ctx, &s_int1_route);
+        GSENSOR_REG_CHECK(ret);
+    }
+
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  gsensor_apply_low_power_mode_config
+**入口参数:  无
+**出口参数:  无
+**函数功能:  配置 G-Sensor 为低功耗模式
+**返 回 值:  0 表示成功，负值表示错误码
+*********************************************************************/
+static int gsensor_apply_low_power_mode_config(void)
+{
+    int ret;
+
+    // 敲击报警关闭时，断开G-Sensor电源
+    if (gConfigParam.shockalarm_config.shockalarm_sw == 0)
+    {
+        g_gsensor_runtime_ctx.sensor_ready = false;
+        my_gsensor_pwr_on(false);
+
+        return 0;
+    }
 
     // 关闭陀螺仪以降低功耗（唤醒待机模式仅需加速度计检测运动）
     ret = lsm6dsv16x_gy_data_rate_set(&lsm_ctx, LSM6DSV16X_ODR_OFF);
@@ -254,27 +338,6 @@ static int gsensor_apply_wakeup_mode_config(void)
     ret = lsm6dsv16x_xl_mode_set(&lsm_ctx, LSM6DSV16X_XL_LOW_POWER_2_AVG_MD);
     GSENSOR_REG_CHECK(ret);
 
-    // TODO: 敲击与跌落检测
-    // // 配置唤醒阈值（值2≈244mg，超过此加速度触发唤醒中断）
-    // wake_up_ths.wk_ths = GSENSOR_WAKEUP_THRESHOLD;
-    // ret = lsm6dsv16x_write_reg(&lsm_ctx, LSM6DSV16X_WAKE_UP_THS, (uint8_t *)&wake_up_ths, 1);
-    // GSENSOR_REG_CHECK(ret);
-
-    // // 打开事件中断总使能，并使用锁存模式保持INT1电平，软件手动清除，防止中断丢失
-    // int_mode.enable = 1;
-    // int_mode.lir = 1;
-    // ret = lsm6dsv16x_interrupt_enable_set(&lsm_ctx, int_mode);
-    // GSENSOR_REG_CHECK(ret);
-
-    // // 配置INT1引脚路由到wakeup事件（运动超阈值时拉高INT1唤醒主控）
-    // int1_route.wakeup = 1;
-    // ret = lsm6dsv16x_pin_int1_route_set(&lsm_ctx, &int1_route);
-    // GSENSOR_REG_CHECK(ret);
-
-    wake_up_dur.sleep_dur = 0;                      // 闲置多久后进入睡眠（填 0 = 立即睡眠）
-    wake_up_dur.wake_dur = GSENSOR_WAKEUP_DURATION; // 配置唤醒持续时间（0=1个ODR周期即触发，响应最灵敏）
-    ret = lsm6dsv16x_write_reg(&lsm_ctx, LSM6DSV16X_WAKE_UP_DUR, (uint8_t *)&wake_up_dur, 1);
-    GSENSOR_REG_CHECK(ret);
 
     return 0;
 }
@@ -288,13 +351,8 @@ static int gsensor_apply_wakeup_mode_config(void)
 *********************************************************************/
 static int gsensor_apply_run_mode_config(void)
 {
-    lsm6dsv16x_pin_int_route_t int1_route = { 0 };
     lsm6dsv16x_interrupt_mode_t int_mode = { 0 };
     int ret;
-
-    // 禁用活动/睡眠模式，恢复正常运行状态
-    ret = lsm6dsv16x_act_mode_set(&lsm_ctx, LSM6DSV16X_XL_AND_GY_NOT_AFFECTED);
-    GSENSOR_REG_CHECK(ret);
 
     // 使能数据块更新，确保读取的数据一致
     ret = lsm6dsv16x_block_data_update_set(&lsm_ctx, PROPERTY_ENABLE);
@@ -346,8 +404,8 @@ static int gsensor_apply_run_mode_config(void)
     GSENSOR_REG_CHECK(ret);
 
     // 配置INT1引脚路由到FIFO水印事件
-    int1_route.fifo_th = 1;
-    ret = lsm6dsv16x_pin_int1_route_set(&lsm_ctx, &int1_route);
+    s_int1_route.fifo_th = 1;
+    ret = lsm6dsv16x_pin_int1_route_set(&lsm_ctx, &s_int1_route);
     GSENSOR_REG_CHECK(ret);
 
     return 0;
@@ -597,22 +655,20 @@ static int gsensor_pm_suspend(void)
     {
         if (g_gsensor_runtime_ctx.window_ready == true)
         {
-            // 配置为唤醒待机模式
-            gsensor_apply_wakeup_mode_config();
+            // 配置为低功耗模式
+            gsensor_apply_low_power_mode_config();
         }
         MY_LOG_INF("GSENSOR successfully entered sleep mode");
 
         return 0;
     }
 
-    ret = my_gsensor_pwr_on(false);
-    if (ret != 0)
-    {
-        MY_LOG_ERR("Failed to suspend G-Sensor power: %d", ret);
-        return ret;
-    }
+    ret = lsm6dsv16x_fifo_mode_set(&lsm_ctx, LSM6DSV16X_BYPASS_MODE);
+    GSENSOR_REG_CHECK(ret);
 
-    g_gsensor_runtime_ctx.sensor_ready = false;
+    ret = gsensor_apply_low_power_mode_config();
+    GSENSOR_REG_CHECK(ret);
+
     MY_LOG_INF("G-Sensor power suspended");
     return 0;
 }
@@ -638,16 +694,14 @@ static int gsensor_pm_resume(void)
 {
     int result;         // 初始化结果
     int retry_count = 0; // 重试计数
-    lsm6dsv16x_all_sources_t all_sources;
 
     // 打开 G-Sensor 电源
     my_gsensor_pwr_on(true);
 
-    // 智能模式下传感器未断电，只需切回运行模式，无需完整初始化
-    if (gsensor_is_smart_mode() == true && g_gsensor_runtime_ctx.sensor_ready == true)
+    // 传感器未断电，只需切回运行模式，无需完整初始化
+    if (g_gsensor_runtime_ctx.sensor_ready == true)
     {
-
-        if (g_gsensor_runtime_ctx.window_ready == true)
+        if (gsensor_is_smart_mode() == true && g_gsensor_runtime_ctx.window_ready == true)
         {
             // 清空窗口重新开始 burst 采集，确保每次判定都基于最新连续数据
             gsensor_reset_sample_window();
@@ -660,22 +714,16 @@ static int gsensor_pm_resume(void)
                 return result;
             }
         }
-
-        // 清楚状态及窗口
-        // gsensor_reset_state();
-        // gsensor_reset_sample_window();
-
-        memset(&all_sources, 0, sizeof(all_sources));
-        // 先读取并清除中断锁存，避免 INT1 持续高电平导致后续无法触发中断
-        lsm6dsv16x_all_sources_get(&lsm_ctx, &all_sources);
-
         MY_LOG_INF("gsensor resume wake up success for sleep");
         return 0;
     }
 
-    /* 非智能模式：传感器已断电，需要完整初始化
-     * 尝试初始化 LSM6DSV16X 传感器，最多尝试 3 次
-     */
+    // 清除状态及窗口
+    gsensor_reset_state();
+    gsensor_reset_sample_window();
+    /* 传感器已断电，需要完整初始化
+    * 尝试初始化 LSM6DSV16X 传感器，最多尝试 3 次
+    */
     do
     {
         result = my_lsm6dsv16x_init();
@@ -699,32 +747,11 @@ static int gsensor_pm_resume(void)
         return -EIO; // 返回 I/O 错误
     }
 
-    // 清楚状态及窗口
-    gsensor_reset_state();
-    gsensor_reset_sample_window();
 
     MY_LOG_INF("gsensor resume wake up success");
     return 0;
 }
 
-/********************************************************************
-**函数名称:  gsensor_resume_and_read
-**入口参数:  无
-**出口参数:  无
-**函数功能:  恢复 G-Sensor 并触发数据读取
-**返 回 值:  无
-**详细说明:  统一封装电源恢复与数据读取消息发送，避免多处重复代码
-********************************************************************/
-static void gsensor_resume_and_read(void)
-{
-    int ret;
-
-    ret = my_pm_device_resume(MY_PM_DEV_GSENSOR);
-    if (ret == 0)
-    {
-        my_send_msg(MOD_GSENSOR, MOD_GSENSOR, MY_MSG_GSENSOR_READ);
-    }
-}
 
 /********************************************************************
 **函数名称:  gsensor_handle_read_msg
@@ -805,6 +832,67 @@ static void gsensor_handle_read_msg(void)
 }
 
 /********************************************************************
+**函数名称:  gsensor_int_handler
+**入口参数:  无
+**出口参数:  无
+**函数功能:  处理 G-Sensor 中断，包括 FIFO 数据和敲击检测
+**返 回 值:  无
+*********************************************************************/
+void gsensor_int_handler(void)
+{
+    lsm6dsv16x_tap_src_t tap_src = {0};
+    lsm6dsv16x_fifo_status_t fifo_status = {0};
+
+    // 读取敲击检测寄存器，检查是否有敲击事件发生
+    lsm6dsv16x_read_reg(&lsm_ctx, LSM6DSV16X_TAP_SRC, (uint8_t *)&tap_src, 1);
+    // 读取 FIFO 状态寄存器，检查是否有FIFO中断发生
+    lsm6dsv16x_fifo_status_get(&lsm_ctx, &fifo_status);
+
+    if (fifo_status.fifo_th)
+    {
+        my_send_msg(MOD_GSENSOR, MOD_GSENSOR, MY_MSG_GSENSOR_FIFO_INT);
+    }
+    // 检查唤醒中断标志位
+    if (tap_src.tap_ia)
+    {
+        my_send_msg(MOD_GSENSOR, MOD_GSENSOR, MY_MSG_GSENSOR_SHOCK_INT);
+    }
+}
+
+/********************************************************************
+**函数名称:  shock_alarm_timer_cb
+**入口参数:  无
+**出口参数:  无
+**函数功能:  敲击报警定时器回调函数，用于处理敲击报警超时
+**返 回 值:  无
+*********************************************************************/
+static void shock_alarm_timer_cb(void *param)
+{
+    // 敲击报警超时，清除报警标志位
+    s_shock_alarm_flag = false;
+}
+
+/********************************************************************
+**函数名称:  my_gsensor_shock_handler
+**入口参数:  无
+**出口参数:  无
+**函数功能:  处理 G-Sensor 敲击报警，包括发送报警消息和启动定时器,定时器启动期间不发送报警
+**返 回 值:  无
+*********************************************************************/
+void my_gsensor_shock_handler(void)
+{
+    // 敲击报警未触发时，发送报警消息并启动定时器
+    if (s_shock_alarm_flag == false)
+    {
+        s_shock_alarm_flag = true;
+        send_alarm_message_to_lte(ALARM_IMPACT, NULL);
+        my_start_timer(MY_TIMER_GSENSOR_SHOCK_ALARM, gConfigParam.shockalarm_config.shockalarm_time * 1000, false, shock_alarm_timer_cb);
+    }
+
+    LOG_INF("G-Sensor shock alarm");
+}
+
+/********************************************************************
 **函数名称:  my_gsensor_task
 **入口参数:  无
 **出口参数:  无
@@ -842,18 +930,23 @@ static void my_gsensor_task(void *p1, void *p2, void *p3)
 
         switch (msg.msgID)
         {
-            case MY_MSG_GSENSOR_READ:
-                gsensor_handle_read_msg();
+            case MY_MSG_GSENSOR_FIFO_INT:
+                if (my_pm_device_get_state(MY_PM_DEV_GSENSOR) == MY_PM_STATE_SUSPENDED)
+                {
+                    ret = my_pm_device_resume(MY_PM_DEV_GSENSOR);
+                    if (ret == 0)
+                    {
+                        gsensor_handle_read_msg();
+                    }
+                }
                 break;
 
-            case MY_MSG_GSENSOR_PWROFF:
+            case MY_MSG_GSENSOR_LOW_POWER:
                 // 智能模式静止挂起后，设备状态可能已经是 SUSPENDED，但传感器仍处于带电唤醒待机态
                 if (my_pm_device_get_state(MY_PM_DEV_GSENSOR) == MY_PM_STATE_SUSPENDED)
                 {
-                    // 关闭电源时，停止采样定时器
+                    // 停止采样定时器
                     my_stop_timer(MY_TIMER_GSENSOR_SAMPLE);
-                    g_gsensor_runtime_ctx.sensor_ready = false;
-                    my_gsensor_pwr_on(false);
                 }
                 else
                 {
@@ -862,13 +955,12 @@ static void my_gsensor_task(void *p1, void *p2, void *p3)
                 }
                 break;
 
-            case MY_MSG_GSENSOR_FIFO_INT:
-                // 检查保护时间，过滤配置期间产生的假唤醒
+            case MY_MSG_GSENSOR_INT:
+                gsensor_int_handler();
+                break;
 
-                if (my_pm_device_get_state(MY_PM_DEV_GSENSOR) == MY_PM_STATE_SUSPENDED)
-                {
-                    gsensor_resume_and_read();
-                }
+            case MY_MSG_GSENSOR_SHOCK_INT:
+                my_gsensor_shock_handler();
                 break;
 
             case MY_MSG_GSENSOR_SAMPLE:
@@ -896,6 +988,17 @@ static void my_gsensor_task(void *p1, void *p2, void *p3)
                         LOG_INF("sea transport");
                     }
                 }
+                break;
+
+            case MY_MSG_SHOCK_SW:
+                // 处理撞击检测开关消息
+                ret = my_pm_device_resume(MY_PM_DEV_GSENSOR);
+                if (ret == 0)
+                {
+                    gsensor_apply_shock_config();
+                }
+                my_pm_device_suspend(MY_PM_DEV_GSENSOR);
+
                 break;
 
             default:
@@ -972,12 +1075,9 @@ static void gsensor_gpio_isr(const struct device *dev,
 {
     ARG_UNUSED(dev);
     ARG_UNUSED(cb);
-    int level;
 
     if (pins & BIT(gsen_int.pin))
     {
-        level = gpio_pin_get_dt(&gsen_int);
-
         gsensor_int_edge_handler();
     }
 }
@@ -998,12 +1098,14 @@ int my_lsm6dsv16x_init(void)
         // 4.确保寄存器稳定后，才能设置寄存器
         k_sleep(K_MSEC(20));
         lsm6dsv16x_fifo_mode_set(&lsm_ctx, LSM6DSV16X_BYPASS_MODE);
-        if (gsensor_apply_run_mode_config() != 0)
+        if (gsensor_is_smart_mode() == true ? gsensor_apply_run_mode_config() : gsensor_apply_low_power_mode_config())
         {
             MY_LOG_ERR("Failed to configure GSENSOR run mode");
             g_gsensor_runtime_ctx.sensor_ready = false;
             return -EIO;
         }
+
+        gsensor_apply_shock_config();
 
         // 5.确保陀螺仪启动稳定时间
         k_sleep(K_MSEC(50));

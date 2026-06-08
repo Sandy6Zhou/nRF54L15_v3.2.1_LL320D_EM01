@@ -163,9 +163,10 @@ const bat_level_config_t gDefaultBatlevelConfig =
 const shock_alarm_config_t gDefaultShockAlarmConfig =
 {
     .flag = FLAG_VALID,
-    .shockalarm_sw = 0,                /* 默认关闭 */
-    .shockalarm_level = 3,             /* 默认中等敏感度 */
-    .shockalarm_type = REPORT_MODE_GPRS,              /* 默认GPRS */
+    .shockalarm_sw = 0,                         /* 默认关闭 */
+    .shockalarm_level = 3,                      /* 默认中等敏感度 */
+    .shockalarm_type = REPORT_MODE_GPRS,        /* 默认GPRS */
+    .shockalarm_time = 60,                      /* 默认60秒 */
 };
 
 const startr_config_t gDefaultStartrConfig =
@@ -561,15 +562,15 @@ void my_param_load_config(void)
     if (ret != length)
     {
         memcpy(&gConfigParam.shockalarm_config, &gDefaultShockAlarmConfig, length);
-        MY_LOG_INF("Shock alarm config not found. Use default:shockalarm_level(%d), shockalarm_sw(%d), shockalarm_type(%d)",
+        MY_LOG_INF("Shock alarm config not found. Use default:shockalarm_level(%d), shockalarm_sw(%d), shockalarm_type(%d), shockalarm_time(%d)",
                     gConfigParam.shockalarm_config.shockalarm_level, gConfigParam.shockalarm_config.shockalarm_sw,
-                    gConfigParam.shockalarm_config.shockalarm_type);
+                    gConfigParam.shockalarm_config.shockalarm_type, gConfigParam.shockalarm_config.shockalarm_time);
     }
     else
     {
-        MY_LOG_INF("Shock alarm config loaded: shockalarm_level(%d), shockalarm_sw(%d), shockalarm_type(%d)",
+        MY_LOG_INF("Shock alarm config loaded: shockalarm_level(%d), shockalarm_sw(%d), shockalarm_type(%d), shockalarm_time(%d)",
                     gConfigParam.shockalarm_config.shockalarm_level, gConfigParam.shockalarm_config.shockalarm_sw,
-                    gConfigParam.shockalarm_config.shockalarm_type);
+                    gConfigParam.shockalarm_config.shockalarm_type, gConfigParam.shockalarm_config.shockalarm_time);
     }
 
     //--------Load Startr Config ---------------------
