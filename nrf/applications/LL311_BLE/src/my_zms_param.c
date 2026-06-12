@@ -221,6 +221,12 @@ const nfcauth_config_t gDefaultNfcauthConfig =
     .nfcauth_card_count = 0,         /* 默认0张卡 */
 };
 
+const nfcopralm_config_t gDefaultNfcopralmConfig =
+{
+    .flag = FLAG_VALID,
+    .nfcopralm_type = 1,                 /* 默认GPRS */
+};
+
 const bkey_config_t gDefaultBkeyConfig =
 {
     .flag = FLAG_VALID,
@@ -675,6 +681,19 @@ void my_param_load_config(void)
     else
     {
         MY_LOG_INF("Nfcauth config loaded: card_count(%d)", gConfigParam.nfcauth_config.nfcauth_card_count);
+    }
+
+    //--------Load Nfcopralm Config ---------------------
+    length = sizeof(nfcopralm_config_t);
+    ret = my_user_data_read(ZMS_ID_NFCOPRALM_CONFIG, &gConfigParam.nfcopralm_config, length);
+    if (ret != length)
+    {
+        memcpy(&gConfigParam.nfcopralm_config, &gDefaultNfcopralmConfig, length);
+        MY_LOG_INF("Nfcopralm config not found. Use default.");
+    }
+    else
+    {
+        MY_LOG_INF("Nfcopralm config loaded: type(%d)", gConfigParam.nfcopralm_config.nfcopralm_type);
     }
 
     //--------Load Bkey Config ---------------------

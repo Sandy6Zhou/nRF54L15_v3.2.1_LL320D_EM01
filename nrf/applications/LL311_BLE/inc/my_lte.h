@@ -83,6 +83,8 @@ extern location_storage_t g_location_point;
 // 4G模块是否就绪标志位
 extern bool g_bLteReady;
 
+extern char g_lte4GVersion[32];
+
 /* 循环缓冲区用于存储排队的LTE消息 */
 #define LTE_MSG_QUEUE_SIZE    10  /* 可排队的最大消息数 */
 

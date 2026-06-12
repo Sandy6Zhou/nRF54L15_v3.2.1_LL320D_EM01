@@ -12,7 +12,19 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260609"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260610"
+/* 软件版本:        V1.0
+** 完成日期:        2026.06.10
+** 作    者:        曹阳 (caoyang@jimiiot.com)
+** 修改内容:       1. 修复锁销断开后，电机还是会自动上锁的问题
+**                2. 增加当上锁期间拔出锁销时，电机会回到解锁状态的功能
+**                3. 查询指令增加4G版本号
+**                4. 增加NFC刷卡上报方式可设置功能
+**                5. 去除4G上电蓝牙回复中的时间戳
+**                6. 去除蓝牙收集传感器数据功能的原模式2和修改参数设置范围
+***/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260609"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.06.09
 ** 作    者:        曹阳 (caoyang@jimiiot.com)

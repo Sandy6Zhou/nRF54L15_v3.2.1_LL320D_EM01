@@ -32,9 +32,8 @@
 typedef enum
 {
     SCAN_MODE_OFF = 0,          // Mode 0：关闭蓝牙扫描收集功能
-    SCAN_MODE_WAKEUP_SCAN,      // Mode 1：仅在4G唤醒时扫描并上传
-    SCAN_MODE_PERIOD_CACHE,     // Mode 2：周期扫描收集，仅4G唤醒时上传
-    SCAN_MODE_PERIOD_UPLOAD,    // Mode 3：周期扫描收集，定时主动唤醒上传
+    SCAN_MODE_PERIOD_CACHE,     // Mode 1：周期扫描收集，仅4G唤醒时上传
+    SCAN_MODE_PERIOD_UPLOAD,    // Mode 2：周期扫描收集，定时主动唤醒上传
 } scan_mode_t;
 
 /* 扫描状态枚举 */

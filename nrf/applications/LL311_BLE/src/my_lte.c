@@ -1992,7 +1992,6 @@ static int my_lte_handle_power_on(char *data)
     lte_boot_reason_t boot_reason;
     char resp_buf[128] = {0};
     int nRespLen;
-    time_t utc_sec;
 
     // 解析4G发来的参数: <上电状态>,<上电原因>,<4G版本号>
     my_get_str_at_pos(data, 0, ',', power_state_str, sizeof(power_state_str));
@@ -2006,7 +2005,7 @@ static int my_lte_handle_power_on(char *data)
     // 4G模块已就绪，允许后续数据收发
     g_bLteReady = 1;
 
-    // 构造应答报文: LTE+PWRON=OK,<开机原因>,<蓝牙版本号>,<UTC>
+    // 构造应答报文: LTE+PWRON=OK,<开机原因>,<蓝牙版本号>
     if (s_4GPoweronStatus == LTE_PWR_STATE_ABNORMAL)
     {
         // 异常重启时，开机原因默认填255
@@ -2022,9 +2021,8 @@ static int my_lte_handle_power_on(char *data)
         g_lte_ota_in_progress = false;
     }
 
-    utc_sec = my_get_system_time_sec();
-    nRespLen = snprintf(resp_buf, sizeof(resp_buf), "%sOK,%d,%s,%lld\r\n",
-                        LTE_PWRON, (int)boot_reason, SOFTWARE_VERSION, (long long)utc_sec);
+    nRespLen = snprintf(resp_buf, sizeof(resp_buf), "%sOK,%d,%s\r\n",
+                        LTE_PWRON, (int)boot_reason, SOFTWARE_VERSION);
 
     my_lte_send_msg(resp_buf, (uint16_t)nRespLen);
 

@@ -223,7 +223,7 @@ void send_alarm_message_to_lte(alarm_type_t alarm_type, const char *additional_i
             break;
 
         case ALARM_NFC:
-            rpt = REPORT_MODE_GPRS;//NFC刷卡事件上报固定方式为GPRS模式
+            rpt = gConfigParam.nfcopralm_config.nfcopralm_type;
             break;
 
         case ALARM_CUT:
@@ -788,29 +788,22 @@ static void lock_pin_timer_handler(struct k_timer *timer)
         msgID = new_state ? MY_MSG_CTRL_LOCK_PIN_INSERTED : MY_MSG_CTRL_LOCK_PIN_DISCONNECTED;
         if (new_state)
         {
-            if (gConfigParam.pinstat_config.pinstat_report)
+            if (gConfigParam.pinstat_config.pinstat_trigger == PINSTAT_TRIGGER_MODE_INSERT || gConfigParam.pinstat_config.pinstat_trigger == PINSTAT_TRIGGER_MODE_BOTH)
             {
-                if (gConfigParam.pinstat_config.pinstat_trigger == PINSTAT_TRIGGER_MODE_INSERT || gConfigParam.pinstat_config.pinstat_trigger == PINSTAT_TRIGGER_MODE_BOTH)
-                {
 
-                    my_send_msg(MOD_CTRL, MOD_LTE, MY_MSG_LTE_PWRON);
-                    // 插入上报锁销状态为已插入
-                    send_alarm_message_to_lte(ALARM_LOCKPIN_IN, NULL);
-                }
+                my_send_msg(MOD_CTRL, MOD_LTE, MY_MSG_LTE_PWRON);
+                // 插入上报锁销状态为已插入
+                send_alarm_message_to_lte(ALARM_LOCKPIN_IN, NULL);
             }
-            my_send_msg(MOD_CTRL, MOD_CTRL, msgID);
         }
         else
         {
-            if (gConfigParam.pinstat_config.pinstat_report)
+            if (gConfigParam.pinstat_config.pinstat_trigger == PINSTAT_TRIGGER_MODE_REMOVE || gConfigParam.pinstat_config.pinstat_trigger == PINSTAT_TRIGGER_MODE_BOTH)
             {
-                if (gConfigParam.pinstat_config.pinstat_trigger == PINSTAT_TRIGGER_MODE_REMOVE || gConfigParam.pinstat_config.pinstat_trigger == PINSTAT_TRIGGER_MODE_BOTH)
-                {
 
-                    my_send_msg(MOD_CTRL, MOD_LTE, MY_MSG_LTE_PWRON);
-                    // 断开上报锁销状态为拔出
-                    send_alarm_message_to_lte(ALARM_LOCKPIN_OUT, NULL);
-                }
+                my_send_msg(MOD_CTRL, MOD_LTE, MY_MSG_LTE_PWRON);
+                // 断开上报锁销状态为拔出
+                send_alarm_message_to_lte(ALARM_LOCKPIN_OUT, NULL);
             }
             /* 锁销被拔出时,检测到锁是关闭状态 */
             if (get_closelock_state())
@@ -831,7 +824,14 @@ static void lock_pin_timer_handler(struct k_timer *timer)
                     my_set_buzzer_mode(BUZZER_CONTINUOUS_ALARM);
                 }
             }
+            //锁销被拔出时,检测到滑块在中间
+            else if (get_openlock_state() == false)
+            {
+                //回到解锁状态
+                my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_CTRL_OPENLOCKING);
+            }
         }
+        my_send_msg(MOD_CTRL, MOD_CTRL, msgID);
     }
 
     lock_pin_ctrl_t.debouncing = false;
@@ -1680,6 +1680,11 @@ static void my_ctrl_task(void *p1, void *p2, void *p3)
                 break;
 
             case MY_MSG_CTRL_LOCK_PIN_DISCONNECTED:
+                // 锁销断开时，停止自动上锁定时器
+                if (k_timer_remaining_get(&s_auto_lock_timer) > 0)
+                {
+                    k_timer_stop(&s_auto_lock_timer);
+                }
                 MY_LOG_INF("Lock pin detected: DISCONNECTED");
                 break;
 

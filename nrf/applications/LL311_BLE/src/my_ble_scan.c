@@ -771,7 +771,7 @@ static int scan_stop_internal(void)
 
 /********************************************************************
 **函数名称:  scan_set_config_internal
-**入口参数:  mode        ---        工作模式（0-3）
+**入口参数:  mode        ---        工作模式（0-2）
 **           scan_interval ---      扫描间隔（秒）
 **           scan_length ---        单次扫描时长（秒）
 **           upload_interval ---    上报间隔（秒）
@@ -814,14 +814,9 @@ static void scan_set_config_internal(uint8_t mode, uint32_t scan_interval,
             LOG_INF("scan disabled");
             break;
 
-        case SCAN_MODE_WAKEUP_SCAN:
-            // Mode 1：等待LTE唤醒时扫描
-            LOG_INF("scan Mode 1: Wait for LTE wakeup");
-            break;
-
         case SCAN_MODE_PERIOD_CACHE:
-            // Mode 2：周期扫描，等待LTE唤醒时上报
-            LOG_INF("scan Mode 2: Periodic scan started");
+            // Mode 1：周期扫描，等待LTE唤醒时上报
+            LOG_INF("scan Mode 1: Periodic scan started");
 
             my_start_timer(MY_TIMER_SCAN_INTERVAL, s_scan_config.scan_interval * 1000,
                             true, scan_interval_timer_cb);
@@ -830,8 +825,8 @@ static void scan_set_config_internal(uint8_t mode, uint32_t scan_interval,
             break;
 
         case SCAN_MODE_PERIOD_UPLOAD:
-            // Mode 3：周期扫描 + 定时上报
-            LOG_INF("scan Mode 3: Periodic scan and upload started");
+            // Mode 2：周期扫描 + 定时上报
+            LOG_INF("scan Mode 2: Periodic scan and upload started");
 
             my_start_timer(MY_TIMER_SCAN_INTERVAL, s_scan_config.scan_interval * 1000,
                             true, scan_interval_timer_cb);
@@ -1392,28 +1387,14 @@ void my_scan_msg_handler(msg_t *msg)
         case MY_MSG_SCAN_LENGTH:
             // 单次扫描时长定时器消息
             scan_stop_internal();
-            if (s_scan_config.mode == SCAN_MODE_WAKEUP_SCAN)
-            {
-                // Mode 1：扫描完成后上报数据
-                if (s_result_table.count > 0 || s_tran_mac_result_table.count > 0)
-                {
-                    LOG_INF("Mode 1: Trigger data upload after scan");
-                    //上报过程中来报警或者切换工作模式，跳过
-                    if (s_scan_config.state == SCAN_STATE_WAITING_UPLOAD)
-                    {
-                        break;
-                    }
-                    tag_mac_scan_upload_data();
-                }
-            }
             break;
 
         case MY_MSG_SCAN_UPLOAD:
-            // 上报间隔定时器消息（Mode 3 定时主动唤醒LTE并上报）
+            // 上报间隔定时器消息（Mode 2 定时主动唤醒LTE并上报）
             if (s_scan_config.mode == SCAN_MODE_PERIOD_UPLOAD &&
                 (s_result_table.count > 0 || s_tran_mac_result_table.count > 0))
             {
-                // Mode 3：主动唤醒LTE并上报数据
+                // Mode 2：主动唤醒LTE并上报数据
                 //上报过程中来报警或者切换工作模式，跳过
                 if (s_scan_config.state == SCAN_STATE_WAITING_UPLOAD)
                 {
@@ -1427,15 +1408,6 @@ void my_scan_msg_handler(msg_t *msg)
             // LTE唤醒时处理扫描数据（告警/工作模式切换时调用）
             switch (s_scan_config.mode)
             {
-                case SCAN_MODE_WAKEUP_SCAN:
-                    // Mode 1：启动扫描
-                    LOG_INF("LTE wakeup (Mode 1): start scanning");
-                    if (s_scan_config.state == SCAN_STATE_IDLE)
-                    {
-                        scan_start_internal();
-                    }
-                    break;
-
                 case SCAN_MODE_PERIOD_CACHE:
                 case SCAN_MODE_PERIOD_UPLOAD:
                     // Mode 2/3：立即停止扫描并上报数据

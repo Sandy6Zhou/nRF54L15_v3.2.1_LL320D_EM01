@@ -70,6 +70,7 @@ typedef enum                           // 参数ID定义
     ZMS_ID_BUZZER_CONFIG,              // 蜂鸣器配置参数ID
     ZMS_ID_NFTRIG_CONFIG,              // NFC触发规则配置参数ID
     ZMS_ID_NFCAUTH_CONFIG,             // NFC卡权限配置参数ID
+    ZMS_ID_NFCOPRALM_CONFIG,           // NFC上报模式配置参数ID
     ZMS_ID_BT_KEY_CONFIG,              // 蓝牙解锁密钥配置参数ID
     ZMS_ID_OTA_CONFIG,                 // OTA升级相关配置参数ID
     ZMS_ID_BT_PARMAC_CONFIG,           // 透传MAC地址配置参数ID
@@ -159,8 +160,8 @@ typedef struct                              // 存储的运动检测报警配置
 {
     uint8_t flag;                           // 参数有效标志
     uint8_t motdet_transition_count;        // 运动检测状态切换次数阈值 (1-100)
-    uint16_t motdet_detection_interval;      // 运动检测状态切换时间间隔 (5~3600)
-    uint8_t motdet_report_type;            // 模式切换上报方式: 0-不上报, 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
+    uint16_t motdet_detection_interval;     // 运动检测状态切换时间间隔 (5~3600)
+    uint8_t motdet_report_type;             // 模式切换上报方式: 0-不上报, 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
 } mot_det_config_t;
 
 typedef struct                              // 存储的电池状态和充电状态报警配置参数
@@ -199,10 +200,10 @@ typedef struct                              // 存储的低功耗运输状态配
 typedef struct                              // 存储的蓝牙数据上传配置参数
 {
     uint8_t flag;                           // 参数有效标志
-    uint8_t  bt_updata_mode;                // 工作方式: 0-不开启, 1-Cell启动时开启, 2-持续收集Cell启动上传, 3-持续收集Cell启动上传或唤醒上传
-    uint32_t bt_updata_scan_interval;       // 蓝牙数据收集间隔: 1-86400秒
-    uint32_t bt_updata_scan_length;         // 每次收集搜索时长: 1-86400秒
-    uint32_t bt_updata_updata_interval;     // 蓝牙唤醒间隔: 1-86400秒
+    uint8_t  bt_updata_mode;                // 工作方式: 0-不开启, 1-持续收集Cell启动上传, 2-持续收集Cell启动上传或唤醒上传
+    uint32_t bt_updata_scan_interval;       // 蓝牙数据收集间隔: 5-86400秒
+    uint32_t bt_updata_scan_length;         // 每次收集搜索时长: 5-86400秒
+    uint32_t bt_updata_updata_interval;     // 蓝牙唤醒间隔: 120-86400秒
 } bt_updata_config_t;
 
 typedef struct                              // 存储的Tag定位功能配置参数
@@ -236,6 +237,12 @@ typedef struct                              // 存储的NFC卡权限配置参数
     nfc_auth_card_t nfcauth_cards[10];          // NFC卡权限数组，最多10张卡
     uint8_t     nfcauth_card_count;         // 已授权卡数量
 } nfcauth_config_t;
+
+typedef struct                              // 存储的NFC刷卡报警配置参数
+{
+    uint8_t flag;                           // 参数有效标志
+    uint8_t nfcopralm_type;                 // NFC防拆报警类型: 0-不上报, 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
+} nfcopralm_config_t;
 
 typedef struct                              // 存储的蓝牙解锁密钥配置参数
 {
@@ -282,6 +289,7 @@ typedef struct
     buzzer_config_t             buzzer_config;              // 蜂鸣器配置
     nfctrig_config_t            nfctrig_config;             // NFC触发规则配置
     nfcauth_config_t            nfcauth_config;             // NFC卡权限配置
+    nfcopralm_config_t          nfcopralm_config;           // NFC刷卡报警配置
     bkey_config_t               bkey_config;                // 蓝牙解锁密钥配置
     ota_config_t                ota_config;                 // OTA升级相关配置
     bparmac_config_t            bparmac_config;             // 透传mac地址配置

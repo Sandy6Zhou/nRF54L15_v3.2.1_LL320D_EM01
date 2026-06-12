@@ -60,6 +60,7 @@ static int lockcd_cmd_handler(at_cmd_t* msg);
 static int buzzer_cmd_handler(at_cmd_t* msg);
 static int nfctrig_cmd_handler(at_cmd_t* msg);
 static int nfcauth_cmd_handler(at_cmd_t* msg);
+static int nfcopralm_cmd_handler(at_cmd_t* msg);
 static int btlog_cmd_handler(at_cmd_t* msg);
 static int bkey_cmd_handler(at_cmd_t* msg);
 static int bunlock_cmd_handler(at_cmd_t* msg);
@@ -95,6 +96,7 @@ static const at_cmd_attr_t at_cmd_attr_table[] =
     {"BUZZER",         buzzer_cmd_handler},
     {"NFCTRIG",        nfctrig_cmd_handler},
     {"NFCAUTH",        nfcauth_cmd_handler},
+    {"NFCOPRALM",      nfcopralm_cmd_handler},
     {"BTLOG",          btlog_cmd_handler},
     {"BKEY_SET",       bkey_cmd_handler},
     {"BKEY_RESET",     bkey_cmd_handler},
@@ -1733,12 +1735,11 @@ param_invalid:
 **指令格式:  BT_UPDATA,[Mode],[Scan Interval],[Scan Length],[Updata interval]#
 **参数说明:  Mode - 工作方式(默认：0)
 **           0：不开启蓝牙搜索收集功能
-**           1：当设备需要开启Cell时才开启收集上传
-**           2：设备持续按[Scan Interval]和[Scan Length]收集数据，Cell启动时上传，未启动时仅存储
-**           3：设备持续收集数据，Cell启动时上传；未启动时若距离上次上传达到[Updata interval]，则唤醒Cell和GNSS上传
-**           Scan Interval - 蓝牙数据收集间隔(默认：600秒)，范围：1-86400秒
-**           Scan Length - 每次收集的搜索时长(默认：10秒)，范围：1-86400秒
-**           Updata interval - 蓝牙唤醒间隔(默认：14400秒)，范围：1-86400秒
+**           1：设备持续按[Scan Interval]和[Scan Length]收集数据，Cell启动时上传，未启动时仅存储
+**           2：设备持续收集数据，Cell启动时上传；未启动时若距离上次上传达到[Updata interval]，则唤醒Cell和GNSS上传
+**           Scan Interval - 蓝牙数据收集间隔(默认：600秒)，范围：5-86400秒
+**           Scan Length - 每次收集的搜索时长(默认：10秒)，范围：5-86400秒
+**           Updata interval - 蓝牙唤醒间隔(默认：14400秒)，范围：120-86400秒
 **返 回 值:  BLE数据类型
 *********************************************************************/
 static int bt_updata_cmd_handler(at_cmd_t* msg)
@@ -1774,7 +1775,7 @@ static int bt_updata_cmd_handler(at_cmd_t* msg)
 
     /* 解析Mode参数 */
     mode_value = atoi(msg->parm[1]);
-    if (mode_value < 0 || mode_value > 3)
+    if (mode_value < 0 || mode_value > 2)
     {
         LOG_INF("%s=>invalid Mode param: %s", __func__, msg->parm[1]);
         goto param_invalid;
@@ -1782,7 +1783,7 @@ static int bt_updata_cmd_handler(at_cmd_t* msg)
 
     /* 解析Scan Interval参数 */
     scan_interval_value = atoi(msg->parm[2]);
-    if (scan_interval_value < 1 || scan_interval_value > 86400)
+    if (scan_interval_value < 5 || scan_interval_value > 86400)
     {
         LOG_INF("%s=>invalid Scan Interval param: %s", __func__, msg->parm[2]);
         goto param_invalid;
@@ -1790,7 +1791,7 @@ static int bt_updata_cmd_handler(at_cmd_t* msg)
 
     /* 解析Scan Length参数 */
     scan_length_value = atoi(msg->parm[3]);
-    if (scan_length_value < 1 || scan_length_value > 86400)
+    if (scan_length_value < 5 || scan_length_value > 86400)
     {
         LOG_INF("%s=>invalid Scan Length param: %s", __func__, msg->parm[3]);
         goto param_invalid;
@@ -1798,7 +1799,7 @@ static int bt_updata_cmd_handler(at_cmd_t* msg)
 
     /* 解析Updata interval参数 */
     updata_interval_value = atoi(msg->parm[4]);
-    if (updata_interval_value < 1 || updata_interval_value > 86400)
+    if (updata_interval_value < 120 || updata_interval_value > 86400)
     {
         LOG_INF("%s=>invalid Updata interval param: %s", __func__, msg->parm[4]);
         goto param_invalid;
@@ -2982,6 +2983,68 @@ param_invalid:
 }
 
 /*********************************************************************
+**函数名称:  nfcopralm_cmd_handler
+**入口参数:  msg      ---        AT指令结构体指针
+**出口参数:  msg->resp_msg  ---  响应消息
+**           msg->resp_length --- 响应长度
+**函数功能:  处理NFCOPRALM指令：设置NFC刷卡上报方式
+**指令格式:  NFCOPRALM,[Report]#
+**参数说明:  Report - 上报方式: 0-不上报, 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
+**          无参数 - 查询当前状态
+**返 回 值:  BLE数据类型
+**********************************************************************/
+static int nfcopralm_cmd_handler(at_cmd_t* msg)
+{
+    uint16_t remaining;
+    int report_value;
+
+    remaining = RESP_STRING_LENGTH_MAX;
+
+    //无参数即查询
+    if (msg->parm_count == 0)
+    {
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "%s:%d", msg->parm[0],
+                                    gConfigParam.nfcopralm_config.nfcopralm_type);
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
+    }
+
+    /* 检查参数数量 */
+    if (msg->parm_count != 1)
+    {
+        LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
+    }
+
+    /* 解析Report参数 */
+    report_value = atoi(msg->parm[1]);
+    if (report_value < REPORT_MODE_NONE || report_value > REPORT_MODE_GPRS_SMS_CALL)
+    {
+        LOG_INF("%s=>invalid Report param: %s", __func__, msg->parm[1]);
+        goto param_invalid;
+    }
+
+    /* 所有参数验证通过,统一赋值 */
+    gConfigParam.nfcopralm_config.flag = FLAG_VALID;
+    gConfigParam.nfcopralm_config.nfcopralm_type = (uint8_t)report_value;
+
+    /* 保存配置 */
+    my_user_data_write(ZMS_ID_NFCOPRALM_CONFIG, &gConfigParam.nfcopralm_config, sizeof(nfcopralm_config_t));
+
+    LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
+
+    /* 生成成功响应 */
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
+    LOG_INF("NFCOPRALM: TYPE=%d", gConfigParam.nfcopralm_config.nfcopralm_type);
+
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
+
+param_invalid:
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
+}
+
+/*********************************************************************
 **函数名称:  btlog_cmd_handler
 **入口参数:  msg      ---        AT指令结构体指针
 **出口参数:  msg->resp_msg  ---  响应消息
@@ -3379,7 +3442,7 @@ static int version_cmd_handler(at_cmd_t* msg)
         LOG_INF("%s=>%s", __func__, msg->parm[0]);  // 输出函数名和命令名
 
         /* 生成响应消息，格式：[VERSION]%s*/
-        ret = snprintf(msg->resp_msg, remaining, "[VERSION]%s", SOFTWARE_VERSION);  // 生成包含版本号的响应消息
+        ret = snprintf(msg->resp_msg, remaining, "[Cell VERSION]%s;\n[BT VERSION]%s", g_lte4GVersion, SOFTWARE_VERSION);  // 生成包含版本号的响应消息
 
         if (ret > 0 && ret < remaining)  // 检查响应消息是否生成成功
         {
