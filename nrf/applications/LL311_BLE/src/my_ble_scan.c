@@ -57,7 +57,7 @@ typedef enum {
 } upload_state_t;
 
 //tag扫描结果上报和macinfo的序列号
-static uint8_t s_tag_macinfo_seq = 0;
+static uint16_t s_tag_macinfo_seq = 0;
 static uint8_t s_tag_macinfo_upload_state = UPLOAD_STATE_IDLE;
 
 /********************************************************************
@@ -336,6 +336,9 @@ static void tag_scan_result_save(tag_scan_result_t *result_ptr)
             // 更新电量百分比
             item_ptr->battery_percent = result_ptr->battery_percent;
 
+            // 更新采集时间戳为本次扫描到该设备的时刻
+            item_ptr->timestamp = my_get_system_time_sec();
+
             LOG_INF("TAG updated: %s, RSSI: %d", item_ptr->name, item_ptr->rssi);
 
 #if 0
@@ -359,6 +362,8 @@ static void tag_scan_result_save(tag_scan_result_t *result_ptr)
     {
         item_ptr = &s_result_table.items[s_result_table.count];
         memcpy(item_ptr, result_ptr, sizeof(tag_scan_result_t));
+        // 记录采集到该设备的时刻
+        item_ptr->timestamp = my_get_system_time_sec();
         s_result_table.count++;
 
         LOG_INF("TAG found: %s, RSSI: %d, count: %d",
@@ -402,6 +407,9 @@ static void tag_scan_result_save(tag_scan_result_t *result_ptr)
         {
             LOG_WRN("TAG result table full, drop weak TAG, rssi=%d", result_ptr->rssi);
         }
+        // 记录采集到该设备的时刻
+        item_ptr->timestamp = my_get_system_time_sec();
+        s_result_table.count++;
     }
 }
 
@@ -851,7 +859,7 @@ static void scan_set_config_internal(uint8_t mode, uint32_t scan_interval,
 **函数功能:  上传透传MAC地址结果项(单条)
 **返 回 值:  无
 *********************************************************************/
-void tran_mac_upload_one(tran_mac_result_item_t *item_ptr, uint8_t seq)
+void tran_mac_upload_one(tran_mac_result_item_t *item_ptr, uint16_t seq)
 {
     int i = 0;
     int offset;
@@ -867,9 +875,9 @@ void tran_mac_upload_one(tran_mac_result_item_t *item_ptr, uint8_t seq)
                 item_ptr->addr.a.val[3], item_ptr->addr.a.val[2],
                 item_ptr->addr.a.val[1], item_ptr->addr.a.val[0]);
 
-    // 先拼接seq,MAC和广播数据长度字段
-    offset += snprintf(upload_msg + offset, sizeof(upload_msg) - offset, "%d,%s,%d,",
-                        seq, mac_str, item_ptr->adv_data_len);
+    // 先拼接seq,时间戳,MAC和广播数据长度字段（时间戳取采集时刻，非上报时刻）
+    offset += snprintf(upload_msg + offset, sizeof(upload_msg) - offset, "%d,%u,%s,%d,",
+                        seq, item_ptr->timestamp, mac_str, item_ptr->adv_data_len);
 
     // 将广播数据逐字节转换为HEX字符串并拼接到消息尾部
     for (i = 0; i < item_ptr->adv_data_len; i++)
@@ -894,7 +902,7 @@ void tran_mac_upload_one(tran_mac_result_item_t *item_ptr, uint8_t seq)
 **函数功能:  上传TAG扫描结果项（单条）
 **返 回 值:  无
 *********************************************************************/
-void tag_scan_upload_one(tag_scan_result_t *item_ptr, uint8_t seq)
+void tag_scan_upload_one(tag_scan_result_t *item_ptr, uint16_t seq)
 {
     int i = 0;
     char upload_msg[256] = {0};
@@ -935,18 +943,18 @@ void tag_scan_upload_one(tag_scan_result_t *item_ptr, uint8_t seq)
         {
             snprintf(&ff_str[i * 2], 3, "%02X", item_ptr->ff_data[i]);
         }
-        // 构建上报消息：MAC(6字节),电量,RSSI,名称长度,名称,UUID长度,UUID,FF长度,FF数据
-        snprintf(upload_msg, sizeof(upload_msg), "%d,%s,%d,%02X,%d,%s,%d,%s,%d,%s",
-                    seq, mac_str, item_ptr->battery_percent, rssi_upload,
+        // 构建上报消息：seq,时间戳,MAC(6字节),电量,RSSI,名称长度,名称,UUID长度,UUID,FF长度,FF数据
+        snprintf(upload_msg, sizeof(upload_msg), "%d,%u,%s,%d,%02X,%d,%s,%d,%s,%d,%s",
+                    seq, item_ptr->timestamp, mac_str, item_ptr->battery_percent, rssi_upload,
                     strlen(item_ptr->name), item_ptr->name,
                     item_ptr->uuid_len, uuid_str,
                     item_ptr->ff_data_len, ff_str);
     }
     else
     {
-        // 构建上报消息：MAC(6字节),电量,RSSI,名称长度,名称,UUID长度,UUID,FF长度(0),FF数据(无)
-        snprintf(upload_msg, sizeof(upload_msg), "%d,%s,%d,%02X,%d,%s,%d,%s,0,N/A",
-                    seq, mac_str, item_ptr->battery_percent, rssi_upload,
+        // 构建上报消息：seq,时间戳,MAC(6字节),电量,RSSI,名称长度,名称,UUID长度,UUID,FF长度(0),FF数据(无)
+        snprintf(upload_msg, sizeof(upload_msg), "%d,%u,%s,%d,%02X,%d,%s,%d,%s,0,N/A",
+                    seq, item_ptr->timestamp, mac_str, item_ptr->battery_percent, rssi_upload,
                     strlen(item_ptr->name), item_ptr->name,
                     item_ptr->uuid_len, uuid_str);
     }
@@ -1156,17 +1164,21 @@ static void tran_mac_data_handle(tran_mac_process_msg_t *msg_ptr)
         {
             memcpy(s_tran_mac_result_table.items[i].adv_data, msg_ptr->adv_data, msg_ptr->adv_data_len);
             s_tran_mac_result_table.items[i].adv_data_len = msg_ptr->adv_data_len;
+            // 更新采集时间戳为本次扫描到该MAC的时刻
+            s_tran_mac_result_table.items[i].timestamp = my_get_system_time_sec();
             return;
         }
     }
 
-    // 新增条目,s_tran_mac_result_table.count是永远小于TRAN_MAC_MAX_NUM,不存在溢出的情况
+    // 新增条目，透传MAC仅扫描指定的TRAN_MAC_MAX_NUM个地址，count恒小于上限，不存在溢出
     if (s_tran_mac_result_table.count < TRAN_MAC_MAX_NUM)
     {
         item_ptr = &s_tran_mac_result_table.items[s_tran_mac_result_table.count];
         bt_addr_le_copy(&item_ptr->addr, &msg_ptr->addr);
         memcpy(item_ptr->adv_data, msg_ptr->adv_data, msg_ptr->adv_data_len);
         item_ptr->adv_data_len = msg_ptr->adv_data_len;
+        // 记录采集到该MAC的时刻
+        item_ptr->timestamp = my_get_system_time_sec();
         s_tran_mac_result_table.count++;
     }
 

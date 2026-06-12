@@ -12,7 +12,15 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260610"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260612"
+/* 软件版本:        V1.0
+** 完成日期:        2026.06.12
+** 作    者:       周森达 (zhousenda@jimiiot.com)
+** 修改内容:        1.TAG/透传MAC记录新增采集时间戳，上报报文增加时间戳字段(取采集时刻)
+**                 2.分区表新增ble_data_storage数据分区(200KB)，settings_storage缩减为32KB(由232KB->32KB)
+***/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260610"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.06.10
 ** 作    者:        曹阳 (caoyang@jimiiot.com)

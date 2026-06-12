@@ -70,6 +70,7 @@ typedef struct
     uint8_t uuid_len;                           // UUID数据长度
     uint8_t battery_percent;                    // 电量百分比
     int8_t rssi;                                // 信号强度
+    uint32_t timestamp;                         // 采集到该记录时的系统时间戳(秒)
 } tag_scan_result_t;
 
 /* TAG扫描结果表 */
@@ -112,6 +113,7 @@ typedef struct
     bt_addr_le_t addr;
     uint8_t adv_data[TRAN_MAC_ADV_DATA_MAX_LEN];
     uint8_t adv_data_len;
+    uint32_t timestamp;                         // 采集到该记录时的系统时间戳(秒)
 } tran_mac_result_item_t;
 
 /* 透传MAC扫描结果表 */

@@ -81,16 +81,24 @@ otp:
   size: 0x47c
 settings_storage:
   address: 0x12b000
-  end_address: 0x165000
+  end_address: 0x133000
   placement:
     after:
     - app
     align:
       start: 0x1000
+  region: flash_primary
+  size: 0x8000
+ble_data_storage:
+  address: 0x133000
+  end_address: 0x165000
+  placement:
+    after:
+    - settings_storage
     before:
     - end
   region: flash_primary
-  size: 0x3a000
+  size: 0x32000
 sram_primary:
   address: 0x20000000
   end_address: 0x2002f000
