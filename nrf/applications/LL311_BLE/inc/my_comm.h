@@ -256,6 +256,7 @@ typedef enum
     MY_MSG_DFU_START,    /* DFU OTA 开始 */
     MY_MSG_DFU_TIMEOUT,  /* DFU OTA 超时退出 */
     MY_MSG_DFU_COMPLETE, /* DFU OTA 完成 */
+    MY_MSG_DFU_FAIL,     /* DFU OTA 失败 */
 
     /* 开关锁状态消息 */
     MY_MSG_CTRL_OPENLOCKING,    /* 开锁中 */

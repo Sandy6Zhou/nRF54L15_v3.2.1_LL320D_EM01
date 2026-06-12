@@ -203,6 +203,12 @@ const locked_config_t gDefaultLockedConfig =
     .lockcd_countdown = 3,             /* 默认3秒 */
 };
 
+const led_config_t gDefaultLedConfig =
+{
+    .flag = FLAG_VALID,
+    .led_display = 0,                  /* 默认关闭 */
+};
+
 const buzzer_config_t gDefaultBuzzerConfig =
 {
     .flag = FLAG_VALID,
@@ -231,12 +237,6 @@ const bkey_config_t gDefaultBkeyConfig =
 {
     .flag = FLAG_VALID,
     .bt_key = "000000",              /* 默认密钥 */
-};
-
-const ota_config_t gDefaultOtaConfig =
-{
-    .flag = FLAG_VALID,
-    .ble_ota_reboot = false,
 };
 
 const bparmac_config_t gDefaultBparmacConfig =
@@ -648,6 +648,19 @@ void my_param_load_config(void)
         MY_LOG_INF("Locked config loaded: locked_countdown(%d)", gConfigParam.locked_config.lockcd_countdown);
     }
 
+    //--------Load Led Config ---------------------
+    length = sizeof(led_config_t);
+    ret = my_user_data_read(ZMS_ID_LED_CONFIG, &gConfigParam.led_config, length);
+    if (ret != length)
+    {
+        memcpy(&gConfigParam.led_config, &gDefaultLedConfig, length);
+        MY_LOG_INF("Led config not found. Use default:led_display(%d)", gConfigParam.led_config.led_display);
+    }
+    else
+    {
+        MY_LOG_INF("Led config loaded: led_display(%d)", gConfigParam.led_config.led_display);
+    }
+
     //--------Load Buzzer Config ---------------------
     length = sizeof(buzzer_config_t);
     ret = my_user_data_read(ZMS_ID_BUZZER_CONFIG, &gConfigParam.buzzer_config, length);
@@ -703,16 +716,6 @@ void my_param_load_config(void)
     {
         memcpy(&gConfigParam.bkey_config, &gDefaultBkeyConfig, length);
         MY_LOG_INF("Bkey config not found. Use default.");
-    }
-
-    //--------Load Ota Config ---------------------
-    length = sizeof(ota_config_t);
-    ret = my_user_data_read(ZMS_ID_OTA_CONFIG, &gConfigParam.ota_config, length);
-    MY_LOG_INF("Ota config loaded: ble_ota_reboot(%d)", gConfigParam.ota_config.ble_ota_reboot);
-    if (ret != length)
-    {
-        memcpy(&gConfigParam.ota_config, &gDefaultOtaConfig, length);
-        MY_LOG_INF("Ota config not found. Use default.");
     }
 
     //--------Load Bparmac Config ---------------------

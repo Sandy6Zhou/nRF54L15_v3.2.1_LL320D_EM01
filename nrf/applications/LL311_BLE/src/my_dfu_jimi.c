@@ -74,7 +74,6 @@ static uint16_t s_dfu_buf_offset = 0;         /* 缓存内当前偏移 */
 static uint32_t s_dfu_block_addr = 0;         /* 当前 1KB 块起始地址 */
 
 static struct k_timer s_file_trans_wait_timer; /* 文件传输等待定时器 */
-static struct k_timer s_dfu_finish_wait_timer; /* DFU 完成等待定时器 */
 static struct k_timer s_dfu_reset_timer;       /* DFU 重置定时器 */
 static struct k_work s_dfu_timeout_work;       /* DFU 超时工作项，用于线程上下文处理 */
 static struct k_work s_dfu_retry_work;         /* DFU 重试工作项，用于线程上下文处理 */
@@ -369,7 +368,7 @@ static void jimi_dfu_image_down_req(uint32_t addr, uint32_t length)
 }
 
 /********************************************************************
-**函数名称:  dfu_reset_callback
+**函数名称:  dfu_reset_work_handler
 **入口参数:  work  ---   工作项句柄
 **出口参数:  无
 **函数功能:  DFU 复位回调函数
@@ -378,14 +377,6 @@ static void jimi_dfu_image_down_req(uint32_t addr, uint32_t length)
 static void dfu_reset_work_handler(struct k_work *work)
 {
     ARG_UNUSED(work);
-
-    LOG_INF("DFU reset work handler, rebooting...");
-
-    if (s_dfu_end_flag)
-    {
-        /* 请求 MCUboot 升级（必须在线程上下文调用） */
-        boot_request_upgrade(BOOT_UPGRADE_PERMANENT);
-    }
 
     sys_reboot(SYS_REBOOT_WARM);
 }
@@ -403,21 +394,6 @@ static void dfu_reset_callback(struct k_timer *timer)
 
     /* 提交到工作队列，在线程上下文执行复位 */
     k_work_submit_to_queue(&s_dfu_workq, &s_dfu_reset_work);
-}
-
-/********************************************************************
-**函数名称:  dfu_finish_wait_callback
-**入口参数:  timer  ---   定时器句柄
-**出口参数:  无
-**函数功能:  DFU 完成等待回调
-**返 回 值:  无
-*********************************************************************/
-static void dfu_finish_wait_callback(struct k_timer *timer)
-{
-    ARG_UNUSED(timer);
-
-    /* 启动复位定时器 */
-    k_timer_start(&s_dfu_reset_timer, K_MSEC(3000), K_NO_WAIT);
 }
 
 /********************************************************************
@@ -458,6 +434,7 @@ static void dfu_retry_work_handler(struct k_work *work)
     uint16_t retry_pkt_size = jimi_dfu_calc_pkt_size(g_ble_server_mtu, remain, buf_remain);
     jimi_dfu_image_down_req(s_req_file_addr, retry_pkt_size);
     LOG_DBG("DFU retry request addr: 0x%x, size: %d", s_req_file_addr, retry_pkt_size);
+    k_timer_start(&s_file_trans_wait_timer, K_MSEC(1000), K_NO_WAIT);
 }
 
 /********************************************************************
@@ -640,6 +617,8 @@ static void jimi_dfu_write_image(uint8_t *data, uint16_t len)
         rsp_buf[0] = JIMI_DFU_END_RESP_ERROR;
         my_ble_dfu_send_response(JIMI_DFU_FILE_END, rsp_buf, sizeof(rsp_buf));
         s_dfu_in_progress = false;
+        /* 通知 main 线程 OTA 失败 */
+        my_send_msg(MOD_BLE, MOD_MAIN, MY_MSG_DFU_FAIL);
         return;
     }
     memcpy(&s_dfu_buffer[buf_pos], data + 8, wrt_len);
@@ -657,6 +636,8 @@ static void jimi_dfu_write_image(uint8_t *data, uint16_t len)
             rsp_buf[0] = JIMI_DFU_END_RESP_ERROR;
             my_ble_dfu_send_response(JIMI_DFU_FILE_END, rsp_buf, sizeof(rsp_buf));
             s_dfu_in_progress = false;
+            /* 通知 main 线程 OTA 失败 */
+            my_send_msg(MOD_BLE, MOD_MAIN, MY_MSG_DFU_FAIL);
             return;
         }
     }
@@ -669,11 +650,11 @@ static void jimi_dfu_write_image(uint8_t *data, uint16_t len)
 
         my_ble_dfu_send_response(JIMI_DFU_FILE_END, rsp_buf, sizeof(rsp_buf));
 
+        /* 请求 MCUboot 升级（必须在线程上下文调用） */
+        boot_request_upgrade(BOOT_UPGRADE_PERMANENT);
         /* 通知 main 线程 OTA 完成 */
         my_send_msg(MOD_BLE, MOD_MAIN, MY_MSG_DFU_COMPLETE);
 
-        /* 启动完成定时器 */
-        k_timer_start(&s_dfu_finish_wait_timer, K_MSEC(3000), K_NO_WAIT);
         k_timer_start(&s_dfu_reset_timer, K_MSEC(6500), K_NO_WAIT);
     }
     else
@@ -707,7 +688,9 @@ static void jimi_dfu_end_image(uint8_t *data, uint16_t len)
     LOG_INF("DFU end image");
 
     k_timer_stop(&s_file_trans_wait_timer);
-    k_timer_start(&s_dfu_reset_timer, K_MSEC(3000), K_NO_WAIT);
+
+    /* 启动复位定时器 */
+    k_timer_start(&s_dfu_reset_timer, K_MSEC(1000), K_NO_WAIT);
 }
 
 /* 命令处理表 */
@@ -761,7 +744,6 @@ void jimi_dfu_cmd_handler(uint8_t cmd, uint8_t *data, uint16_t len)
 void jimi_dfu_timer_init(void)
 {
     k_timer_init(&s_file_trans_wait_timer, dfu_timer_wait_callback, NULL);
-    k_timer_init(&s_dfu_finish_wait_timer, dfu_finish_wait_callback, NULL);
     k_timer_init(&s_dfu_reset_timer, dfu_reset_callback, NULL);
     k_work_init(&s_dfu_timeout_work, dfu_timeout_work_handler);
     k_work_init(&s_dfu_retry_work, dfu_retry_work_handler);

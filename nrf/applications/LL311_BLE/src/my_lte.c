@@ -113,6 +113,8 @@ static const ble_rsp_cmd_map_t ble_rsp_cmd_table[] = {
     {"LED",      BLE_RSP_LED     },
     {"TIME",     BLE_RSP_TIME    },
     {"TAG",      BLE_RSP_TAG     },
+    {"OTA",      BLE_RSP_OTA     },
+    {"INFO",     BLE_RSP_INFO    },
     {"MACINFO",  BLE_RSP_MACINFO },
     {"WMODE",    BLE_RSP_WMODE },
     {"POWOFF",   BLE_RSP_POWOFF },
@@ -1182,14 +1184,6 @@ static void my_lte_task(void *p1, void *p2, void *p3)
 
     MY_LOG_INF("LTE thread started");
 
-    // 检查重启原因是否为OTA升级
-    if (gConfigParam.ota_config.ble_ota_reboot == true)
-    {
-        lte_send_command("OTA", "EXIT");
-        gConfigParam.ota_config.ble_ota_reboot = false;
-        my_user_data_write(ZMS_ID_OTA_CONFIG, &gConfigParam.ota_config, sizeof(ota_config_t));
-    }
-
     // 初始化时间指令,从4G网络获取时间同步
     #if RETRANSMIT_CHECK_ENABLED
         lte_send_cmd_with_retry("TIME", "1");
@@ -1978,6 +1972,62 @@ void lte_pulse_timer_handler(void *param)
 }
 
 /********************************************************************
+**函数名称:  send_bt_info_command
+**入口参数:  无
+**出口参数:  无
+**函数功能:  发送蓝牙信息
+**返 回 值:  无
+*********************************************************************/
+void send_bt_info_command(void)
+{
+    char data_buff[LICENSE_FF_STR_LEN + 1] = {0};
+    char buf[MY_MAC_LENGTH*2 + LICENSE_GG_STR_LEN + LICENSE_FF_STR_LEN + 5] = {0};
+    char *ptr = buf;
+    int len = 0;
+    int remaining = sizeof(buf);
+
+    hex2hexstr(gConfigParam.my_macaddr.hex, sizeof(gConfigParam.my_macaddr.hex), data_buff, sizeof(data_buff));
+    len = snprintf(ptr, remaining, "%s,", data_buff);
+    ptr += len;
+    remaining -= len;
+    memset(data_buff, 0, sizeof(data_buff));
+
+    hex2hexstr(gConfigParam.lic_ff.hex, sizeof(gConfigParam.lic_ff.hex), data_buff, sizeof(data_buff));
+    len = snprintf(ptr, remaining, "%s,", data_buff);
+    ptr += len;
+    remaining -= len;
+    memset(data_buff, 0, sizeof(data_buff));
+
+    hex2hexstr(gConfigParam.lic_gg.hex, sizeof(gConfigParam.lic_gg.hex), data_buff, sizeof(data_buff));
+    len = snprintf(ptr, remaining, "%s", data_buff);
+    ptr += len;
+    remaining -= len;
+    memset(data_buff, 0, sizeof(data_buff));
+
+    #if RETRANSMIT_CHECK_ENABLED
+        lte_send_cmd_with_retry("INFO", buf);
+    #else
+        lte_send_command("INFO", buf);
+    #endif
+}
+
+/********************************************************************
+**函数名称:  send_led_command
+**入口参数:  无
+**出口参数:  无
+**函数功能:  发送LED显示状态
+**返 回 值:  无
+*********************************************************************/
+void send_led_command(void)
+{
+    #if RETRANSMIT_CHECK_ENABLED
+        lte_send_cmd_with_retry("LED", gConfigParam.led_config.led_display == 0 ? "OFF" : "ON");
+    #else
+        lte_send_command("LED", gConfigParam.led_config.led_display == 0 ? "OFF" : "ON");
+    #endif
+}
+
+/********************************************************************
 **函数名称:  my_lte_handle_power_on
 **入口参数:  data     ---        去掉协议头后的参数字符串(输入)
 **出口参数:  无
@@ -2028,6 +2078,12 @@ static int my_lte_handle_power_on(char *data)
 
     // 发送当前工作模式给LTE模块
     send_work_mode_command(gConfigParam.device_workmode_config.workmode_config.current_mode);
+
+    // 发送蓝牙信息给LTE模块
+    send_bt_info_command();
+
+    // 发送LED显示指令给LTE模块
+    send_led_command();
 
     // 处理排队的消息
     my_lte_process_queued_msgs();
@@ -2487,6 +2543,8 @@ static int my_ble_handle(char *data)
             ret = my_lte_handle_location_rsp(&rsp_result);
             break;
 
+        case BLE_RSP_OTA:
+        case BLE_RSP_INFO:
         case BLE_RSP_LED:
             break;
 
@@ -2672,11 +2730,7 @@ void my_verify_nfc_permission(void)
     {
         // 通过发消息通知4G需要获取经纬度信息
         sprintf(card_index, "%d", g_nfc_card_index);
-        #if RETRANSMIT_CHECK_ENABLED
-            lte_send_cmd_with_retry("LOCATION", card_index);
-        #else
-            lte_send_command("LOCATION", card_index);
-        #endif
+        lte_send_command("LOCATION", card_index);
     }
     return;
 }

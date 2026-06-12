@@ -15,6 +15,16 @@
 #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260612"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.06.12
+** 作    者:       曹阳 (caoyang@jimiiot.com)
+** 修改内容:        1.增加OTA升级过程中向4G传输进入升级，升级失败，升级成功消息的功能
+**                 2.增加4G上电后传输蓝牙MAC,FF,GG的功能
+**                 3.增加LED指令参数保存功能，并在4G上电后传输LED指令参数
+**                 4.移除请求经纬度加入重传队列的功能
+***/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260612"
+/* 软件版本:        V1.0
+** 完成日期:        2026.06.12
 ** 作    者:       周森达 (zhousenda@jimiiot.com)
 ** 修改内容:        1.TAG/透传MAC记录新增采集时间戳，上报报文增加时间戳字段(取采集时刻)
 **                 2.分区表新增ble_data_storage数据分区(200KB)，settings_storage缩减为32KB(由232KB->32KB)

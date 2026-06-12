@@ -894,21 +894,39 @@ int main(void)
                 break;
 
             case MY_MSG_DFU_START:
-                lte_send_command("OTA", "ENTER");
+                #if RETRANSMIT_CHECK_ENABLED
+                    lte_send_cmd_with_retry("OTA", "ENTER");
+                #else
+                    lte_send_command("OTA", "ENTER");
+                #endif
                 MY_LOG_INF("DFU start received");
                 break;
 
             case MY_MSG_DFU_TIMEOUT:
-                lte_send_command("OTA", "EXIT");
+                #if RETRANSMIT_CHECK_ENABLED
+                    lte_send_cmd_with_retry("OTA", "FAIL");
+                #else
+                    lte_send_command("OTA", "FAIL");
+                #endif
                 MY_LOG_INF("DFU timeout received");
                 break;
 
             case MY_MSG_DFU_COMPLETE:
-                gConfigParam.ota_config.flag = FLAG_VALID;
-                gConfigParam.ota_config.ble_ota_reboot = true;
-                // 设备升级完成后，会有一个6.5s定时器重启系统，不会导致数据写不进去，时间足够
-                my_user_data_write(ZMS_ID_OTA_CONFIG, &gConfigParam.ota_config, sizeof(ota_config_t));
+                #if RETRANSMIT_CHECK_ENABLED
+                    lte_send_cmd_with_retry("OTA", "SUCCESS");
+                #else
+                    lte_send_command("OTA", "SUCCESS");
+                #endif
                 MY_LOG_INF("DFU complete received");
+                break;
+
+            case MY_MSG_DFU_FAIL:
+                #if RETRANSMIT_CHECK_ENABLED
+                    lte_send_cmd_with_retry("OTA", "FAIL");
+                #else
+                    lte_send_command("OTA", "FAIL");
+                #endif
+                MY_LOG_INF("DFU fail received");
                 break;
 
             case MY_MSG_VERIFY_UNLOCK:

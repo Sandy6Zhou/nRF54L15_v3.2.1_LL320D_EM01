@@ -57,6 +57,7 @@ static int tag_cmd_handler(at_cmd_t* msg);
 static int jatag_cmd_handler(at_cmd_t* msg);
 static int jgtag_cmd_handler(at_cmd_t* msg);
 static int lockcd_cmd_handler(at_cmd_t* msg);
+static int led_cmd_handler(at_cmd_t* msg);
 static int buzzer_cmd_handler(at_cmd_t* msg);
 static int nfctrig_cmd_handler(at_cmd_t* msg);
 static int nfcauth_cmd_handler(at_cmd_t* msg);
@@ -93,6 +94,7 @@ static const at_cmd_attr_t at_cmd_attr_table[] =
     {"JATAG",          jatag_cmd_handler},
     {"JGTAG",          jgtag_cmd_handler},
     {"LOCKCD",         lockcd_cmd_handler},
+    {"LED",            led_cmd_handler},
     {"BUZZER",         buzzer_cmd_handler},
     {"NFCTRIG",        nfctrig_cmd_handler},
     {"NFCAUTH",        nfcauth_cmd_handler},
@@ -123,7 +125,6 @@ static const char* lte_cmd_attr_table[] =
     "HBT",
     "SERVER",
     "SIMPRI",
-    "LED",
 };
 
 /*********************************************************************
@@ -2174,6 +2175,83 @@ static int lockcd_cmd_handler(at_cmd_t* msg)
     LOG_INF("LOCKCD: Countdown=%u", gConfigParam.locked_config.lockcd_countdown);
 
     //TODO 具体逻辑处理
+
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
+
+param_invalid:
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
+}
+
+/********************************************************************
+**函数名称:  led_cmd_handler
+**入口参数:  msg      ---        AT指令结构体指针
+**出口参数:  msg->resp_msg  ---  响应消息
+**           msg->resp_length --- 响应长度
+**函数功能:  处理LED指令：控制设备LED指示灯的显示状态
+**指令格式:  LED,A#
+**参数说明:  A - 设备LED是否全时显示，可选值：OFF(关闭，默认)、ON(开启)
+**返 回 值:  BLE数据类型
+*********************************************************************/
+static int led_cmd_handler(at_cmd_t* msg)
+{
+    uint16_t remaining;
+    int display_value;
+
+    remaining = RESP_STRING_LENGTH_MAX;
+
+    // 无参数即查询
+    if (msg->parm_count == 0)
+    {
+        const char* state_str = gConfigParam.led_config.led_display ? "ON" : "OFF";
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "%s:%s",
+                                    msg->parm[0],
+                                    state_str
+        );
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
+    }
+
+    /* 检查参数数量 */
+    if (msg->parm_count != 1)
+    {
+        LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
+    }
+
+    /* 解析A参数 */
+    if (strcmp(msg->parm[1], "ON") == 0)
+    {
+        display_value = 1;
+    }
+    else if (strcmp(msg->parm[1], "OFF") == 0)
+    {
+        display_value = 0;
+    }
+    else
+    {
+        LOG_INF("%s=>invalid A param: %s", __func__, msg->parm[1]);
+        goto param_invalid;
+    }
+
+    /* 所有参数验证通过,统一赋值 */
+    gConfigParam.led_config.flag = FLAG_VALID;
+    gConfigParam.led_config.led_display = (uint8_t)display_value;
+
+    // 只有在LTE就绪状态下才发送LED指令
+    if (g_bLteReady == 1)
+    {
+        send_led_command();
+    }
+
+    /* 保存配置 */
+    my_user_data_write(ZMS_ID_LED_CONFIG, &gConfigParam.led_config, sizeof(led_config_t));
+
+    LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
+
+    /* 生成成功响应 */
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
+    LOG_INF("LED: Display=%d", gConfigParam.led_config.led_display);
 
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 

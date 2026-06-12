@@ -72,7 +72,6 @@ typedef enum                           // 参数ID定义
     ZMS_ID_NFCAUTH_CONFIG,             // NFC卡权限配置参数ID
     ZMS_ID_NFCOPRALM_CONFIG,           // NFC上报模式配置参数ID
     ZMS_ID_BT_KEY_CONFIG,              // 蓝牙解锁密钥配置参数ID
-    ZMS_ID_OTA_CONFIG,                 // OTA升级相关配置参数ID
     ZMS_ID_BT_PARMAC_CONFIG,           // 透传MAC地址配置参数ID
 } my_zms_id_t;
 
@@ -219,6 +218,12 @@ typedef struct                              // 存储的自动上锁配置参数
     uint16_t lockcd_countdown;              // 插入后上锁倒计时: 0-3600秒, 0代表不自动上锁
 } locked_config_t;
 
+typedef struct                              // 存储的LED显示配置参数
+{
+    uint8_t flag;                           // 参数有效标志
+    uint8_t led_display;                    // LED显示开关: 0-OFF, 1-ON
+} led_config_t;
+
 typedef struct                              // 存储的蜂鸣器配置参数
 {
     uint8_t flag;                           // 参数有效标志
@@ -250,12 +255,6 @@ typedef struct                              // 存储的蓝牙解锁密钥配置
     char        bt_key[7];                  // 蓝牙解锁密钥，6位数字 + 结束符
 } bkey_config_t;
 
-typedef struct
-{
-    uint8_t flag;                           // 参数有效标志
-    bool ble_ota_reboot;                  // 蓝牙OTA升级成功重启设备标志位
-} ota_config_t;
-
 typedef struct                              // 存储的透传mac地址配置数据
 {
     uint8_t flag;                                   // 参数有效标志
@@ -286,12 +285,12 @@ typedef struct
     bt_updata_config_t          bt_updata_config;           // 蓝牙数据上传配置
     tag_config_t                tag_config;                 // Tag定位功能配置
     locked_config_t             locked_config;              // 自动上锁配置
+    led_config_t                led_config;                 // LED显示配置
     buzzer_config_t             buzzer_config;              // 蜂鸣器配置
     nfctrig_config_t            nfctrig_config;             // NFC触发规则配置
     nfcauth_config_t            nfcauth_config;             // NFC卡权限配置
     nfcopralm_config_t          nfcopralm_config;           // NFC刷卡报警配置
     bkey_config_t               bkey_config;                // 蓝牙解锁密钥配置
-    ota_config_t                ota_config;                 // OTA升级相关配置
     bparmac_config_t            bparmac_config;             // 透传mac地址配置
 } config_param_t;
 

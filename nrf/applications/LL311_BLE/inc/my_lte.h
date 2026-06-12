@@ -31,6 +31,8 @@ typedef enum
     BLE_RSP_LED,      // BLE+LED=OK
     BLE_RSP_TIME,     // BLE+TIME=OK,<UTC秒数>
     BLE_RSP_TAG,      // BLE+TAG=OK,START/END/seq
+    BLE_RSP_OTA,      // BLE+OTA=OK
+    BLE_RSP_INFO,     // BLE+INFO=OK
     BLE_RSP_MACINFO,  // BLE+MACINFO=OK,START/END/seq
     BLE_RSP_WMODE,    // BLE+WMODE=OK
     BLE_RSP_POWOFF,   // BLE+POWOFF=OK
@@ -216,5 +218,14 @@ void lte_send_cmd_with_retry(const char *cmd_name, const char *param);
 **返 回 值:  0表示匹配成功并发送，-1表示未匹配到对应指令
 ********************************************************************/
 int async_match_and_resp(char *data);
+
+/********************************************************************
+**函数名称:  send_led_command
+**入口参数:  无
+**出口参数:  无
+**函数功能:  发送LED显示指令
+**返 回 值:  无
+*********************************************************************/
+void send_led_command(void);
 
 #endif /* _MY_LTE_H_ */
