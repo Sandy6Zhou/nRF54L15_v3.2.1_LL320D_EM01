@@ -1011,7 +1011,7 @@ const uint16_t my_param_get_Gvalue(void)
 **入口参数:  param: 要设置的IMEI值, len: 数据长度
 **出口参数:  无
 **函数功能:  设置IMEI值
-**返 回 值:  0表示成功，负值表示失败
+**返 回 值:  0表示成功，-1表示参数非法，-2表示写入失败
 *********************************************************************/
 int my_param_set_imei(char *param, uint8_t len)
 {
@@ -1037,7 +1037,7 @@ int my_param_set_imei(char *param, uint8_t len)
     if (ret != GsmImei_struct_len)
     {
         MY_LOG_INF("zms set imei Error!!!");
-        return -1;
+        return -2;
     }
     else
     {

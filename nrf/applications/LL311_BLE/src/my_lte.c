@@ -33,11 +33,14 @@ char LTE_NTCSET[] = "LTE+NTCSET=";
 char LTE_TIME[] = "LTE+TIME=";
 char LTE_TRANSMIT[] = "LTE+TRANSMIT=";
 char LTE_FOTA[] = "LTE+FOTA=";
-char LTE_STATE[] = "LTE+STATE=";
 char LTE_CMD[] = "LTE+CMD=";
 char LTE_LOCATION[] = "LTE+LOCATION=";
 char LTE_FACTORY[] = "LTE+FACTORY=";
-char LTE_NET[] = "LTE+NET=";
+char LTE_STATE[] = "LTE+STATE=";
+char LTE_IMEI[] = "LTE+IMEI=";
+char LTE_GETMOT[] = "LTE+GETMOT=";
+char LTE_GETTIME[] = "LTE+GETTIME=";
+char LTE_GPSSTATE[] = "LTE+GPSSTATE=";
 char BLE_CMD[] = "BLE+CMD=";
 char BLE[] = "BLE+";
 
@@ -213,6 +216,12 @@ static uint16_t s_lte_pulse_count = 0;
 
 // 网络状态
 uint8_t g_lte_net_flag = 0;
+// 网络信号强度
+uint8_t g_lte_net_signal_level = 0;
+// GPS状态
+uint8_t g_lte_gps_state = 0;
+// GPS信号值
+char g_lte_gps_signal[50] = {0};
 
 /********************************************************************
 **函数名称:  init_async_queue
@@ -2605,34 +2614,240 @@ static int my_lte_handle_factory(char *data)
 }
 
 /********************************************************************
-**函数名称:  my_lte_handle_net
-**入口参数:  data      ---        接收到的原始指令字符串 (如 "0" 或 "1")LTE+NET=0/1
+**函数名称:  my_lte_handle_state
+**入口参数:  data    ---   接收到的状态数据字符串（格式：网络状态,PDP状态,平台登录状态,信号强度）
 **出口参数:  无
-**函数功能:  处理网络状态切换指令
-**返 回 值:  0表示处理成功，-1表示无效参数
-********************************************************************/
-static int my_lte_handle_net(char *data)
+**函数功能:  处理LTE+STATE指令，解析并更新网络状态、PDP状态、平台登录状态和信号强度
+**返 回 值:  0  --- 处理成功
+**           -1 --- 参数无效
+*********************************************************************/
+static int my_lte_handle_state(char *data)
 {
     char result[16] = {0};
-    uint8_t net = 0;
+    uint8_t network_status = 0;        // 网络连接状态
+    uint8_t pdp_active_status = 0;     // PDP激活状态
+    uint8_t platform_login_status = 0; // 平台登录状态
+    uint8_t net_signal_level = 0;      // 网络信号强度
 
+    // 解析第一个参数：网络状态
     my_get_str_at_pos(data, 0, ',', result, sizeof(result));
-    net = atoi(result);
+    network_status = atoi(result);
 
-    // 检查参数是否有效
-    if (net != 0 && net != 1)
+    // 解析第二个参数：PDP激活状态
+    my_get_str_at_pos(data, 1, ',', result, sizeof(result));
+    pdp_active_status = atoi(result);
+
+    // 解析第三个参数：平台登录状态
+    my_get_str_at_pos(data, 2, ',', result, sizeof(result));
+    platform_login_status = atoi(result);
+
+    // 解析第四个参数：网络信号强度
+    my_get_str_at_pos(data, 3, ',', result, sizeof(result));
+    net_signal_level = atoi(result);
+
+    // 参数有效性校验：网络状态和PDP状态只能为0或1，平台登录状态只能为0或1，信号强度不能超过4
+    if ((network_status != 0 && network_status != 1)
+        || (pdp_active_status != 0 && pdp_active_status != 1)
+        || (platform_login_status != 0 && platform_login_status != 1)
+        || net_signal_level > 4)
     {
-        MY_LOG_ERR("Invalid network flag: %d", net);
+        MY_LOG_ERR("Invalid state flag: %d,%d,%d,%d", network_status, pdp_active_status, platform_login_status, net_signal_level);
         return -1;
     }
 
-    // 切换网络状态
-    g_lte_net_flag = net;
-    LOG_INF("net: %d", net);
+    // 更新全局网络状态标志
+    g_lte_net_flag = network_status;
+    // 更新全局网络信号强度
+    g_lte_net_signal_level = net_signal_level;
 
-    // 发送应答
-    my_lte_uart_send("LTE+NET=OK\r\n", strlen("LTE+NET=OK\r\n"));
+    // 打印当前状态信息
+    LOG_INF("network_status: %d, pdp_active_status: %d, platform_login_status: %d, net_signal_level: %d", network_status, pdp_active_status, platform_login_status, net_signal_level);
 
+    // 发送响应报文
+    my_lte_uart_send("LTE+STATE=OK\r\n", strlen("LTE+STATE=OK\r\n"));
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  my_lte_handle_imei
+**入口参数:  data    ---   接收到的IMEI数据字符串
+**出口参数:  无
+**函数功能:  处理LTE+IMEI指令，解析IMEI并保存到参数存储区
+**返 回 值:  0  --- 处理成功
+*********************************************************************/
+static int my_lte_handle_imei(char *data)
+{
+    int ret = -1;
+    char result[20] = {0}; //这个空间要大于IMEI长度
+    char send_buf[30] = {0};
+
+    // 解析IMEI参数
+    my_get_str_at_pos(data, 0, ',', result, sizeof(result));
+
+    // 保存IMEI到参数存储区
+    ret = my_param_set_imei(result, strlen(result));
+
+    // 根据保存结果返回相应响应
+    if (ret == 0)
+    {
+        // 保存成功
+        strncpy(result, "OK", sizeof("OK"));
+    }
+    else if (ret == -1)
+    {
+        // 参数格式错误
+        strncpy(result, "FAIL,BAD_PARAM", sizeof("FAIL,BAD_PARAM"));
+    }
+    else if (ret == -2)
+    {
+        // 存储失败
+        strncpy(result, "FAIL,SAVE_FAIL", sizeof("FAIL,SAVE_FAIL"));
+    }
+
+    snprintf(send_buf, sizeof(send_buf), "LTE+IMEI=%s\r\n", result);
+    my_lte_uart_send(send_buf, strlen(send_buf));
+
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  my_lte_handle_getmot
+**入口参数:  data    ---   接收到的运动状态查询数据字符串
+**出口参数:  无
+**函数功能:  处理LTE+GETMOT指令，获取并上报当前设备的运动状态
+**返 回 值:  0  --- 处理成功
+**           -1 --- 参数无效
+*********************************************************************/
+static int my_lte_handle_getmot(char *data)
+{
+    char result[16] = {0};
+    char send_buf[30] = {0};
+    uint8_t getmot_val = 0;
+    gsensor_state_t gsensor_state = STATE_UNKNOWN;
+
+    // 解析查询标志参数
+    my_get_str_at_pos(data, 0, ',', result, sizeof(result));
+    getmot_val = atoi(result);
+
+    // 校验参数有效性，必须为1
+    if (getmot_val != 1)
+    {
+        MY_LOG_ERR("Invalid getmot flag: %d", getmot_val);
+        return -1;
+    }
+
+    // 获取当前GSensor检测的运动状态
+    gsensor_state = my_gsensor_get_state();
+
+    // 根据运动状态发送相应响应
+    switch (gsensor_state)
+    {
+        case STATE_STATIC:
+            // 设备处于静止状态
+            strncpy(result, "STATIC", sizeof("STATIC"));
+            break;
+
+        case STATE_LAND_TRANSPORT:
+            // 设备处于陆运状态
+            strncpy(result, "LAND", sizeof("LAND"));
+            break;
+
+        case STATE_SEA_TRANSPORT:
+            // 设备处于海运状态
+            strncpy(result, "SEA", sizeof("SEA"));
+            break;
+
+        default:
+            // 未知状态，不发送响应
+            break;
+    }
+    snprintf(send_buf, sizeof(send_buf), "LTE+GETMOT=%s\r\n", result);
+    my_lte_uart_send(send_buf, strlen(send_buf));
+
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  my_lte_handle_gettime
+**入口参数:  data    ---   接收到的时间查询数据字符串
+**出口参数:  无
+**函数功能:  处理LTE+GETTIME指令，获取并上报当前系统时间
+**返 回 值:  0  --- 处理成功
+**           -1 --- 参数无效
+*********************************************************************/
+static int my_lte_handle_gettime(char *data)
+{
+    char result[16] = {0};
+    char send_buf[30] = {0};
+    uint8_t gettime_val = 0;
+    time_t current_time = 0;
+
+    // 解析查询标志参数
+    my_get_str_at_pos(data, 0, ',', result, sizeof(result));
+    gettime_val = atoi(result);
+
+    // 校验参数有效性，必须为1
+    if (gettime_val != 1)
+    {
+        MY_LOG_ERR("Invalid gettime flag: %d", gettime_val);
+        return -1;
+    }
+
+    // 获取当前系统时间（UTC秒数）
+    current_time = my_get_system_time_sec();
+
+    // 构建并发送时间响应报文
+    snprintf(send_buf, sizeof(send_buf), "LTE+GETTIME=%lld\r\n", current_time);
+    my_lte_uart_send(send_buf, strlen(send_buf));
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  my_lte_handle_gpsstate
+**入口参数:  data    ---   接收到的GPS状态数据字符串（格式：GPS状态[,GPS信号值]）
+**出口参数:  无
+**函数功能:  处理LTE+GPSSTATE指令，解析并更新GPS状态和信号值
+**返 回 值:  0  --- 处理成功
+**           -1 --- 参数无效
+*********************************************************************/
+static int my_lte_handle_gpsstate(char *data)
+{
+    char result[10] = {0};
+    bool is_valid = false;
+    uint8_t gps_state = 0;
+
+    // 解析GPS状态参数
+    is_valid = my_get_str_at_pos(data, 0, ',', result, sizeof(result));
+    gps_state = atoi(result);
+
+    // 校验GPS状态有效性，取值范围：0-2
+    if (gps_state > 2)
+    {
+        MY_LOG_ERR("Invalid gpsstate flag: %d", gps_state);
+        return -1;
+    }
+
+    // GPS状态为2时，表示有定位，需要提取GPS信号值
+    if (gps_state == 2 && is_valid)
+    {
+        // 从数据中提取GPS信号值（跳过状态字段和逗号分隔符）
+        strncpy(g_lte_gps_signal, data + strlen(result) + 1, sizeof(g_lte_gps_signal) - 1);
+        g_lte_gps_signal[sizeof(g_lte_gps_signal) - 1] = '\0';
+    }
+    else
+    {
+        // GPS状态为0或1时，表示无定位，信号值为空
+        memset(g_lte_gps_signal, 0, sizeof(g_lte_gps_signal));
+    }
+
+    // 更新全局GPS状态
+    g_lte_gps_state = gps_state;
+
+    // 打印GPS状态和信号信息
+    LOG_INF("gps_state: %d, gps_signal: %s", gps_state, g_lte_gps_signal);
+
+    // 发送响应报文
+    my_lte_uart_send("LTE+GPSSTATE=OK\r\n", strlen("LTE+GPSSTATE=OK\r\n"));
     return 0;
 }
 
@@ -2822,9 +3037,29 @@ int my_lte_parse_cmd(char *cmd, int cmd_len)
         ret = my_lte_handle_factory(p + strlen(LTE_FACTORY));
         goto END;
     }
-    else if (CMD_MATCHED(cmd, LTE_NET))
+    else if (CMD_MATCHED(cmd, LTE_STATE))
     {
-        ret = my_lte_handle_net(p + strlen(LTE_NET));
+        ret = my_lte_handle_state(p + strlen(LTE_STATE));
+        goto END;
+    }
+    else if (CMD_MATCHED(cmd, LTE_IMEI))
+    {
+        ret = my_lte_handle_imei(p + strlen(LTE_IMEI));
+        goto END;
+    }
+    else if (CMD_MATCHED(cmd, LTE_GETMOT))
+    {
+        ret = my_lte_handle_getmot(p + strlen(LTE_GETMOT));
+        goto END;
+    }
+    else if (CMD_MATCHED(cmd, LTE_GETTIME))
+    {
+        ret = my_lte_handle_gettime(p + strlen(LTE_GETTIME));
+        goto END;
+    }
+    else if (CMD_MATCHED(cmd, LTE_GPSSTATE))
+    {
+        ret = my_lte_handle_gpsstate(p + strlen(LTE_GPSSTATE));
         goto END;
     }
     else if (CMD_MATCHED(cmd, BLE_CMD))

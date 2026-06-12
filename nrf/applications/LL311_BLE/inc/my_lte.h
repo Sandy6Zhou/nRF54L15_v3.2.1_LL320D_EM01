@@ -103,6 +103,9 @@ typedef struct {
 extern bool g_lte_ota_in_progress;
 
 extern uint8_t g_lte_net_flag; // 网络状态
+extern uint8_t g_lte_net_signal_level; // 网络信号强度
+extern uint8_t g_lte_gps_state; // GPS状态
+extern char g_lte_gps_signal[50]; // GPS信号值
 
 /********************************************************************
 **函数名称:  my_lte_init
