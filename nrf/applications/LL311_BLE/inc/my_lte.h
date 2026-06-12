@@ -173,15 +173,15 @@ void set_lte_boot_reason(lte_boot_reason_t reason);
 lte_boot_reason_t get_lte_boot_reason(void);
 
 /********************************************************************
-**函数名称:  my_verify_openlock
+**函数名称:  my_verify_nfc_permission
 **入口参数:  无
 **出口参数:  无
 **函数功能:  执行刷卡位置校验，主要包括：
-**            1. 校验当前储存点位置数据的有效性，有效就执行开锁规则
+**            1. 校验当前储存点位置数据的有效性，有效就根据 NFC 卡片的权限状态执行开锁或关锁规则
 **            2.储存点无效发送BLE+LOCATION=seq;seq为刷卡索引，获取经纬度信息
 **返 回 值:  无
 ********************************************************************/
-void my_verify_openlock(void);
+void my_verify_nfc_permission(void);
 
 /********************************************************************
 **函数名称:  my_lte_handle_cmd

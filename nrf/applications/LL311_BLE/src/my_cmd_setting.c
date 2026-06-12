@@ -2510,7 +2510,8 @@ param_invalid:
 **           LAT/LON - 经纬度，均为空字符串表示不限制
 **           半径 - 可操作地址半径，单位米，范围50~999900
 **           Start Time/End Time - 起止时间，格式必须为YYMMDDHHMM，均为空字符串表示不限制
-**           Unlock Times - 可用次数，0表示不限次数，范围0/1~999
+**           Unlock Times - 解锁可用次数，-1表示不限次数，范围-1~999
+**           Lock Times - 上锁可用次数，-1表示不限次数，范围-1~999
 **返 回 值:  BLE数据类型
 *********************************************************************/
 static int nfcauth_cmd_handler(at_cmd_t* msg)
@@ -2528,6 +2529,7 @@ static int nfcauth_cmd_handler(at_cmd_t* msg)
     uint8_t starttime_valid;
     uint8_t endtime_valid;
     int32_t unlock_times;
+    int32_t lock_times;
     char temp_buf[256];
     int temp_len;
 
@@ -2550,8 +2552,8 @@ static int nfcauth_cmd_handler(at_cmd_t* msg)
     /* 处理SET指令：设置NFC卡权限 */
     if (strcmp(msg->parm[1], "SET") == 0)
     {
-        /* SET指令参数数量校验：需要8个参数 */
-        if (msg->parm_count != 8)
+        /* SET指令参数数量校验：需要9个参数 */
+        if (msg->parm_count != 9)
         {
             LOG_INF("%s=>SET param count error: %d", __func__, msg->parm_count);
             goto param_invalid;
@@ -2578,33 +2580,35 @@ static int nfcauth_cmd_handler(at_cmd_t* msg)
             goto param_invalid;
         }
 
-        if ((lat_valid == 1 && lon_valid == 0) || (lat_valid == 0 && lon_valid == 1))
-        {
-            LOG_INF("%s=>invalid LAT or LON param", __func__);
-            goto param_invalid;
-        }
-
-        /* 半径参数校验：非空时范围50~999900米，空字符串表示无效 */
+        /* 半径参数校验：非空时范围50~999900米，空字符串表示不限制 */
         temp_len = strlen(msg->parm[5]);
-        if (temp_len == 0)
-        {
-            LOG_INF("%s=>invalid radius param", __func__);
-            goto param_invalid;
-        }
 
-        if (!is_integer_array(msg->parm[5], temp_len))
+        if (temp_len != 0)
         {
-            LOG_INF("%s=>invalid radius param: %s (not pure digit)", __func__, msg->parm[5]);
-            goto param_invalid;
+            if (!is_integer_array(msg->parm[5], temp_len))
+            {
+                LOG_INF("%s=>invalid radius param: %s (not pure digit)", __func__, msg->parm[5]);
+                goto param_invalid;
+            }
+            else
+            {
+                radius = atoi(msg->parm[5]);
+                if (radius < 50 || radius > 999900)
+                {
+                    LOG_INF("%s=>invalid radius param: %s", __func__, msg->parm[5]);
+                    goto param_invalid;
+                }
+            }
         }
         else
         {
-            radius = atoi(msg->parm[5]);
-            if (radius < 50 || radius > 999900)
-            {
-                LOG_INF("%s=>invalid radius param: %s", __func__, msg->parm[5]);
-                goto param_invalid;
-            }
+            radius = 0;// 空字符串时，标记为0，表示不限制
+        }
+
+        if (!((lat_valid == 1 && lon_valid ==  1 && temp_len > 0) || (lat_valid == 0 && lon_valid ==  0 && temp_len == 0)))
+        {
+            LOG_INF("%s=>invalid LAT or LON param", __func__);
+            goto param_invalid;
         }
 
         /* 起止时间参数格式校验：必须为YYMMDDHHMM或空字符串 */
@@ -2637,7 +2641,7 @@ static int nfcauth_cmd_handler(at_cmd_t* msg)
             }
         }
 
-        /* 可用次数参数校验：非空时范围1~999 */
+        /* 解锁可用次数参数校验：非空时范围0~999 */
         temp_len = strlen(msg->parm[8]);
         if (temp_len != 0)
         {
@@ -2649,8 +2653,8 @@ static int nfcauth_cmd_handler(at_cmd_t* msg)
             else
             {
                 unlock_times = atoi(msg->parm[8]);
-                // 仅允许 unlock_times 为 -1 或 1~999
-                if (!(unlock_times == -1 || (unlock_times >= 1 && unlock_times <= 999)))
+                // 仅允许 unlock_times 为 -1 或 0~999
+                if (!(unlock_times == -1 || (unlock_times >= 0 && unlock_times <= 999)))
                 {
                     LOG_INF("%s=>invalid unlock_times param: %s", __func__, msg->parm[8]);
                     goto param_invalid;
@@ -2660,6 +2664,38 @@ static int nfcauth_cmd_handler(at_cmd_t* msg)
         else
         {
             unlock_times = -1;// 空字符串时，标记为-1，表示不限次数
+        }
+
+        /* 上锁可用次数参数校验：非空时范围0~999 */
+        temp_len = strlen(msg->parm[9]);
+        if (temp_len != 0)
+        {
+            if (!is_integer_array(msg->parm[9], temp_len))
+            {
+                LOG_INF("%s=>invalid lock_times param: %s (not pure digit)", __func__, msg->parm[9]);
+                goto param_invalid;
+            }
+            else
+            {
+                lock_times = atoi(msg->parm[9]);
+                // 仅允许 lock_times 为 -1 或 0~999
+                if (!(lock_times == -1 || (lock_times >= 0 && lock_times <= 999)))
+                {
+                    LOG_INF("%s=>invalid lock_times param: %s", __func__, msg->parm[9]);
+                    goto param_invalid;
+                }
+            }
+        }
+        else
+        {
+            lock_times = -1;// 空字符串时，标记为-1，表示不限次数
+        }
+
+        // unlock_times 和 lock_times 不能两个都不为0
+        if (unlock_times != 0 && lock_times != 0)
+        {
+            LOG_INF("%s=>unlock_times and lock_times must be one 0", __func__);
+            goto param_invalid;
         }
 
         /* 查找是否已存在该卡号，存在则更新，不存在则新增 */
@@ -2711,12 +2747,13 @@ static int nfcauth_cmd_handler(at_cmd_t* msg)
             gConfigParam.nfcauth_config.nfcauth_cards[index].time_valid = 0;
         }
         gConfigParam.nfcauth_config.nfcauth_cards[index].unlock_times = unlock_times;
+        gConfigParam.nfcauth_config.nfcauth_cards[index].lock_times = lock_times;
 
         gConfigParam.nfcauth_config.flag = FLAG_VALID;
         /* 保存配置 */
         my_user_data_write(ZMS_ID_NFCAUTH_CONFIG, &gConfigParam.nfcauth_config, sizeof(nfcauth_config_t));
 
-        LOG_INF("%s=>SET,%s,%d,%d,%d,%u,%s,%s,%d,%u", __func__,
+        LOG_INF("%s=>SET,%s,%d,%d,%d,%u,%s,%s,%d,%u,%u", __func__,
                 gConfigParam.nfcauth_config.nfcauth_cards[index].nfc_no,
                 gConfigParam.nfcauth_config.nfcauth_cards[index].lat,
                 gConfigParam.nfcauth_config.nfcauth_cards[index].lon,
@@ -2725,7 +2762,8 @@ static int nfcauth_cmd_handler(at_cmd_t* msg)
                 gConfigParam.nfcauth_config.nfcauth_cards[index].start_time,
                 gConfigParam.nfcauth_config.nfcauth_cards[index].end_time,
                 gConfigParam.nfcauth_config.nfcauth_cards[index].time_valid,
-                gConfigParam.nfcauth_config.nfcauth_cards[index].unlock_times);
+                gConfigParam.nfcauth_config.nfcauth_cards[index].unlock_times,
+                gConfigParam.nfcauth_config.nfcauth_cards[index].lock_times);
 
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
         return BLE_DATA_TYPE_PACKET_MULTIPLE;
@@ -2783,6 +2821,7 @@ static int nfcauth_cmd_handler(at_cmd_t* msg)
         strcpy(gConfigParam.nfcauth_config.nfcauth_cards[index].end_time, "");
         gConfigParam.nfcauth_config.nfcauth_cards[index].time_valid = 0;
         gConfigParam.nfcauth_config.nfcauth_cards[index].unlock_times = -1;
+        gConfigParam.nfcauth_config.nfcauth_cards[index].lock_times = 0;
         gConfigParam.nfcauth_config.flag = FLAG_VALID;
 
         /* 保存配置 */
@@ -2903,14 +2942,15 @@ static int nfcauth_cmd_handler(at_cmd_t* msg)
                 {
                     found = 1;
                     msg->resp_length = snprintf(msg->resp_msg, remaining,
-                        "RETURN_%s,%d,%d,%u,%s,%s,%u",
+                        "RETURN_%s,%d,%d,%u,%s,%s,%u,%u",
                         gConfigParam.nfcauth_config.nfcauth_cards[i].nfc_no,
                         gConfigParam.nfcauth_config.nfcauth_cards[i].lat,
                         gConfigParam.nfcauth_config.nfcauth_cards[i].lon,
                         gConfigParam.nfcauth_config.nfcauth_cards[i].radius,
                         gConfigParam.nfcauth_config.nfcauth_cards[i].start_time,
                         gConfigParam.nfcauth_config.nfcauth_cards[i].end_time,
-                        gConfigParam.nfcauth_config.nfcauth_cards[i].unlock_times);
+                        gConfigParam.nfcauth_config.nfcauth_cards[i].unlock_times,
+                        gConfigParam.nfcauth_config.nfcauth_cards[i].lock_times);
                     LOG_INF("%s=>CHECK,%s", __func__, msg->parm[2]);
                     return BLE_DATA_TYPE_PACKET_MULTIPLE;
                 }

@@ -383,7 +383,7 @@ static int is_need_location_upload(const uint8_t *card_id, uint8_t id_len)
             card_index  ---        输出，匹配的授权卡片索引
 **出口参数:  card_index  ---        输出，存储匹配的授权卡片索引
 **函数功能:  检测NFC卡片是否有效，验证卡片ID、时间范围、解锁次数等条件
-**返 回 值:  -1表示验证失败，1表示需要位置验证，0表示验证通过
+**返 回 值:  -1表示验证失败, 0表示无需任何操作, 1表示需要位置验证, 2表示需要解锁, 3表示需要上锁
 *********************************************************************/
 int nfc_card_detected(uint8_t *card_id, uint8_t *card_index)
 {
@@ -445,11 +445,10 @@ int nfc_card_detected(uint8_t *card_id, uint8_t *card_index)
         }
     }
 
-    /* 检查剩余解锁次数 */
-    if (current_card->unlock_times == 0)
+    if (current_card->lock_times == 0 && current_card->unlock_times == 0)
     {
-        /* 解锁次数为0，返回失败 */
-        MY_LOG_INF("unlock_times is 0.");
+        /* 无解锁次数和上次数，返回失败 */
+        MY_LOG_INF("No unlock and lock times.");
         return -1;
     }
 
@@ -461,15 +460,28 @@ int nfc_card_detected(uint8_t *card_id, uint8_t *card_index)
         return 1;
     }
 
-    /* 若卡的次数有限,需要消耗次数(-1为无限次数) */
-    if (current_card->unlock_times > 0)
+    if (current_card->unlock_times != 0 && get_openlock_state() == false)
     {
-        current_card->unlock_times--;
+        if (current_card->unlock_times > 0)
+        {
+            current_card->unlock_times--;
+            my_user_data_write(ZMS_ID_NFCAUTH_CONFIG, &gConfigParam.nfcauth_config, sizeof(nfcauth_config_t));
+        }
+        MY_LOG_INF("current_card->unlock_times:%d", current_card->unlock_times);
+        return 2;
+    }
+    else if (current_card->lock_times != 0 && get_closelock_state() == false)
+    {
+        if (current_card->lock_times > 0)
+        {
+            current_card->lock_times--;
+            my_user_data_write(ZMS_ID_NFCAUTH_CONFIG, &gConfigParam.nfcauth_config, sizeof(nfcauth_config_t));
+        }
+        MY_LOG_INF("current_card->lock_times:%d", current_card->lock_times);
+        return 3;
     }
 
-    MY_LOG_INF("current_card->unlock_times:%d", current_card->unlock_times);
-
-    /* 验证通过，返回0 */
+    /* 无需要任何操作，返回0 */
     return 0;
 }
 
@@ -519,12 +531,17 @@ void handle_nfc_card_event(uint8_t *card_id, uint8_t id_len)
 
     ret = nfc_card_detected(card_id_str, &g_nfc_card_index);
 
-    /* 符合开锁规则 */
-    if (ret == 0)
+    if (ret == 2)
     {
         /* 启动开锁操作 */
         my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_CTRL_OPENLOCKING);
         MY_LOG_INF("start to openlock");
+    }
+    else if (ret == 3)
+    {
+        /* 启动上锁操作 */
+        my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_CTRL_CLOSELOCKING);
+        MY_LOG_INF("start to closelock");
     }
     /* 需要位置验证 */
     else if (ret == 1)
@@ -539,7 +556,7 @@ void handle_nfc_card_event(uint8_t *card_id, uint8_t id_len)
         {
             //记录刷卡的授权卡索引
             g_last_card_index = g_nfc_card_index;
-            my_verify_openlock();
+            my_verify_nfc_permission();
         }
     }
     /* 权限不足 */

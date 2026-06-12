@@ -96,7 +96,8 @@ typedef struct
     char     start_time[12];       /* 开始时间，格式YYMMDDHHMM */
     char     end_time[12];         /* 结束时间，格式YYMMDDHHMM */
     uint8_t  time_valid;           /* 起止时间有效标志: 0-不限制, 1-有效 */
-    int16_t  unlock_times;         /* 可用次数，-1表示不限次数 */
+    int16_t  unlock_times;         /* 解锁可用次数，-1表示不限次数 */
+    int16_t  lock_times;           /* 上锁可用次数，-1表示不限次数 */
 } nfc_auth_card_t;
 
 /* 上报方式枚举定义 */

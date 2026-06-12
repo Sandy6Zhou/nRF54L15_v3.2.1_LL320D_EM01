@@ -2622,15 +2622,15 @@ bool my_check_location_valid(location_storage_t *point)
 }
 
 /********************************************************************
-**函数名称:  my_verify_openlock
+**函数名称:  my_verify_nfc_permission
 **入口参数:  无
 **出口参数:  无
 **函数功能:  执行刷卡位置校验，主要包括：
-**            1. 校验当前储存点位置数据的有效性，有效就执行开锁规则
+**            1. 校验当前储存点位置数据的有效性，有效就根据 NFC 卡片的权限状态执行开锁或关锁规则
 **            2.储存点无效发送BLE+LOCATION=seq;seq为刷卡索引，获取经纬度信息
 **返 回 值:  无
 ********************************************************************/
-void my_verify_openlock(void)
+void my_verify_nfc_permission(void)
 {
     char card_index[10]={0};
     //先验证存储点是否有效
@@ -2642,14 +2642,26 @@ void my_verify_openlock(void)
             gConfigParam.nfcauth_config.nfcauth_cards[g_nfc_card_index].lon,
             gConfigParam.nfcauth_config.nfcauth_cards[g_nfc_card_index].radius))
         {
-            // 若卡的次数有限,需要消耗次数(-1为无限次数)
-            if (gConfigParam.nfcauth_config.nfcauth_cards[g_nfc_card_index].unlock_times > 0)
+            if (gConfigParam.nfcauth_config.nfcauth_cards[g_nfc_card_index].unlock_times != 0 && get_openlock_state() == false)
             {
-                gConfigParam.nfcauth_config.nfcauth_cards[g_nfc_card_index].unlock_times--;
+                if (gConfigParam.nfcauth_config.nfcauth_cards[g_nfc_card_index].unlock_times > 0)
+                {
+                    gConfigParam.nfcauth_config.nfcauth_cards[g_nfc_card_index].unlock_times--;
+                    my_user_data_write(ZMS_ID_NFCAUTH_CONFIG, &gConfigParam.nfcauth_config, sizeof(nfcauth_config_t));
+                }
+                my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_CTRL_OPENLOCKING);
+                MY_LOG_INF("start to openlock");
             }
-            // 启动开锁操作
-            my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_CTRL_OPENLOCKING);
-            MY_LOG_INF("start to openlock");
+            else if (gConfigParam.nfcauth_config.nfcauth_cards[g_nfc_card_index].lock_times != 0 && get_closelock_state() == false)
+            {
+                if (gConfigParam.nfcauth_config.nfcauth_cards[g_nfc_card_index].lock_times > 0)
+                {
+                    gConfigParam.nfcauth_config.nfcauth_cards[g_nfc_card_index].lock_times--;
+                    my_user_data_write(ZMS_ID_NFCAUTH_CONFIG, &gConfigParam.nfcauth_config, sizeof(nfcauth_config_t));
+                }
+                my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_CTRL_CLOSELOCKING);
+                MY_LOG_INF("start to closelock");
+            }
         }
         else
         {
