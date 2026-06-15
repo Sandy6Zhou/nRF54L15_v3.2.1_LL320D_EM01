@@ -362,12 +362,9 @@ static void closelock_posdet_timer_handler(struct k_timer *timer)
             // TODO MY_MSG_CTRL_CLOSELOCKED:发送消息给LTE线程上报关锁状态成功
 
             // 上锁成功，直接取消窗口期倒计时
-            if (k_timer_remaining_get(&g_net_unlock.delay_timer) != 0)
-            {
-                k_timer_stop(&g_net_unlock.delay_timer);
-                // 允许自动上锁
-                g_net_unlock.netunlock_flag = 0;
-            }
+            k_timer_stop(&g_net_unlock.delay_timer);
+            // 允许自动上锁
+            g_net_unlock.netunlock_flag = 0;
 
             //上锁成功提示
             my_set_buzzer_mode(BUZZER_EVENT_LOCK_SUCCESS);

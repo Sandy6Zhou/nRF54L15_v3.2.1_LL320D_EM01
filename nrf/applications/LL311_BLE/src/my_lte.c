@@ -458,11 +458,8 @@ void init_retransmission_queue(void)
     }
 
     // 停止定时器
-    if (k_timer_remaining_get(&s_retrans_check_timer) != 0)
-    {
-        k_timer_stop(&s_retrans_check_timer);
-        MY_LOG_INF("s_retrans_check_timer : STOP");
-    }
+    k_timer_stop(&s_retrans_check_timer);
+    MY_LOG_INF("s_retrans_check_timer : STOP");
 
     MY_LOG_INF("Retransmission queue initialized with size %d", RETRANSMISSION_QUEUE_SIZE);
 }
@@ -532,12 +529,8 @@ void check_ack(char *cmd_name)
     // 检查队列是否为空
     if (retrans_queue_is_empty())
     {
-        // 停止定时器
-        if (k_timer_remaining_get(&s_retrans_check_timer) != 0)
-        {
-            k_timer_stop(&s_retrans_check_timer);
-            MY_LOG_INF("s_retrans_check_timer : STOP");
-        }
+        k_timer_stop(&s_retrans_check_timer);
+        MY_LOG_INF("s_retrans_check_timer : STOP");
     }
 }
 
@@ -782,9 +775,9 @@ void add_to_retrans_queue(char *command)
         MY_LOG_INF("retransmission queue is full");
     }
 
-    // 如果定时器未启动，开启定时器重传检查
     if (k_timer_remaining_get(&s_retrans_check_timer) == 0)
     {
+        //定时器不在运行就启动定时器
         k_timer_start(&s_retrans_check_timer, K_MSEC(RETRANSMIT_TIMER_PERIOD_MS), K_MSEC(RETRANSMIT_TIMER_PERIOD_MS));
     }
 }
@@ -823,11 +816,8 @@ void retransmission_poll(void)
     if (retrans_queue_is_empty())
     {
         // 停止定时器
-        if (k_timer_remaining_get(&s_retrans_check_timer) != 0)
-        {
-            k_timer_stop(&s_retrans_check_timer);
-            MY_LOG_INF("s_retrans_check_timer : STOP");
-        }
+        k_timer_stop(&s_retrans_check_timer);
+        MY_LOG_INF("s_retrans_check_timer : STOP");
     }
 }
 

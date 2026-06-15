@@ -857,26 +857,6 @@ static void lock_pin_edge_handler(void)
 }
 
 /********************************************************************
-**函数名称:  key_falling_edge_handler
-**入口参数:  无
-**出口参数:  无
-**函数功能:  按键下降沿中断处理
-**返 回 值:  无
-**功能描述:  1. 检测按键下降沿(按下)中断
-**           2. 若定时器未运行则启动50ms循环定时器
-**           3. 避免重复启动定时器
-*********************************************************************/
-static void key_falling_edge_handler(void)
-{
-    /* 如果定时器未运行，才启动 */
-    if (!k_timer_remaining_get(&key_ctrl_t.timer))
-    {
-        /* 启动循环定时器，每 50ms 检查一次按键状态 */
-        k_timer_start(&key_ctrl_t.timer, K_MSEC(KEY_POLL_PERIOD_MS), K_MSEC(KEY_POLL_PERIOD_MS));
-    }
-}
-
-/********************************************************************
 **函数名称:  auto_lock_detection
 **入口参数:  无
 **出口参数:  无
@@ -935,8 +915,11 @@ static void misc_io_isr(const struct device *dev,
 
     if (pins & BIT(fun_key.pin))
     {
-        /* 下降沿触发，调用处理函数 */
-        key_falling_edge_handler();
+        if (!k_timer_remaining_get(&key_ctrl_t.timer))
+        {
+            //定时器不在运行就启动定时器
+            k_timer_start(&key_ctrl_t.timer, K_MSEC(KEY_POLL_PERIOD_MS), K_MSEC(KEY_POLL_PERIOD_MS));
+        }
     }
 
     if (pins & BIT(light_det.pin))
@@ -1506,11 +1489,7 @@ void my_buzzer_play(my_buzzer_mode_t buzzer_mode)
     switch(buzzer_mode)
     {
         case BUZZER_STOP:
-            //定时器在运行就停止定时器
-            if (k_timer_remaining_get(&s_buzzer_timer) != 0)
-            {
-                k_timer_stop(&s_buzzer_timer);
-            }
+            k_timer_stop(&s_buzzer_timer);
             my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_CTRL_BUZZER_OFF);
             return;
 
@@ -1563,10 +1542,7 @@ void my_buzzer_play(my_buzzer_mode_t buzzer_mode)
 
     my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_CTRL_BUZZER_ON);
 
-    if (k_timer_remaining_get(&s_buzzer_timer) != 0)
-    {
-        k_timer_stop(&s_buzzer_timer);
-    }
+    k_timer_stop(&s_buzzer_timer);
     //初始化计数器
     k_timer_start(&s_buzzer_timer, K_MSEC(100), K_MSEC(100));
 }
@@ -1681,10 +1657,7 @@ static void my_ctrl_task(void *p1, void *p2, void *p3)
 
             case MY_MSG_CTRL_LOCK_PIN_DISCONNECTED:
                 // 锁销断开时，停止自动上锁定时器
-                if (k_timer_remaining_get(&s_auto_lock_timer) > 0)
-                {
-                    k_timer_stop(&s_auto_lock_timer);
-                }
+                k_timer_stop(&s_auto_lock_timer);
                 MY_LOG_INF("Lock pin detected: DISCONNECTED");
                 break;
 

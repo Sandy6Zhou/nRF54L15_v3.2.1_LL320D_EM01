@@ -336,12 +336,8 @@ void my_battery_show_chgled()
         // 启动充电LED控制定时器，立即执行一次，然后以 CHG_CTRL_LED_MS 为周期重复执行
         k_timer_start(g_chg_led_ctrl.timer, K_MSEC(0), K_MSEC(CHG_CTRL_LED_MS));
 
-        // 检查正常情况下的电池状态LED控制定时器是否正在运行
-        if (k_timer_remaining_get(g_batt_led_ctrl.timer) != 0)
-        {
-            // 如果正在运行，停止定时器，避免与充电状态LED显示冲突
-            k_timer_stop(g_batt_led_ctrl.timer);
-        }
+        // 停止电池状态LED控制定时器，避免与充电状态LED显示冲突
+        k_timer_stop(g_batt_led_ctrl.timer);
     }
     else
     {

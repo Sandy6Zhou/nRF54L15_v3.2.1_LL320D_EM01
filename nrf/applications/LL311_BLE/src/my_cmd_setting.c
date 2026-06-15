@@ -809,6 +809,7 @@ uint16_t run_lte_cmd(at_cmd_t *at_cmd_msg)
 static int remalm_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
+    uint8_t no_count = 0;
     int m_value;
     int sw_value;
 
@@ -845,6 +846,13 @@ static int remalm_cmd_handler(at_cmd_t* msg)
     else
     {
         LOG_INF("%s=>invalid SW param: %s", __func__, msg->parm[1]);
+        goto param_invalid;
+    }
+
+    no_count = string_check_is_number(0, msg->parm[2]);
+    if (no_count == 0)
+    {
+        LOG_INF("%s=>invalid M param: %s", __func__, msg->parm[2]);
         goto param_invalid;
     }
 
@@ -893,6 +901,7 @@ param_invalid:
 static int lockpincyt_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
+    uint8_t no_count = 0;
     int report_value;
     int buzzer_value;
 
@@ -914,6 +923,12 @@ static int lockpincyt_cmd_handler(at_cmd_t* msg)
         return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
+    no_count = string_check_is_number(0, msg->parm[1]);
+    if (no_count == 0)
+    {
+        LOG_INF("%s=>invalid Report param: %s", __func__, msg->parm[1]);
+        goto param_invalid;
+    }
     /* 解析Report参数 */
     report_value = atoi(msg->parm[1]);
     if (report_value < 0 || report_value > 3)
@@ -922,6 +937,12 @@ static int lockpincyt_cmd_handler(at_cmd_t* msg)
         goto param_invalid;
     }
 
+    no_count = string_check_is_number(0, msg->parm[2]);
+    if (no_count == 0)
+    {
+        LOG_INF("%s=>invalid Buzzer param: %s", __func__, msg->parm[2]);
+        goto param_invalid;
+    }
     /* 解析Buzzer参数 */
     buzzer_value = atoi(msg->parm[2]);
     if (buzzer_value < 0 || buzzer_value > 2)
@@ -969,6 +990,7 @@ param_invalid:
 static int pinstat_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
+    uint8_t no_count = 0;
     int report_value;
     int trigger_value;
 
@@ -990,6 +1012,12 @@ static int pinstat_cmd_handler(at_cmd_t* msg)
         return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
+    no_count = string_check_is_number(0, msg->parm[1]);
+    if (no_count == 0)
+    {
+        LOG_INF("%s=>invalid Report param: %s", __func__, msg->parm[1]);
+        goto param_invalid;
+    }
     /* 解析Report参数 */
     report_value = atoi(msg->parm[1]);
     if (report_value < 0 || report_value > 3)
@@ -998,6 +1026,12 @@ static int pinstat_cmd_handler(at_cmd_t* msg)
         goto param_invalid;
     }
 
+    no_count = string_check_is_number(0, msg->parm[2]);
+    if (no_count == 0)
+    {
+        LOG_INF("%s=>invalid Trigger param: %s", __func__, msg->parm[2]);
+        goto param_invalid;
+    }
     /* 解析Trigger参数 */
     trigger_value = atoi(msg->parm[2]);
     if (trigger_value < 0 || trigger_value > 3)
@@ -1045,6 +1079,7 @@ param_invalid:
 static int lockstat_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
+    uint8_t no_count = 0;
     int report_value;
     int trigger_value;
 
@@ -1066,6 +1101,12 @@ static int lockstat_cmd_handler(at_cmd_t* msg)
         return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
+    no_count = string_check_is_number(0, msg->parm[1]);
+    if (no_count == 0)
+    {
+        LOG_INF("%s=>invalid Report param: %s", __func__, msg->parm[1]);
+        goto param_invalid;
+    }
     /* 解析Report参数 */
     report_value = atoi(msg->parm[1]);
     if (report_value < 0 || report_value > 3)
@@ -1074,6 +1115,12 @@ static int lockstat_cmd_handler(at_cmd_t* msg)
         goto param_invalid;
     }
 
+    no_count = string_check_is_number(0, msg->parm[2]);
+    if (no_count == 0)
+    {
+        LOG_INF("%s=>invalid Trigger param: %s", __func__, msg->parm[2]);
+        goto param_invalid;
+    }
     /* 解析Trigger参数 */
     trigger_value = atoi(msg->parm[2]);
     if (trigger_value < 0 || trigger_value > 3)
@@ -1122,6 +1169,7 @@ param_invalid:
 static int motdet_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
+    uint8_t no_count = 0;
     int transition_count_value;
     int detection_interval_value;
     int report_type_value;
@@ -1147,6 +1195,12 @@ static int motdet_cmd_handler(at_cmd_t* msg)
         return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
+    no_count = string_check_is_number(0, msg->parm[1]);
+    if (no_count == 0)
+    {
+        LOG_INF("%s=>invalid Transition Count param: %s", __func__, msg->parm[1]);
+        goto param_invalid;
+    }
     /* 解析Transition Count参数 */
     transition_count_value = atoi(msg->parm[1]);
     if (transition_count_value < 1 || transition_count_value > 10)
@@ -1155,6 +1209,12 @@ static int motdet_cmd_handler(at_cmd_t* msg)
         goto param_invalid;
     }
 
+    no_count = string_check_is_number(0, msg->parm[2]);
+    if (no_count == 0)
+    {
+        LOG_INF("%s=>invalid Detection Interval param: %s", __func__, msg->parm[2]);
+        goto param_invalid;
+    }
     /* 解析Detection Interval参数 */
     detection_interval_value = atoi(msg->parm[2]);
     if (detection_interval_value < 5 || detection_interval_value > 3600)
@@ -1163,6 +1223,12 @@ static int motdet_cmd_handler(at_cmd_t* msg)
         goto param_invalid;
     }
 
+    no_count = string_check_is_number(0, msg->parm[3]);
+    if (no_count == 0)
+    {
+        LOG_INF("%s=>invalid Report Type param: %s", __func__, msg->parm[3]);
+        goto param_invalid;
+    }
     /* 解析Report Type参数 */
     report_type_value = atoi(msg->parm[3]);
     if (report_type_value < 0 || report_type_value > 3)
@@ -1214,6 +1280,7 @@ param_invalid:
 static int batlevel_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
+    uint8_t no_count = 0;
     int param_values[6];
     int i;
 
@@ -1243,10 +1310,16 @@ static int batlevel_cmd_handler(at_cmd_t* msg)
     /* 解析所有6个参数 */
     for (i = 0; i < 6; i++)
     {
+        no_count = string_check_is_number(0, msg->parm[i + 1]);
+        if (no_count == 0)
+        {
+            LOG_INF("%s=>invalid RPT param: %s", __func__, msg->parm[i + 1]);
+            goto param_invalid;
+        }
         param_values[i] = atoi(msg->parm[i + 1]);
         if (param_values[i] < REPORT_MODE_NONE || param_values[i] > REPORT_MODE_GPRS_SMS_CALL)
         {
-            LOG_INF("%s=>invalid RPT param: %s", __func__, msg->parm[i]);
+            LOG_INF("%s=>invalid RPT param: %s", __func__, msg->parm[i + 1]);
             goto param_invalid;
         }
     }
@@ -1292,6 +1365,7 @@ param_invalid:
 static int chargesta_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
+    uint8_t no_count = 0;
     int report_value;
 
     remaining = RESP_STRING_LENGTH_MAX;
@@ -1313,6 +1387,12 @@ static int chargesta_cmd_handler(at_cmd_t* msg)
         return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
+    no_count = string_check_is_number(0, msg->parm[1]);
+    if (no_count == 0)
+    {
+        LOG_INF("%s=>invalid RPT param: %s", __func__, msg->parm[1]);
+        goto param_invalid;
+    }
     /* 解析RPT参数 */
     report_value = atoi(msg->parm[1]);
     if (report_value < REPORT_MODE_NONE || report_value > REPORT_MODE_GPRS_SMS_CALL)
@@ -1359,6 +1439,7 @@ param_invalid:
 static int shockalarm_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
+    uint8_t no_count = 0;
     int level_value;
     int type_value;
     int sw_value;
@@ -1404,6 +1485,12 @@ static int shockalarm_cmd_handler(at_cmd_t* msg)
         goto param_invalid;
     }
 
+    no_count = string_check_is_number(0, msg->parm[2]);
+    if (no_count == 0)
+    {
+        LOG_INF("%s=>invalid Level param: %s", __func__, msg->parm[2]);
+        goto param_invalid;
+    }
     /* 解析Level参数 */
     level_value = atoi(msg->parm[2]);
     if (level_value < 1 || level_value > 5)
@@ -1412,6 +1499,12 @@ static int shockalarm_cmd_handler(at_cmd_t* msg)
         goto param_invalid;
     }
 
+    no_count = string_check_is_number(0, msg->parm[3]);
+    if (no_count == 0)
+    {
+        LOG_INF("%s=>invalid Type param: %s", __func__, msg->parm[3]);
+        goto param_invalid;
+    }
     /* 解析Type of Alarm参数 */
     type_value = atoi(msg->parm[3]);
     if (type_value < 0 || type_value > 3)
@@ -1420,6 +1513,12 @@ static int shockalarm_cmd_handler(at_cmd_t* msg)
         goto param_invalid;
     }
 
+    no_count = string_check_is_number(0, msg->parm[4]);
+    if (no_count == 0)
+    {
+        LOG_INF("%s=>invalid Time param: %s", __func__, msg->parm[4]);
+        goto param_invalid;
+    }
     /* 解析Time参数 */
     time_value = atoi(msg->parm[4]);
     if (time_value < 10 || time_value > 600)
@@ -1677,6 +1776,7 @@ static int cbmt_cmd_handler(at_cmd_t* msg)
 static int bt_crfpwr_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
+    uint8_t no_count = 0;
     int a_value;
 
     remaining = RESP_STRING_LENGTH_MAX;
@@ -1697,6 +1797,12 @@ static int bt_crfpwr_cmd_handler(at_cmd_t* msg)
         return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
+    no_count = string_check_is_number(1, msg->parm[1]);
+    if (no_count == 0)
+    {
+        LOG_INF("%s=>invalid A param: %s", __func__, msg->parm[1]);
+        goto param_invalid;
+    }
     /* 解析A参数 */
     a_value = atoi(msg->parm[1]);
     if (a_value != -8 && a_value != -4 && a_value != 0 && a_value != 3
@@ -1746,6 +1852,7 @@ param_invalid:
 static int bt_updata_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
+    uint8_t no_count = 0;
     int mode_value;
     uint32_t scan_interval_value;
     uint32_t scan_length_value;
@@ -1774,6 +1881,12 @@ static int bt_updata_cmd_handler(at_cmd_t* msg)
         return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
+    no_count = string_check_is_number(0, msg->parm[1]);
+    if (no_count == 0)
+    {
+        LOG_INF("%s=>invalid Mode param: %s", __func__, msg->parm[1]);
+        goto param_invalid;
+    }
     /* 解析Mode参数 */
     mode_value = atoi(msg->parm[1]);
     if (mode_value < 0 || mode_value > 2)
@@ -1782,24 +1895,42 @@ static int bt_updata_cmd_handler(at_cmd_t* msg)
         goto param_invalid;
     }
 
+    no_count = string_check_is_number(0, msg->parm[2]);
+    if (no_count == 0)
+    {
+        LOG_INF("%s=>invalid Scan Interval param: %s", __func__, msg->parm[2]);
+        goto param_invalid;
+    }
     /* 解析Scan Interval参数 */
-    scan_interval_value = atoi(msg->parm[2]);
+    scan_interval_value = atol(msg->parm[2]);
     if (scan_interval_value < 5 || scan_interval_value > 86400)
     {
         LOG_INF("%s=>invalid Scan Interval param: %s", __func__, msg->parm[2]);
         goto param_invalid;
     }
 
+    no_count = string_check_is_number(0, msg->parm[3]);
+    if (no_count == 0)
+    {
+        LOG_INF("%s=>invalid Scan Length param: %s", __func__, msg->parm[3]);
+        goto param_invalid;
+    }
     /* 解析Scan Length参数 */
-    scan_length_value = atoi(msg->parm[3]);
+    scan_length_value = atol(msg->parm[3]);
     if (scan_length_value < 5 || scan_length_value > 86400)
     {
         LOG_INF("%s=>invalid Scan Length param: %s", __func__, msg->parm[3]);
         goto param_invalid;
     }
 
+    no_count = string_check_is_number(0, msg->parm[4]);
+    if (no_count == 0)
+    {
+        LOG_INF("%s=>invalid Updata interval param: %s", __func__, msg->parm[4]);
+        goto param_invalid;
+    }
     /* 解析Updata interval参数 */
-    updata_interval_value = atoi(msg->parm[4]);
+    updata_interval_value = atol(msg->parm[4]);
     if (updata_interval_value < 120 || updata_interval_value > 86400)
     {
         LOG_INF("%s=>invalid Updata interval param: %s", __func__, msg->parm[4]);
@@ -1872,6 +2003,7 @@ param_invalid:
 static int tag_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
+    uint8_t no_count = 0;
     int interval_value;
     int sw_value;
 
@@ -1917,6 +2049,12 @@ static int tag_cmd_handler(at_cmd_t* msg)
     /* 如果有Interval参数，则解析 */
     if (msg->parm_count == 2)
     {
+        no_count = string_check_is_number(0, msg->parm[2]);
+        if (no_count == 0)
+        {
+            LOG_INF("%s=>invalid Interval param: %s", __func__, msg->parm[2]);
+            goto param_invalid;
+        }
         interval_value = atoi(msg->parm[2]);
         if (interval_value < 100 || interval_value > 60000)
         {
@@ -2131,6 +2269,7 @@ param_invalid:
 static int lockcd_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
+    uint8_t no_count = 0;
     int countdown_value;
 
     remaining = RESP_STRING_LENGTH_MAX;
@@ -2153,6 +2292,12 @@ static int lockcd_cmd_handler(at_cmd_t* msg)
         return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
+    no_count = string_check_is_number(0, msg->parm[1]);
+    if (no_count == 0)
+    {
+        LOG_INF("%s=>invalid Countdown param: %s", __func__, msg->parm[1]);
+        goto param_invalid;
+    }
     /* 解析Count down time参数 */
     countdown_value = atoi(msg->parm[1]);
     if (countdown_value < 0 || countdown_value > 3600)
@@ -2279,6 +2424,7 @@ param_invalid:
 static int buzzer_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
+    uint8_t no_count = 0;
     int operator_value;
 
     remaining = RESP_STRING_LENGTH_MAX;
@@ -2301,6 +2447,12 @@ static int buzzer_cmd_handler(at_cmd_t* msg)
         return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
+    no_count = string_check_is_number(0, msg->parm[1]);
+    if (no_count == 0)
+    {
+        LOG_INF("%s=>invalid Operater param: %s", __func__, msg->parm[1]);
+        goto param_invalid;
+    }
     /* 解析Operater参数 */
     operator_value = atoi(msg->parm[1]);
     if (operator_value < 0 || operator_value > 5)
@@ -3074,6 +3226,7 @@ param_invalid:
 static int nfcopralm_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
+    uint8_t no_count = 0;
     int report_value;
 
     remaining = RESP_STRING_LENGTH_MAX;
@@ -3094,6 +3247,12 @@ static int nfcopralm_cmd_handler(at_cmd_t* msg)
         return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
+    no_count = string_check_is_number(0, msg->parm[1]);
+    if (no_count == 0)
+    {
+        LOG_INF("%s=>invalid Report param: %s", __func__, msg->parm[1]);
+        goto param_invalid;
+    }
     /* 解析Report参数 */
     report_value = atoi(msg->parm[1]);
     if (report_value < REPORT_MODE_NONE || report_value > REPORT_MODE_GPRS_SMS_CALL)
@@ -3557,6 +3716,7 @@ static int version_cmd_handler(at_cmd_t* msg)
 *********************************************************************/
 static int modeset_cmd_handler(at_cmd_t* msg)
 {
+    uint8_t no_count = 0;
     uint16_t remaining;  // 响应消息缓冲区的剩余空间
     device_work_mode_config_t param_work_mode_config;  // 工作模式配置结构体
 
@@ -3565,6 +3725,13 @@ static int modeset_cmd_handler(at_cmd_t* msg)
     if(msg->parm_count == 0)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+        goto param_invalid;
+    }
+
+    no_count = string_check_is_number(0, msg->parm[1]);
+    if (no_count == 0)
+    {
+        LOG_INF("%s=>invalid Work Mode param: %s", __func__, msg->parm[1]);
         goto param_invalid;
     }
     // 解析当前模式参数（parm[1]）
@@ -3599,6 +3766,19 @@ static int modeset_cmd_handler(at_cmd_t* msg)
         if (msg->parm_count != 3)
         {
             LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+            goto param_invalid;
+        }
+
+        no_count = string_check_is_number(0, msg->parm[2]);
+        if (no_count == 0)
+        {
+            LOG_INF("%s=>invalid Reporting Interval Sec param: %s", __func__, msg->parm[2]);
+            goto param_invalid;
+        }
+        no_count = string_check_is_number(0, msg->parm[3]);
+        if (no_count == 0)
+        {
+            LOG_INF("%s=>invalid Reporting Interval Dis param: %s", __func__, msg->parm[3]);
             goto param_invalid;
         }
         // 解析连续追踪模式参数
@@ -3644,6 +3824,12 @@ static int modeset_cmd_handler(at_cmd_t* msg)
             goto param_invalid;
         }
 
+        no_count = string_check_is_number(0, msg->parm[2]);
+        if (no_count == 0)
+        {
+            LOG_INF("%s=>invalid Reporting Interval Min param: %s", __func__, msg->parm[2]);
+            goto param_invalid;
+        }
         // 解析长续航模式参数
         param_work_mode_config.long_battery.reporting_interval_min = atoi(msg->parm[2]);
         // 设置长续航模式参数
@@ -3678,6 +3864,36 @@ static int modeset_cmd_handler(at_cmd_t* msg)
             goto param_invalid;
         }
 
+        no_count = string_check_is_number(0, msg->parm[2]);
+        if (no_count == 0)
+        {
+            LOG_INF("%s=>invalid Stop Status Interval Sec param: %s", __func__, msg->parm[2]);
+            goto param_invalid;
+        }
+        no_count = string_check_is_number(0, msg->parm[3]);
+        if (no_count == 0)
+        {
+            LOG_INF("%s=>invalid Land Status Interval Sec param: %s", __func__, msg->parm[3]);
+            goto param_invalid;
+        }
+        no_count = string_check_is_number(0, msg->parm[4]);
+        if (no_count == 0)
+        {
+            LOG_INF("%s=>invalid Land Status Interval Dis param: %s", __func__, msg->parm[4]);
+            goto param_invalid;
+        }
+        no_count = string_check_is_number(0, msg->parm[5]);
+        if (no_count == 0)
+        {
+            LOG_INF("%s=>invalid Sea Status Interval Sec param: %s", __func__, msg->parm[5]);
+            goto param_invalid;
+        }
+        no_count = string_check_is_number(0, msg->parm[6]);
+        if (no_count == 0)
+        {
+            LOG_INF("%s=>invalid Sleep Switch param: %s", __func__, msg->parm[6]);
+            goto param_invalid;
+        }
         // 解析智能模式参数
         param_work_mode_config.intelligent.stop_status_interval_sec = atoi(msg->parm[2]);      // 静止状态间隔（秒）
         param_work_mode_config.intelligent.land_status_interval_sec = atoi(msg->parm[3]);      // 陆运状态间隔（秒）
@@ -3884,6 +4100,7 @@ static int cunlock_cmd_handler(at_cmd_t* msg)
     time_t current_ts = 0;
     char buf[12] = {0};
     uint8_t sec = 0;
+    uint8_t no_count = 0;
 
     remaining = RESP_STRING_LENGTH_MAX;
 
@@ -3935,6 +4152,13 @@ static int cunlock_cmd_handler(at_cmd_t* msg)
         return 1;
     }
 
+    no_count = string_check_is_number(0, msg->parm[2]);
+    if (no_count == 0)
+    {
+        LOG_INF("%s=>invalid Delay Time param: %s", __func__, msg->parm[2]);
+        goto param_invalid;
+    }
+
     //获取delay数据
     delay_time = atoi(msg->parm[2]);
 
@@ -3946,15 +4170,16 @@ static int cunlock_cmd_handler(at_cmd_t* msg)
         return 1;
     }
 
+    no_count = string_check_is_number(0, msg->parm[1]);
+    if (no_count == 0)
+    {
+        LOG_INF("%s=>invalid Sec param: %s", __func__, msg->parm[1]);
+        goto param_invalid;
+    }
+
     // 指令更新
-    if (k_timer_remaining_get(&g_net_unlock.start_timer) != 0)
-    {
-        k_timer_stop(&g_net_unlock.start_timer);
-    }
-    if (k_timer_remaining_get(&g_net_unlock.delay_timer) != 0)
-    {
-        k_timer_stop(&g_net_unlock.delay_timer);
-    }
+    k_timer_stop(&g_net_unlock.start_timer);
+    k_timer_stop(&g_net_unlock.delay_timer);
     g_net_unlock.netunlock_flag = 0;
     g_net_unlock.start_timer_flag = 0;
 
