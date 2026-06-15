@@ -330,7 +330,7 @@ int my_user_data_write(uint32_t id, const void *data, int len)
 **函数功能:  通用读接口：按 ID 读取任意数据
 **返 回 值:  >0 实际读取的字节数；0 表示未找到该 ID；负值为错误码
 *********************************************************************/
-static int my_user_data_read(uint32_t id, void *data, int len)
+int my_user_data_read(uint32_t id, void *data, int len)
 {
     int ret;
 

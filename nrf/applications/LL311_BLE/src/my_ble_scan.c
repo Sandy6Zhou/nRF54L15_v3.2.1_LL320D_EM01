@@ -59,6 +59,12 @@ typedef enum {
 //tag扫描结果上报和macinfo的序列号
 static uint16_t s_tag_macinfo_seq = 0;
 static uint8_t s_tag_macinfo_upload_state = UPLOAD_STATE_IDLE;
+/* 本轮已从FLASH读出并发送的记录数；上报先发FLASH再发实时表，二者共用连续序号，
+ * 发实时表时用"已发序号 - 这个数"把序号换算回实时表自己从0起的下标
+ */
+static uint16_t s_flash_consumed = 0;
+//本轮上报开始时记下实时表有几条，本轮最多发这么多，发送途中表里新增的下轮再发
+static uint16_t s_rt_count_snap = 0;
 
 /********************************************************************
 **函数名称:  parse_scan_rsp_name
@@ -295,6 +301,66 @@ static bool tag_name_match(const char *name, uint8_t len)
 }
 
 /********************************************************************
+**函数名称:  tag_table_flush_to_flash
+**入口参数:  无
+**出口参数:  无
+**函数功能:  将本轮实时TAG表按时间戳从小到大排序后逐条落入FLASH循环存储，
+**           落盘后清空实时表；用于周期扫描模式下扫描时长结束但未立即上报时，
+**           缓存本轮历史数据
+**返 回 值:  无
+**注意事项:  仅BLE线程调用；本接口在每轮扫描结束或实时表满时调用，落盘后实时表归零
+*********************************************************************/
+static void tag_table_flush_to_flash(void)
+{
+    uint16_t i;
+    uint16_t j;
+    uint16_t min_idx;
+    tag_scan_result_t tmp;
+    int ret;
+
+    // 实时表为空无需落盘
+    if (s_result_table.count == 0)
+    {
+        return;
+    }
+
+    // 落盘前按时间戳从小到大排序(选择排序)，确保FLASH里按采集先后顺序存储
+    for (i = 0; i < s_result_table.count - 1; i++)
+    {
+        min_idx = i;
+        for (j = i + 1; j < s_result_table.count; j++)
+        {
+            if (s_result_table.items[j].timestamp < s_result_table.items[min_idx].timestamp)
+            {
+                min_idx = j;
+            }
+        }
+
+        if (min_idx != i)
+        {
+            tmp = s_result_table.items[i];
+            s_result_table.items[i] = s_result_table.items[min_idx];
+            s_result_table.items[min_idx] = tmp;
+        }
+    }
+
+    // 逐条把本轮实时表中的TAG记录推入FLASH循环存储暂存缓冲
+    for (i = 0; i < s_result_table.count; i++)
+    {
+        ret = my_flash_store_push_tag(&s_result_table.items[i]);
+        if (ret != 0)
+        {
+            LOG_ERR("flush tag to flash failed at %d (ret %d)", i, ret);
+        }
+    }
+
+    LOG_INF("flush %d tag records to flash", s_result_table.count);
+
+    // 本轮数据已落盘，清空实时表，下一轮重新扫描收集
+    memset(&s_result_table, 0, sizeof(s_result_table));
+}
+
+/********************************************************************
 **函数名称:  tag_scan_result_save
 **入口参数:  result_ptr      ---        扫描结果指针
 **出口参数:  无
@@ -304,9 +370,7 @@ static bool tag_name_match(const char *name, uint8_t len)
 static void tag_scan_result_save(tag_scan_result_t *result_ptr)
 {
     uint8_t i;
-    uint16_t replace_idx;
     tag_scan_result_t *item_ptr;
-    int8_t min_rssi;
 
     // 检查是否已存在相同MAC地址的设备
     for (i = 0; i < s_result_table.count; i++)
@@ -382,31 +446,18 @@ static void tag_scan_result_save(tag_scan_result_t *result_ptr)
 #endif
 
     }
-    // 替换最小RSSI的设备
+    // 实时表已满，先把当前整表按时间戳排序后落入FLASH并清空，再把本条新记录存入清空后的新表
     else
     {
-        replace_idx = 0;
-        min_rssi = s_result_table.items[0].rssi;
-        for (i = 1; i < TAG_RESULT_MAX_NUM; i++)
-        {
-            if (s_result_table.items[i].rssi < min_rssi)
-            {
-                min_rssi = s_result_table.items[i].rssi;
-                replace_idx = i;
-            }
-        }
+        LOG_WRN("TAG result table full, flush %d records to flash, rssi=%d",
+                s_result_table.count, result_ptr->rssi);
 
-        if (result_ptr->rssi > min_rssi)
-        {
-            item_ptr = &s_result_table.items[replace_idx];
-            memcpy(item_ptr, result_ptr, sizeof(tag_scan_result_t));
-            LOG_WRN("TAG result table full, replace idx=%d, old_rssi=%d, new_rssi=%d",
-                    replace_idx, min_rssi, result_ptr->rssi);
-        }
-        else
-        {
-            LOG_WRN("TAG result table full, drop weak TAG, rssi=%d", result_ptr->rssi);
-        }
+        // 排序+整表落盘+清空实时表(count归零)
+        tag_table_flush_to_flash();
+
+        // 触发溢出的本条新记录存入清空后的新表，实时表从头重新累积
+        item_ptr = &s_result_table.items[s_result_table.count];
+        memcpy(item_ptr, result_ptr, sizeof(tag_scan_result_t));
         // 记录采集到该设备的时刻
         item_ptr->timestamp = my_get_system_time_sec();
         s_result_table.count++;
@@ -803,6 +854,11 @@ static void scan_set_config_internal(uint8_t mode, uint32_t scan_interval,
     memset(&s_tran_mac_result_table, 0, sizeof(s_tran_mac_result_table));
     s_tag_macinfo_seq = 0;
     s_tag_macinfo_upload_state = 0;
+    s_flash_consumed = 0;
+    s_rt_count_snap = 0;
+    // 把FLASH读取位置退回上次已确认处(只退读位置，FLASH里的历史数据保留，下次重新上报)
+    my_flash_store_rewind(FS_TYPE_TAG);
+    my_flash_store_rewind(FS_TYPE_MAC);
 
     // 更新配置
     s_scan_config.mode = (scan_mode_t)mode;
@@ -992,11 +1048,16 @@ void clear_tag_macinfo(void)
 {
     s_tag_macinfo_seq = 0;
     s_tag_macinfo_upload_state = 0;
+    s_flash_consumed = 0;
+    s_rt_count_snap = 0;
     s_scan_config.state = SCAN_STATE_IDLE;
 
     memset(&s_result_table, 0, sizeof(s_result_table));
     memset(&s_tran_mac_result_table, 0, sizeof(s_tran_mac_result_table));
 
+    // 把FLASH读取位置退回上次已确认处，没确认的数据下次重发(不清空FLASH里的存储)
+    my_flash_store_rewind(FS_TYPE_TAG);
+    my_flash_store_rewind(FS_TYPE_MAC);
 }
 
 /********************************************************************
@@ -1012,7 +1073,11 @@ void tag_mac_scan_upload_data(void)
 {
     tag_scan_result_t *item_ptr;
     tran_mac_result_item_t *mac_item_ptr;
-
+    tag_scan_result_t flash_tag;
+    tran_mac_result_item_t flash_mac;
+    uint32_t tag_total;
+    uint32_t mac_total;
+    uint16_t rt_idx;
     char buf[32];
 
     if (s_scan_config.state == SCAN_STATE_SCANNING)
@@ -1021,26 +1086,36 @@ void tag_mac_scan_upload_data(void)
         return;
     }
 
+    // 各类型待上报总数 = FLASH循环存储待上报数 + 实时表数量
+    tag_total = my_flash_store_pending_count(FS_TYPE_TAG) + s_result_table.count;
+    mac_total = my_flash_store_pending_count(FS_TYPE_MAC) + s_tran_mac_result_table.count;
+
     //1发2不发
     //1不发2发
     //1发2发
     //1不发2不发
     if (s_tag_macinfo_upload_state == UPLOAD_STATE_IDLE)
     {
-        // 检查是否有数据需要上报
-        if (s_result_table.count == 0)
+        // 检查是否有TAG数据需要上报
+        if (tag_total == 0)
         {
-            LOG_INF("No scan data to upload");
+            LOG_INF("No TAG data to upload");
             // 检查macinfo
-            if (s_tran_mac_result_table.count == 0) //12不发
+            if (mac_total == 0) //12不发
             {
                 return ;
             }
             else
             {
                 s_tag_macinfo_upload_state = UPLOAD_STATE_MAC_START;
+                s_tag_macinfo_seq = 0;
+                s_flash_consumed = 0;
+                // 记下当前实时表有几条，锁定本轮可发数量，发送途中表里新增的不算进本轮
+                s_rt_count_snap = s_tran_mac_result_table.count;
+                // 开启上报会话：把读取位置退回已确认起点，并暂停落盘，保证实际发送数与START声明的总数一致
+                my_flash_store_upload_begin(FS_TYPE_MAC);
                 //先发送开始
-                snprintf(buf, sizeof(buf), "START,%d", s_tran_mac_result_table.count);
+                snprintf(buf, sizeof(buf), "START,%u", mac_total);
                 buf[sizeof(buf) - 1] = '\0';
                 #if RETRANSMIT_CHECK_ENABLED
                     lte_send_cmd_with_retry("MACINFO", buf);
@@ -1055,8 +1130,14 @@ void tag_mac_scan_upload_data(void)
         }
 
         s_tag_macinfo_upload_state = UPLOAD_STATE_TAG_START;
+        s_tag_macinfo_seq = 0;
+        s_flash_consumed = 0;
+        // 记下当前实时表有几条，锁定本轮可发数量，发送途中表里新增的不算进本轮
+        s_rt_count_snap = s_result_table.count;
+        // 开启上报会话：把读取位置退回已确认起点，并暂停落盘，保证实际发送数与START声明的总数一致
+        my_flash_store_upload_begin(FS_TYPE_TAG);
 
-        snprintf(buf, sizeof(buf), "START,%d", s_result_table.count);
+        snprintf(buf, sizeof(buf), "START,%u", tag_total);
         buf[sizeof(buf) - 1] = '\0';
         //先发送START
         #if RETRANSMIT_CHECK_ENABLED
@@ -1070,39 +1151,59 @@ void tag_mac_scan_upload_data(void)
     }
     else if (s_tag_macinfo_upload_state == UPLOAD_STATE_TAG_START)//应答start之后会发消息到蓝牙线程再次调用这个函数，开始上报数据体
     {
-        //当s_tag_macinfo_seq = s_result_table.count，就代表结束
-        if (s_tag_macinfo_seq >= s_result_table.count)
+        // 优先上报FLASH循环存储中的历史TAG数据
+        if (my_flash_store_read_next(FS_TYPE_TAG, &flash_tag) == 1)
         {
-            // 上报完成后清空结果表
-            LOG_INF("TAG scan data upload complete, count: %d, table cleared", s_result_table.count);
-            memset(&s_result_table, 0, sizeof(s_result_table));
-            s_tag_macinfo_seq = 0;
-            s_tag_macinfo_upload_state = UPLOAD_STATE_TAG_END;
-            #if RETRANSMIT_CHECK_ENABLED
-                lte_send_cmd_with_retry("TAG", "END");
-            #else
-                lte_send_command("TAG", "END");
-            #endif
+            s_flash_consumed++;
+            s_tag_macinfo_seq++;
+            tag_scan_upload_one(&flash_tag, s_tag_macinfo_seq);
             return;
         }
 
-        //发送数据体
-        item_ptr = &s_result_table.items[s_tag_macinfo_seq++];
-        tag_scan_upload_one(item_ptr, s_tag_macinfo_seq);
+        // FLASH历史数据读完后，再发实时表里的数据；实时表下标 = 当前总序号 - 已从FLASH读出的条数
+        rt_idx = s_tag_macinfo_seq - s_flash_consumed;
+        if (rt_idx < s_rt_count_snap)
+        {
+            item_ptr = &s_result_table.items[rt_idx];
+            s_tag_macinfo_seq++;
+            tag_scan_upload_one(item_ptr, s_tag_macinfo_seq);
+            return;
+        }
+
+        // TAG全部发完：先确认这批FLASH数据(把读取位置正式存盘，已发完的扇区腾空)，再清空实时表
+        LOG_INF("TAG upload complete, total: %d, flash: %d", s_tag_macinfo_seq, s_flash_consumed);
+        my_flash_store_commit(FS_TYPE_TAG);
+        memset(&s_result_table, 0, sizeof(s_result_table));
+        s_tag_macinfo_seq = 0;
+        s_flash_consumed = 0;
+        s_tag_macinfo_upload_state = UPLOAD_STATE_TAG_END;
+        #if RETRANSMIT_CHECK_ENABLED
+            lte_send_cmd_with_retry("TAG", "END");
+        #else
+            lte_send_command("TAG", "END");
+        #endif
+        return;
     }
     else if (s_tag_macinfo_upload_state == UPLOAD_STATE_TAG_END) //传完tag开始传mac（tag，end的应答完再调一次）
     {
-        if (s_tran_mac_result_table.count == 0)
+        if (mac_total == 0)
         {
             s_tag_macinfo_seq = 0;
+            s_flash_consumed = 0;
             s_tag_macinfo_upload_state = UPLOAD_STATE_IDLE;
             s_scan_config.state = SCAN_STATE_IDLE;
             //清空对应的变量
             return;
         }
         s_tag_macinfo_upload_state = UPLOAD_STATE_MAC_START;
+        s_tag_macinfo_seq = 0;
+        s_flash_consumed = 0;
+        // 记下当前实时表有几条，锁定本轮可发数量，发送途中表里新增的不算进本轮
+        s_rt_count_snap = s_tran_mac_result_table.count;
+        // 开启上报会话：把读取位置退回已确认起点，并暂停落盘，保证实际发送数与START声明的总数一致
+        my_flash_store_upload_begin(FS_TYPE_MAC);
         //先发送开始
-        snprintf(buf, sizeof(buf), "START,%d", s_tran_mac_result_table.count);
+        snprintf(buf, sizeof(buf), "START,%u", mac_total);
         buf[sizeof(buf) - 1] = '\0';
         #if RETRANSMIT_CHECK_ENABLED
             lte_send_cmd_with_retry("MACINFO", buf);
@@ -1112,32 +1213,108 @@ void tag_mac_scan_upload_data(void)
     }
     else if (s_tag_macinfo_upload_state == UPLOAD_STATE_MAC_START) //应答开始，开始上报mac
     {
-        //当seq = s_tran_mac_result_table.count，就代表结束
-        if (s_tag_macinfo_seq >= s_tran_mac_result_table.count)
+        // 优先上报FLASH循环存储中的历史MAC数据
+        if (my_flash_store_read_next(FS_TYPE_MAC, &flash_mac) == 1)
         {
-            s_tag_macinfo_seq = 0;
-            s_tag_macinfo_upload_state = UPLOAD_STATE_MAC_END;
-            #if RETRANSMIT_CHECK_ENABLED
-                lte_send_cmd_with_retry("MACINFO", "END");
-            #else
-                lte_send_command("MACINFO", "END");
-            #endif
-            // 上报完成后清空结果表
-            memset(&s_tran_mac_result_table, 0, sizeof(s_tran_mac_result_table));
+            s_flash_consumed++;
+            s_tag_macinfo_seq++;
+            tran_mac_upload_one(&flash_mac, s_tag_macinfo_seq);
             return;
         }
 
-        //发送数据体
-        mac_item_ptr = &s_tran_mac_result_table.items[s_tag_macinfo_seq++];
-        tran_mac_upload_one(mac_item_ptr, s_tag_macinfo_seq);
+        // FLASH历史数据读完后，再发实时表里的数据；实时表下标 = 当前总序号 - 已从FLASH读出的条数
+        rt_idx = s_tag_macinfo_seq - s_flash_consumed;
+        if (rt_idx < s_rt_count_snap)
+        {
+            mac_item_ptr = &s_tran_mac_result_table.items[rt_idx];
+            s_tag_macinfo_seq++;
+            tran_mac_upload_one(mac_item_ptr, s_tag_macinfo_seq);
+            return;
+        }
+
+        // MAC全部发完：先确认这批FLASH数据(把读取位置正式存盘，已发完的扇区腾空)，再清空实时表
+        LOG_INF("MAC upload complete, total: %d, flash: %d", s_tag_macinfo_seq, s_flash_consumed);
+        my_flash_store_commit(FS_TYPE_MAC);
+        s_tag_macinfo_seq = 0;
+        s_flash_consumed = 0;
+        s_tag_macinfo_upload_state = UPLOAD_STATE_MAC_END;
+        #if RETRANSMIT_CHECK_ENABLED
+            lte_send_cmd_with_retry("MACINFO", "END");
+        #else
+            lte_send_command("MACINFO", "END");
+        #endif
+        // 上报完成后清空结果表
+        memset(&s_tran_mac_result_table, 0, sizeof(s_tran_mac_result_table));
+        return;
     }
     else //MACINFO结束应答UPLOAD_STATE_MAC_END
     {
         s_tag_macinfo_upload_state = UPLOAD_STATE_IDLE;
         s_tag_macinfo_seq = 0;
+        s_flash_consumed = 0;
         s_scan_config.state = SCAN_STATE_IDLE;
     }
 
+}
+
+/********************************************************************
+**函数名称:  tran_mac_table_flush_to_flash
+**入口参数:  无
+**出口参数:  无
+**函数功能:  将本轮实时透传MAC表按时间戳从小到大排序后逐条落入FLASH循环存储，
+**           落盘后清空实时表；用于周期扫描模式下扫描时长结束但未立即上报时，
+**           缓存本轮历史数据
+**返 回 值:  无
+**注意事项:  仅BLE线程调用；透传MAC实时表恒不溢出，本接口仅在每轮扫描结束时调用
+*********************************************************************/
+static void tran_mac_table_flush_to_flash(void)
+{
+    uint8_t i;
+    uint8_t j;
+    uint8_t min_idx;
+    tran_mac_result_item_t tmp;
+    int ret;
+
+    // 实时表为空无需落盘
+    if (s_tran_mac_result_table.count == 0)
+    {
+        return;
+    }
+
+    // 落盘前按时间戳从小到大排序(选择排序)，确保FLASH里按采集先后顺序存储
+    for (i = 0; i < s_tran_mac_result_table.count - 1; i++)
+    {
+        min_idx = i;
+        for (j = i + 1; j < s_tran_mac_result_table.count; j++)
+        {
+            if (s_tran_mac_result_table.items[j].timestamp < s_tran_mac_result_table.items[min_idx].timestamp)
+            {
+                min_idx = j;
+            }
+        }
+
+        if (min_idx != i)
+        {
+            tmp = s_tran_mac_result_table.items[i];
+            s_tran_mac_result_table.items[i] = s_tran_mac_result_table.items[min_idx];
+            s_tran_mac_result_table.items[min_idx] = tmp;
+        }
+    }
+
+    // 逐条把本轮实时表中的MAC记录推入FLASH循环存储暂存缓冲
+    for (i = 0; i < s_tran_mac_result_table.count; i++)
+    {
+        ret = my_flash_store_push_mac(&s_tran_mac_result_table.items[i]);
+        if (ret != 0)
+        {
+            LOG_ERR("flush tran_mac to flash failed at %d (ret %d)", i, ret);
+        }
+    }
+
+    LOG_INF("flush %d tran_mac records to flash", s_tran_mac_result_table.count);
+
+    // 本轮数据已落盘，清空实时表，下一轮重新扫描收集
+    memset(&s_tran_mac_result_table, 0, sizeof(s_tran_mac_result_table));
 }
 
 /********************************************************************
@@ -1203,7 +1380,10 @@ static void scan_trigger_upload(void)
     }
 
     // 检查是否有数据需要上报
-    if (s_result_table.count == 0 && s_tran_mac_result_table.count == 0)
+    if (s_result_table.count == 0 &&
+        s_tran_mac_result_table.count == 0 &&
+        my_flash_store_pending_count(FS_TYPE_TAG) == 0 &&
+        my_flash_store_pending_count(FS_TYPE_MAC) == 0)
     {
         LOG_INF("No data to upload");
         s_scan_config.state = SCAN_STATE_IDLE;
@@ -1230,6 +1410,14 @@ static void scan_trigger_upload(void)
 int my_scan_init(void)
 {
     int err;
+
+    // 初始化FLASH循环存储模块(须在ZMS挂载完成后)
+    err = my_flash_store_init();
+    if (err)
+    {
+        LOG_ERR("flash store init failed (err %d)", err);
+        // 存储初始化失败不阻断扫描功能，仅退化为表满丢弃
+    }
 
     // 初始化前缀表
     tag_prefix_table_init();
@@ -1399,12 +1587,18 @@ void my_scan_msg_handler(msg_t *msg)
         case MY_MSG_SCAN_LENGTH:
             // 单次扫描时长定时器消息
             scan_stop_internal();
+            // Mode 1/2：周期扫描结束后不立即上报，将本轮TAG与透传MAC落入FLASH循环存储缓存
+            tag_table_flush_to_flash();
+            tran_mac_table_flush_to_flash();
             break;
 
         case MY_MSG_SCAN_UPLOAD:
             // 上报间隔定时器消息（Mode 2 定时主动唤醒LTE并上报）
+            // 透传MAC每轮扫描结束就已存入FLASH、实时表已清空，所以这里要一并检查FLASH里的待上报数
             if (s_scan_config.mode == SCAN_MODE_PERIOD_UPLOAD &&
-                (s_result_table.count > 0 || s_tran_mac_result_table.count > 0))
+                (s_result_table.count > 0 || s_tran_mac_result_table.count > 0 ||
+                 my_flash_store_pending_count(FS_TYPE_TAG) > 0 ||
+                 my_flash_store_pending_count(FS_TYPE_MAC) > 0))
             {
                 // Mode 2：主动唤醒LTE并上报数据
                 //上报过程中来报警或者切换工作模式，跳过
@@ -1422,8 +1616,11 @@ void my_scan_msg_handler(msg_t *msg)
             {
                 case SCAN_MODE_PERIOD_CACHE:
                 case SCAN_MODE_PERIOD_UPLOAD:
-                    // Mode 2/3：立即停止扫描并上报数据
-                    if (s_result_table.count > 0 || s_tran_mac_result_table.count > 0)
+                    // Mode 1/2：立即停止扫描并上报数据
+                    // 透传MAC每轮扫描结束就已存入FLASH、实时表已清空，所以这里要一并检查FLASH里的待上报数
+                    if (s_result_table.count > 0 || s_tran_mac_result_table.count > 0 ||
+                        my_flash_store_pending_count(FS_TYPE_TAG) > 0 ||
+                        my_flash_store_pending_count(FS_TYPE_MAC) > 0)
                     {
                         if (s_scan_config.state == SCAN_STATE_SCANNING)
                         {
@@ -1541,3 +1738,88 @@ void my_tran_mac_del_all(void)
     memset(gConfigParam.bparmac_config.bt_parmac_macs, 0, sizeof(gConfigParam.bparmac_config.bt_parmac_macs));
     gConfigParam.bparmac_config.bt_parmac_mac_count = 0;
 }
+
+#if FS_STORE_TEST_ENABLE
+/********************************************************************
+**函数名称:  my_scan_test_flush_sort
+**入口参数:  type      ---        数据类型(0=TAG, 1=透传MAC)（输入）
+**           count     ---        注入的测试记录条数（输入）
+**出口参数:  无
+**函数功能:  测试专用：清空对应实时表后注入count条乱序时间戳记录，再调用真实的
+**           落盘接口(tag_table_flush_to_flash/tran_mac_table_flush_to_flash)，
+**           验证落盘前是否按时间戳从小到大排序。注入时令序号i的记录时间戳=count-i，
+**           即序号越小时间戳越大(序号与时间戳反序)，排序正确则回读到的序号应为降序
+**返 回 值:  实际注入并落盘的记录条数，负值表示参数非法
+**注意事项:  仅FS_STORE_TEST_ENABLE开启时编译；仅供shell测试调用，序号小端编码进
+**           MAC地址前4字节，与shell侧解码规则一致
+*********************************************************************/
+int my_scan_test_flush_sort(uint8_t type, uint16_t count)
+{
+    uint16_t i;
+
+    if (type == FS_TYPE_TAG)
+    {
+        // 注入条数不超过实时表容量
+        if (count > TAG_RESULT_MAX_NUM)
+        {
+            count = TAG_RESULT_MAX_NUM;
+        }
+
+        memset(&s_result_table, 0, sizeof(s_result_table));
+
+        // 填入序号与时间戳反序的记录，制造乱序待排序数据
+        for (i = 0; i < count; i++)
+        {
+            // 序号i小端编码进MAC地址前4字节
+            s_result_table.items[i].addr.a.val[0] = (uint8_t)(i & 0xFF);
+            s_result_table.items[i].addr.a.val[1] = (uint8_t)((i >> 8) & 0xFF);
+            s_result_table.items[i].addr.a.val[2] = 0;
+            s_result_table.items[i].addr.a.val[3] = 0;
+            s_result_table.items[i].addr.a.val[4] = 0xAA;
+            s_result_table.items[i].addr.a.val[5] = 0x55;
+            // 序号越小时间戳越大，排序后顺序应被颠倒
+            s_result_table.items[i].timestamp = (uint32_t)(count - i);
+            snprintf(s_result_table.items[i].name, ADV_NAME_MAX_LEN, "TAG%u", i);
+        }
+        s_result_table.count = (uint8_t)count;
+
+        // 调用真实落盘接口(内部排序+落盘+清空实时表)
+        tag_table_flush_to_flash();
+
+        return count;
+    }
+    else if (type == FS_TYPE_MAC)
+    {
+        if (count > TRAN_MAC_MAX_NUM)
+        {
+            count = TRAN_MAC_MAX_NUM;
+        }
+
+        memset(&s_tran_mac_result_table, 0, sizeof(s_tran_mac_result_table));
+
+        for (i = 0; i < count; i++)
+        {
+            // 序号i小端编码进MAC地址前4字节
+            s_tran_mac_result_table.items[i].addr.a.val[0] = (uint8_t)(i & 0xFF);
+            s_tran_mac_result_table.items[i].addr.a.val[1] = (uint8_t)((i >> 8) & 0xFF);
+            s_tran_mac_result_table.items[i].addr.a.val[2] = 0;
+            s_tran_mac_result_table.items[i].addr.a.val[3] = 0;
+            s_tran_mac_result_table.items[i].addr.a.val[4] = 0xBB;
+            s_tran_mac_result_table.items[i].addr.a.val[5] = 0x66;
+            // 序号越小时间戳越大，排序后顺序应被颠倒
+            s_tran_mac_result_table.items[i].timestamp = (uint32_t)(count - i);
+            s_tran_mac_result_table.items[i].adv_data_len = 2;
+            s_tran_mac_result_table.items[i].adv_data[0] = (uint8_t)(i & 0xFF);
+            s_tran_mac_result_table.items[i].adv_data[1] = (uint8_t)((i >> 8) & 0xFF);
+        }
+        s_tran_mac_result_table.count = (uint8_t)count;
+
+        // 调用真实落盘接口(内部排序+落盘+清空实时表)
+        tran_mac_table_flush_to_flash();
+
+        return count;
+    }
+
+    return -EINVAL;
+}
+#endif /* FS_STORE_TEST_ENABLE */

@@ -304,6 +304,7 @@ typedef enum
 #include "my_ble_log.h"
 #include "my_pm.h"
 #include "my_ble_scan.h"
+#include "my_flash_store.h"
 #include "my_zms_param.h"
 
 #endif /* _MY_COMMON_H_ */

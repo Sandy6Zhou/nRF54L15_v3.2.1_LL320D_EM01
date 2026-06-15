@@ -12,7 +12,18 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260612"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260615"
+/* 软件版本:        V1.0
+** 完成日期:        2026.06.15
+** 作    者:       周森达 (zhousenda@jimiiot.com)
+** 修改内容:        1.TAG/透传MAC各占一个独立环形区，数据攒满整扇区批量写入FLASH，写满后循环覆盖最旧扇区，元数据存ZMS掉电可恢复
+**                 2.上报时先发FLASH里的历史数据、再发内存实时表的数据，等对端确认整批收到后才删除已发数据;中途上报失败的数据下次会重新发送，保证数据不丢
+**                 3.TAG实时表满由原来按RSSI替换丢弃弱信号，改为整表按时间戳排序后写入FLASH并清空，不再丢数据
+**                 4.周期扫描(Mode 1/2)每轮扫描结束将本轮数据缓存至FLASH
+**                 5.新增app fs系列shell测试命令(受FS_STORE_TEST_ENABLE宏控制，用于调试测试使用)
+***/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260612"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.06.12
 ** 作    者:       曹阳 (caoyang@jimiiot.com)

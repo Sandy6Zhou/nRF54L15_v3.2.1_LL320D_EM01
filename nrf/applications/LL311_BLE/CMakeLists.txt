@@ -42,6 +42,7 @@ target_sources(app PRIVATE
   src/my_dfu_jimi.c
   src/my_pm.c
   src/my_ble_scan.c
+  src/my_flash_store.c
 )
 
 # NORDIC SDK APP END

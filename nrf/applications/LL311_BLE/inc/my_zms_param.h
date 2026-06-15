@@ -73,6 +73,8 @@ typedef enum                           // 参数ID定义
     ZMS_ID_NFCOPRALM_CONFIG,           // NFC上报模式配置参数ID
     ZMS_ID_BT_KEY_CONFIG,              // 蓝牙解锁密钥配置参数ID
     ZMS_ID_BT_PARMAC_CONFIG,           // 透传MAC地址配置参数ID
+    ZMS_ID_BLE_TAG_STORE_META,         // BLE TAG扫描数据循环存储区元数据ID
+    ZMS_ID_BLE_MAC_STORE_META,         // BLE 透传MAC扫描数据循环存储区元数据ID
 } my_zms_id_t;
 
 typedef struct                              // 存储的LICENSE GG信息
@@ -449,5 +451,16 @@ int my_param_set_ble_log_level(uint8_t mod_id, uint8_t level);
 **返 回 值:  >=0 写入的字节数；负值为错误码
 *********************************************************************/
 int my_user_data_write(uint32_t id, const void *data, int len);
+
+/********************************************************************
+**函数名称:  my_user_data_read
+**入口参数:  id      ---        ZMS ID（32位）（输入）
+**           data    ---        指向接收数据的缓冲区（输出）
+**           len     ---        缓冲区最大长度（输入）
+**出口参数:  data    ---        存储读取到的数据
+**函数功能:  通用读接口：按 ID 读取任意数据
+**返 回 值:  >0 实际读取的字节数；0 表示未找到该 ID；负值为错误码
+*********************************************************************/
+int my_user_data_read(uint32_t id, void *data, int len);
 
 #endif

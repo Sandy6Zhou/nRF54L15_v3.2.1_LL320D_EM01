@@ -1241,6 +1241,397 @@ static int cmd_hardware_test(const struct shell *sh, size_t argc, char **argv)
     }
 }
 
+#if FS_STORE_TEST_ENABLE
+/********************************************************************
+**函数名称:  fs_test_parse_type
+**入口参数:  str       ---        类型字符串("tag"或"mac")（输入）
+**           type_ptr  ---        接收解析结果的指针（输出）
+**出口参数:  type_ptr  ---        存储解析出的数据类型
+**函数功能:  将shell输入的类型字符串解析为fs_data_type_t枚举
+**返 回 值:  0表示成功，-EINVAL表示非法类型
+*********************************************************************/
+static int fs_test_parse_type(const char *str, fs_data_type_t *type_ptr)
+{
+    if (strcmp(str, "tag") == 0)
+    {
+        *type_ptr = FS_TYPE_TAG;
+        return 0;
+    }
+    else if (strcmp(str, "mac") == 0)
+    {
+        *type_ptr = FS_TYPE_MAC;
+        return 0;
+    }
+
+    return -EINVAL;
+}
+
+/********************************************************************
+**函数名称:  fs_test_make_tag
+**入口参数:  rec_ptr   ---        待填充的TAG记录指针（输出）
+**           seq       ---        测试序号(编码进MAC地址用于回读校验)（输入）
+**出口参数:  rec_ptr   ---        存储构造好的可识别测试TAG记录
+**函数功能:  构造一条带唯一序号的测试TAG记录，序号小端编码进MAC地址前4字节
+**返 回 值:  无
+*********************************************************************/
+static void fs_test_make_tag(tag_scan_result_t *rec_ptr, uint32_t seq)
+{
+    memset(rec_ptr, 0, sizeof(tag_scan_result_t));
+
+    // 序号小端编码进MAC地址前4字节，回读时据此校验顺序与内容
+    rec_ptr->addr.a.val[0] = (uint8_t)(seq & 0xFF);
+    rec_ptr->addr.a.val[1] = (uint8_t)((seq >> 8) & 0xFF);
+    rec_ptr->addr.a.val[2] = (uint8_t)((seq >> 16) & 0xFF);
+    rec_ptr->addr.a.val[3] = (uint8_t)((seq >> 24) & 0xFF);
+    rec_ptr->addr.a.val[4] = 0xAA;          // 固定标记，便于人工辨识
+    rec_ptr->addr.a.val[5] = 0x55;
+
+    rec_ptr->battery_percent = (uint8_t)(seq & 0x7F);
+    rec_ptr->rssi = (int8_t)(-40 - (int)(seq & 0x1F));
+    snprintf(rec_ptr->name, sizeof(rec_ptr->name), "TAG%u", seq);
+    rec_ptr->uuid_len = 0;
+    rec_ptr->ff_data_len = 0;
+}
+
+/********************************************************************
+**函数名称:  fs_test_make_mac
+**入口参数:  rec_ptr   ---        待填充的MAC记录指针（输出）
+**           seq       ---        测试序号(编码进MAC地址用于回读校验)（输入）
+**出口参数:  rec_ptr   ---        存储构造好的可识别测试MAC记录
+**函数功能:  构造一条带唯一序号的测试透传MAC记录，序号小端编码进MAC地址前4字节
+**返 回 值:  无
+*********************************************************************/
+static void fs_test_make_mac(tran_mac_result_item_t *rec_ptr, uint32_t seq)
+{
+    memset(rec_ptr, 0, sizeof(tran_mac_result_item_t));
+
+    // 序号小端编码进MAC地址前4字节
+    rec_ptr->addr.a.val[0] = (uint8_t)(seq & 0xFF);
+    rec_ptr->addr.a.val[1] = (uint8_t)((seq >> 8) & 0xFF);
+    rec_ptr->addr.a.val[2] = (uint8_t)((seq >> 16) & 0xFF);
+    rec_ptr->addr.a.val[3] = (uint8_t)((seq >> 24) & 0xFF);
+    rec_ptr->addr.a.val[4] = 0xBB;          // 固定标记，便于人工辨识
+    rec_ptr->addr.a.val[5] = 0x66;
+
+    // 广播数据填2字节，内容为序号低16位，便于回读校验
+    rec_ptr->adv_data_len = 2;
+    rec_ptr->adv_data[0] = (uint8_t)(seq & 0xFF);
+    rec_ptr->adv_data[1] = (uint8_t)((seq >> 8) & 0xFF);
+}
+
+/********************************************************************
+**函数名称:  fs_test_decode_seq
+**入口参数:  val_ptr   ---        MAC地址字节数组指针（输入）
+**出口参数:  无
+**函数功能:  从MAC地址前4字节小端解码出测试序号，用于回读校验
+**返 回 值:  解码出的测试序号
+*********************************************************************/
+static uint32_t fs_test_decode_seq(const uint8_t *val_ptr)
+{
+    return (uint32_t)val_ptr[0] | ((uint32_t)val_ptr[1] << 8) |
+           ((uint32_t)val_ptr[2] << 16) | ((uint32_t)val_ptr[3] << 24);
+}
+
+/********************************************************************
+**函数名称:  cmd_fs_test
+**入口参数:  sh      ---        Shell 实例指针
+**           argc    ---        参数数量
+**           argv    ---        参数数组
+**出口参数:  无
+**函数功能:  FLASH循环存储模块测试命令，支持落盘/读取/提交/回退/清空/状态查看
+**           等子命令，用于验证整个存储-上报闭环及循环覆盖等边界场景
+**返 回 值:  0表示成功，负值表示失败
+**使用示例:  app fs push tag 100   app fs info tag   app fs read mac 0
+*********************************************************************/
+static int cmd_fs_test(const struct shell *sh, size_t argc, char **argv)
+{
+    fs_data_type_t type;
+    fs_debug_info_t info;
+    tag_scan_result_t tag_rec;
+    tran_mac_result_item_t mac_rec;
+    uint8_t read_buf[128];      // 读取缓冲(取两类记录中较大者)
+    uint32_t count;
+    uint32_t i;
+    uint32_t seq;
+    uint32_t prev_seq;
+    bool sorted_ok;
+    int ret;
+    int read_cnt;
+    int rd;
+
+    if (argc < 2)
+    {
+        shell_print(sh, "Usage: app fs <subcmd> [args]");
+        shell_print(sh, "  init                     - Init flash store module");
+        shell_print(sh, "  info  <tag|mac>          - Show region internal state");
+        shell_print(sh, "  count <tag|mac>          - Show pending record count");
+        shell_print(sh, "  push  <tag|mac> <n>      - Push n test records");
+        shell_print(sh, "  fill  <tag|mac> <secs>   - Push records to fill <secs> sectors");
+        shell_print(sh, "  begin <tag|mac>          - Begin an upload session");
+        shell_print(sh, "  read  <tag|mac> [n]      - Read n records (0=read all), no commit");
+        shell_print(sh, "  commit <tag|mac>         - Commit current read batch");
+        shell_print(sh, "  rewind <tag|mac>         - Rewind read cursor to last commit");
+        shell_print(sh, "  clear <tag|mac>          - Clear region (wipe pointers)");
+        shell_print(sh, "  sorttest <tag|mac> <n>   - Verify timestamp asc sort on flush");
+        return -EINVAL;
+    }
+
+    /* init子命令无type参数，单独处理 */
+    if (strcmp(argv[1], "init") == 0)
+    {
+        ret = my_flash_store_init();
+        shell_print(sh, "flash store init ret=%d", ret);
+        return ret;
+    }
+
+    /* 其余子命令均需type参数 */
+    if (argc < 3 || fs_test_parse_type(argv[2], &type) != 0)
+    {
+        shell_error(sh, "need type arg: tag | mac");
+        return -EINVAL;
+    }
+
+    if (strcmp(argv[1], "info") == 0)
+    {
+        ret = my_flash_store_get_debug_info(type, &info);
+        if (ret != 0)
+        {
+            shell_error(sh, "get debug info fail ret=%d", ret);
+            return ret;
+        }
+
+        shell_print(sh, "=== FS %s region state ===", argv[2]);
+        shell_print(sh, "  wr_sector       = %u", info.wr_sector);
+        shell_print(sh, "  rd_sector       = %u", info.rd_sector);
+        shell_print(sh, "  valid_sectors   = %u / %u", info.valid_sectors, info.region_sectors);
+        shell_print(sh, "  rd_rec_idx      = %u", info.rd_rec_idx);
+        shell_print(sh, "  seq_counter     = %u", info.seq_counter);
+        shell_print(sh, "  staging_count   = %u / %u", info.staging_count, info.rec_per_sector);
+        shell_print(sh, "  upload_active   = %d", info.upload_active);
+        shell_print(sh, "  staging_snap    = %u", info.upload_staging_snap);
+        shell_print(sh, "  read_offset     = %u", info.read_offset);
+        shell_print(sh, "  staging_read    = %u", info.staging_read_idx);
+        shell_print(sh, "  pending_count   = %u", info.pending_count);
+        return 0;
+    }
+    else if (strcmp(argv[1], "count") == 0)
+    {
+        count = my_flash_store_pending_count(type);
+        shell_print(sh, "FS %s pending count = %u", argv[2], count);
+        return 0;
+    }
+    else if (strcmp(argv[1], "push") == 0)
+    {
+        if (argc < 4)
+        {
+            shell_error(sh, "Usage: app fs push <tag|mac> <n>");
+            return -EINVAL;
+        }
+
+        count = strtoul(argv[3], NULL, 10);
+        // 用模块内seq_counter作为起始序号，保证多次push序号连续不重复
+        my_flash_store_get_debug_info(type, &info);
+        seq = my_flash_store_pending_count(type) + info.rd_rec_idx;
+
+        for (i = 0; i < count; i++)
+        {
+            if (type == FS_TYPE_TAG)
+            {
+                fs_test_make_tag(&tag_rec, seq + i);
+                ret = my_flash_store_push_tag(&tag_rec);
+            }
+            else
+            {
+                fs_test_make_mac(&mac_rec, seq + i);
+                ret = my_flash_store_push_mac(&mac_rec);
+            }
+
+            if (ret != 0)
+            {
+                shell_warn(sh, "push #%u ret=%d (stop)", i, ret);
+                break;
+            }
+        }
+
+        shell_print(sh, "pushed %u/%u %s records (start seq=%u)", i, count, argv[2], seq);
+        return 0;
+    }
+    else if (strcmp(argv[1], "fill") == 0)
+    {
+        if (argc < 4)
+        {
+            shell_error(sh, "Usage: app fs fill <tag|mac> <sectors>");
+            return -EINVAL;
+        }
+
+        // 计算需要push的记录条数 = 目标扇区数 × 每扇区记录数
+        my_flash_store_get_debug_info(type, &info);
+        count = strtoul(argv[3], NULL, 10) * info.rec_per_sector;
+        seq = my_flash_store_pending_count(type) + info.rd_rec_idx;
+
+        for (i = 0; i < count; i++)
+        {
+            if (type == FS_TYPE_TAG)
+            {
+                fs_test_make_tag(&tag_rec, seq + i);
+                ret = my_flash_store_push_tag(&tag_rec);
+            }
+            else
+            {
+                fs_test_make_mac(&mac_rec, seq + i);
+                ret = my_flash_store_push_mac(&mac_rec);
+            }
+
+            if (ret != 0)
+            {
+                shell_warn(sh, "fill #%u ret=%d (stop)", i, ret);
+                break;
+            }
+        }
+
+        shell_print(sh, "filled %u %s records (%s sectors, start seq=%u)",
+                    i, argv[2], argv[3], seq);
+        return 0;
+    }
+    else if (strcmp(argv[1], "begin") == 0)
+    {
+        my_flash_store_upload_begin(type);
+        shell_print(sh, "upload session begin for %s", argv[2]);
+        return 0;
+    }
+    else if (strcmp(argv[1], "read") == 0)
+    {
+        // 读取条数：0或缺省表示读到无数据为止
+        count = (argc >= 4) ? strtoul(argv[3], NULL, 10) : 0;
+        read_cnt = 0;
+
+        while (count == 0 || (uint32_t)read_cnt < count)
+        {
+            ret = my_flash_store_read_next(type, read_buf);
+            if (ret <= 0)
+            {
+                // 0表示读尽，负值表示错误
+                if (ret < 0)
+                {
+                    shell_error(sh, "read_next ret=%d", ret);
+                }
+                break;
+            }
+
+            // 从回读记录的MAC地址解码序号，校验顺序与内容
+            if (type == FS_TYPE_TAG)
+            {
+                seq = fs_test_decode_seq(((tag_scan_result_t *)read_buf)->addr.a.val);
+                shell_print(sh, "  [%d] TAG seq=%u rssi=%d batt=%u",
+                            read_cnt, seq,
+                            ((tag_scan_result_t *)read_buf)->rssi,
+                            ((tag_scan_result_t *)read_buf)->battery_percent);
+            }
+            else
+            {
+                seq = fs_test_decode_seq(((tran_mac_result_item_t *)read_buf)->addr.a.val);
+                shell_print(sh, "  [%d] MAC seq=%u adv_len=%u",
+                            read_cnt, seq,
+                            ((tran_mac_result_item_t *)read_buf)->adv_data_len);
+            }
+
+            read_cnt++;
+        }
+
+        shell_print(sh, "read %d %s records (call 'commit' to confirm, 'rewind' to resend)",
+                    read_cnt, argv[2]);
+        return 0;
+    }
+    else if (strcmp(argv[1], "commit") == 0)
+    {
+        ret = my_flash_store_commit(type);
+        shell_print(sh, "commit %s ret=%d", argv[2], ret);
+        return ret;
+    }
+    else if (strcmp(argv[1], "rewind") == 0)
+    {
+        my_flash_store_rewind(type);
+        shell_print(sh, "rewind %s done", argv[2]);
+        return 0;
+    }
+    else if (strcmp(argv[1], "clear") == 0)
+    {
+        my_flash_store_clear(type);
+        shell_print(sh, "clear %s done", argv[2]);
+        return 0;
+    }
+    else if (strcmp(argv[1], "sorttest") == 0)
+    {
+        if (argc < 4)
+        {
+            shell_error(sh, "Usage: app fs sorttest <tag|mac> <n>");
+            return -EINVAL;
+        }
+
+        count = strtoul(argv[3], NULL, 10);
+
+        // 清空目标区，注入count条乱序时间戳记录并经真实落盘接口排序入FLASH
+        my_flash_store_clear(type);
+        ret = my_scan_test_flush_sort((uint8_t)type, (uint16_t)count);
+        if (ret < 0)
+        {
+            shell_error(sh, "flush sort inject fail ret=%d", ret);
+            return ret;
+        }
+
+        // 回读校验：注入时序号与时间戳反序，排序正确则回读序号应严格递减
+        my_flash_store_upload_begin(type);
+        read_cnt = 0;
+        prev_seq = 0;
+        sorted_ok = true;
+
+        while (1)
+        {
+            rd = my_flash_store_read_next(type, read_buf);
+            if (rd <= 0)
+            {
+                break;
+            }
+
+            if (type == FS_TYPE_TAG)
+            {
+                seq = fs_test_decode_seq(((tag_scan_result_t *)read_buf)->addr.a.val);
+            }
+            else
+            {
+                seq = fs_test_decode_seq(((tran_mac_result_item_t *)read_buf)->addr.a.val);
+            }
+
+            shell_print(sh, "  [%d] seq=%u", read_cnt, seq);
+
+            // 从第二条起，序号应小于前一条(降序)，否则排序未生效
+            if (read_cnt > 0 && seq >= prev_seq)
+            {
+                sorted_ok = false;
+            }
+            prev_seq = seq;
+            read_cnt++;
+        }
+
+        // 退回读游标，本测试数据不算正式上报
+        my_flash_store_rewind(type);
+
+        if (read_cnt != (int)ret)
+        {
+            shell_warn(sh, "read back %d but injected %d", read_cnt, ret);
+            sorted_ok = false;
+        }
+
+        shell_print(sh, "sorttest %s: injected %d, read %d, sorted=%s",
+                    argv[2], ret, read_cnt, sorted_ok ? "PASS" : "FAIL");
+        return sorted_ok ? 0 : -EIO;
+    }
+
+    shell_error(sh, "unknown subcmd: %s", argv[1]);
+    return -EINVAL;
+}
+#endif /* FS_STORE_TEST_ENABLE */
+
 /* 注册自定义命令到 Shell 子系统 */
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_app,
     SHELL_CMD(sysinfo, NULL, "Display system information", cmd_system_info),
@@ -1264,6 +1655,9 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_app,
     SHELL_CMD(alarmtest, NULL, "Test alarm message: app alarmtest <type> [info]", cmd_alarm_test),
     SHELL_CMD(retransmit_check_test, NULL, "Run retransmit_check_test test", cmd_retransmit_check_test),
     SHELL_CMD(hardware_test, NULL, "Run hardware test", cmd_hardware_test),
+#if FS_STORE_TEST_ENABLE
+    SHELL_CMD(fs, NULL, "Flash store test: app fs <init|info|count|push|fill|begin|read|commit|rewind|clear|sorttest>", cmd_fs_test),
+#endif
     SHELL_SUBCMD_SET_END
 );
 /* Zephyr Shell 子系统提供的宏，随 nRF Connect SDK一起提供，用来在 Shell里注册一个“根命令”

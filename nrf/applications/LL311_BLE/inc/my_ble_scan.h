@@ -24,7 +24,7 @@
 #define TAG_FF_DATA_MAX_LEN         29      // FF数据固定长度
 #define UUID_MAX_LEN                16      // UUID最大存储长度
 #define ADV_CACHE_MAX_NUM           10      // ADV数据缓存最大数量
-#define TAG_RESULT_MAX_NUM          50      // 最大存储结果数量,后续根据实际情况调整
+#define TAG_RESULT_MAX_NUM          10      // 最大存储结果数量,后续根据实际情况调整
 #define TRAN_MAC_ADV_DATA_MAX_LEN   31      // 蓝牙广播数据最大长度（Legacy ADV）
 #define TRAN_MAC_MAX_NUM            20      // 透传MAC地址最大数量
 
@@ -219,6 +219,19 @@ int my_tran_mac_del(const bt_addr_le_t *addr);
 **返 回 值:  无
 *********************************************************************/
 void my_tran_mac_del_all(void);
+
+/********************************************************************
+**函数名称:  my_scan_test_flush_sort
+**入口参数:  type      ---        数据类型(0=TAG, 1=透传MAC)
+**           count     ---        注入的测试记录条数
+**出口参数:  无
+**函数功能:  测试专用：向实时表注入count条乱序时间戳记录后调用真实落盘接口，
+**           用于验证落盘前按时间戳从小到大排序。注入令序号与时间戳反序，
+**           排序正确则回读序号应为降序
+**返 回 值:  实际注入并落盘的记录条数，负值表示参数非法
+**注意事项:  函数定义仅在FS_STORE_TEST_ENABLE开启时编译，仅供shell测试调用
+*********************************************************************/
+int my_scan_test_flush_sort(uint8_t type, uint16_t count);
 
 /********************************************************************
 **函数名称:  clear_tag_macinfo
