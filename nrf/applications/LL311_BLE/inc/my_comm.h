@@ -221,7 +221,6 @@ typedef enum
     MY_MSG_GSENSOR_INT,             /* G-Sensor INT1 中断消息 */
     MY_MSG_GSENSOR_FIFO_INT,        /* G-Sensor FIFO中断消息 */
     MY_MSG_GSENSOR_SHOCK_INT,       /* G-Sensor 撞击检测中断消息 */
-    MY_MSG_MODESET_UPDATE,          /* 处理智能模式下参数设置更新 */
     MY_MSG_GSENSOR_SAMPLE,          /* G-Sensor 周期采样消息 */
     MY_MSG_GPS_SPEED_UPDATE ,       /* 处理GPS速度消息 */
     MY_MSG_SHOCK_SW,                /* 处理撞击检测开关消息 */

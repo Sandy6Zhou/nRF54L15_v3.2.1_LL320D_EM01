@@ -285,6 +285,7 @@ static int fs_flush_staging(fs_region_t *rg_ptr)
     {
         LOG_ERR("flash_area_write fail: off=%ld ret=%d", (long)offset, ret);
         rg_ptr->seq_counter--;  // 写失败回滚序号
+        rg_ptr->staging_count--;  // 写失败回滚暂存计数
         return ret;
     }
 

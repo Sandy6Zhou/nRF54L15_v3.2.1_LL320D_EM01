@@ -169,11 +169,6 @@ static int cmd_switch_mode(const struct shell *sh, size_t argc, char **argv)
 
     /* 调用实际的业务函数去切换模式/状态 */
     switch_work_mode(current_workmode);
-    if (current_workmode == MY_MODE_SMART)
-    {
-        //TODO 测试调用，后续补充完gsensor完删掉此处
-        my_send_msg(MOD_GSENSOR, MOD_GSENSOR, MY_MSG_MODESET_UPDATE);
-    }
 
     shell_print(sh, "Switch mode OK:");
     shell_print(sh, "  mode  = %s", mode_str);

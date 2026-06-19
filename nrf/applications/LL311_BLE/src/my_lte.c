@@ -2748,7 +2748,8 @@ static int my_lte_handle_getmot(char *data)
             break;
 
         default:
-            // 未知状态，不发送响应
+            // 未知状态，发送默认值
+            strncpy(result, "UNKNOWN", sizeof("UNKNOWN"));
             break;
     }
     snprintf(send_buf, sizeof(send_buf), "LTE+GETMOT=%s\r\n", result);

@@ -125,6 +125,9 @@ static const char* lte_cmd_attr_table[] =
     "HBT",
     "SERVER",
     "SIMPRI",
+    "DEEPSLEEPDT",
+    "CENTER",
+    "SECOND_SERVER"
 };
 
 /*********************************************************************
@@ -3921,8 +3924,6 @@ static int modeset_cmd_handler(at_cmd_t* msg)
         {
             // 切换到智能模式
             send_work_mode_command(param_work_mode_config.current_mode);
-            //根据gsensor状态更新参数
-            my_send_msg(MOD_BLE, MOD_GSENSOR, MY_MSG_MODESET_UPDATE);
         }
 
         LOG_INF("%s,%s,%s,%s,%s,%s,%s#", msg->parm[0], msg->parm[1], msg->parm[2], msg->parm[3], msg->parm[4], msg->parm[5], msg->parm[6]);
@@ -4549,9 +4550,11 @@ param_invalid:
 *********************************************************************/
 static int status_cmd_handler(at_cmd_t* msg)
 {
-    uint16_t remaining;  // 响应消息缓冲区的剩余空间
-    int ret;             // snprintf 函数的返回值
-    char motion[20];
+    uint16_t remaining;     // 响应消息缓冲区的剩余空间
+    int ret;                // snprintf 函数的返回值
+    char motion[20];        // 运动状态
+    char net_signal[10];    // 网络信号
+    char gnss_signal[15];   // GNSS信号
 
     remaining = RESP_STRING_LENGTH_MAX;  // 计算响应消息缓冲区的大小
 
@@ -4559,6 +4562,42 @@ static int status_cmd_handler(at_cmd_t* msg)
     if (msg->parm_count == 0)  // 检查命令是否有参数
     {
         LOG_INF("%s=>%s", __func__, msg->parm[0]);  // 输出函数名和命令名
+
+        switch (g_lte_net_signal_level)
+        {
+            case 0:
+                memcpy(net_signal, "NA", sizeof("NA"));
+                break;
+            case 1:
+            case 2:
+                memcpy(net_signal, "Weak", sizeof("Weak"));
+                break;
+            case 3:
+                memcpy(net_signal, "Normal", sizeof("Normal"));
+                break;
+            case 4:
+                memcpy(net_signal, "Strong", sizeof("Strong"));
+                break;
+            default:
+                memcpy(net_signal, "Unknown", sizeof("Unknown"));
+                break;
+        }
+
+        switch (g_lte_gps_state)
+        {
+            case 0:
+                memcpy(gnss_signal, "OFF", sizeof("OFF"));
+                break;
+            case 1:
+                memcpy(gnss_signal, "Searching", sizeof("Searching"));
+                break;
+            case 2:
+                memcpy(gnss_signal, "Fix", sizeof("Fix"));
+                break;
+            default:
+                memcpy(gnss_signal, "Unknown", sizeof("Unknown"));
+                break;
+        }
 
         switch (g_gsensor_runtime_ctx.current_gsensor_state)
         {
@@ -4582,13 +4621,13 @@ static int status_cmd_handler(at_cmd_t* msg)
         // TODO: Network,GNSS,Lockpin采用的默认值，后续需要根据实际情况修改
         /* 生成响应消息，格式：[VERSION]%s*/
         ret = snprintf(msg->resp_msg, remaining, "Battery:%d%%(%s);Network:%s(%s);GNSS:%s(%s); \
-            Tamper:%s;Lockpin:%s,%s;Lock state:%s;Motion:%s(%.2f KM/h)",
+            Tamper:%s;Lockpin:%s;Lock state:%s;Motion:%s(%.2f KM/h)",
             get_show_percent(),
             g_charg_state == NO_CHARGING ? "Discharging" : "Charging",
             g_lte_net_flag == 0 ? "Disconnect" : "Connect",
-            "Strong", "Fix", "1,2,3,4",
+            net_signal, gnss_signal, g_lte_gps_signal,
             get_light_state() ? "Remove" : "Noemal",
-            "L-In", "R-Out",
+            get_lockpin_insert_state() ? "In" : "Out",
             get_lock_state() ? "Lock" : "Unlock",
             motion, g_location_point.speed);
 

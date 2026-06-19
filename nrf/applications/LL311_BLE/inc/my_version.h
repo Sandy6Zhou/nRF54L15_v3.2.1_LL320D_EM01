@@ -12,7 +12,19 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260615"
+#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260618"
+/* 软件版本:        V1.0
+** 完成日期:        2026.06.18
+** 作    者:       曹阳1 (caoyang@jimiiot.com)
+** 修改内容:        1.基于新增的串口协议加入status#指令中
+**                 2.当存储数据写入flush失败时，丢弃当前数据
+**                 3.删除MY_MSG_MODESET_UPDATE消息相关内容
+**                 4.修改断电重启为仅切换模式才清除状态
+**                 5.在FIFO采集开启时操作寄存器会导致数据采集不稳定，造成误判，改为在设置FIFO中断前先设置撞击检测中断
+**                 6.增加新增功能的透传指令
+***/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260615"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.06.15
 ** 作    者:       周森达 (zhousenda@jimiiot.com)

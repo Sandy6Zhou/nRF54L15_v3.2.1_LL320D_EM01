@@ -211,23 +211,6 @@ static void gsensor_reset_sample_window(void)
 }
 
 /********************************************************************
-**函数名称:  gsensor_reset_state
-**入口参数:  无
-**出口参数:  无
-**函数功能:  重置 G-Sensor 运动状态机，清除滞后计数与状态缓存
-**返 回 值:  无
-**注意事项:  在传感器恢复运行或模式切换时调用，防止历史状态残留导致误判
-*********************************************************************/
-static void gsensor_reset_state(void)
-{
-    sm_batch.candidate_count = 0;           // 重置状态切换候选计数
-
-    sm_batch.current_mode = STATE_UNKNOWN; // 重置当前状态
-
-    sm_batch.candidate_mode = STATE_UNKNOWN; // 重置状态切换候选
-}
-
-/********************************************************************
 **函数名称:  gsensor_apply_shock_config
 **入口参数:  无
 **出口参数:  无
@@ -378,6 +361,9 @@ static int gsensor_apply_run_mode_config(void)
     ret = lsm6dsv16x_gy_full_scale_set(&lsm_ctx, LSM6DSV16X_125dps);
     GSENSOR_REG_CHECK(ret);
 
+    // 等待陀螺仪启动稳定
+    k_sleep(K_MSEC(50));
+
     // 配置 FIFO 批量模式，将数据批量写入FIFO，加速度计写入30Hz
     ret = lsm6dsv16x_fifo_xl_batch_set(&lsm_ctx, LSM6DSV16X_XL_BATCHED_AT_30Hz);
     GSENSOR_REG_CHECK(ret);
@@ -385,9 +371,6 @@ static int gsensor_apply_run_mode_config(void)
     // 配置 FIFO 批量模式，将数据批量写入FIFO，陀螺仪写入30Hz
     ret = lsm6dsv16x_fifo_gy_batch_set(&lsm_ctx, LSM6DSV16X_GY_BATCHED_AT_30Hz);
     GSENSOR_REG_CHECK(ret);
-
-    // 等待陀螺仪启动稳定
-    k_sleep(K_MSEC(50));
 
     // 配置 FIFO 水印阈值
     ret = lsm6dsv16x_fifo_watermark_set(&lsm_ctx, FIFO_WATERMARK);
@@ -695,9 +678,6 @@ static int gsensor_pm_resume(void)
     int result;         // 初始化结果
     int retry_count = 0; // 重试计数
 
-    // 打开 G-Sensor 电源
-    my_gsensor_pwr_on(true);
-
     // 传感器未断电，只需切回运行模式，无需完整初始化
     if (g_gsensor_runtime_ctx.sensor_ready == true)
     {
@@ -718,8 +698,10 @@ static int gsensor_pm_resume(void)
         return 0;
     }
 
-    // 清除状态及窗口
-    gsensor_reset_state();
+    // 打开 G-Sensor 电源
+    my_gsensor_pwr_on(true);
+
+    // 清空窗口重新开始 burst 采集，确保每次判定都基于最新连续数据
     gsensor_reset_sample_window();
     /* 传感器已断电，需要完整初始化
     * 尝试初始化 LSM6DSV16X 传感器，最多尝试 3 次
@@ -953,6 +935,7 @@ static void my_gsensor_task(void *p1, void *p2, void *p3)
                     // 通过电源管理模块挂起 G-Sensor 设备（会自动挂起 I2C21 总线），会调用 gsensor_pm_suspend
                     my_pm_device_suspend(MY_PM_DEV_GSENSOR);
                 }
+                sm_init(&sm_batch);
                 break;
 
             case MY_MSG_GSENSOR_INT:
@@ -1098,14 +1081,13 @@ int my_lsm6dsv16x_init(void)
         // 4.确保寄存器稳定后，才能设置寄存器
         k_sleep(K_MSEC(20));
         lsm6dsv16x_fifo_mode_set(&lsm_ctx, LSM6DSV16X_BYPASS_MODE);
+        gsensor_apply_shock_config();
         if (gsensor_is_smart_mode() == true ? gsensor_apply_run_mode_config() : gsensor_apply_low_power_mode_config())
         {
             MY_LOG_ERR("Failed to configure GSENSOR run mode");
             g_gsensor_runtime_ctx.sensor_ready = false;
             return -EIO;
         }
-
-        gsensor_apply_shock_config();
 
         // 5.确保陀螺仪启动稳定时间
         k_sleep(K_MSEC(50));
