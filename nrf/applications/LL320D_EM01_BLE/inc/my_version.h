@@ -12,7 +12,17 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL320D_EM01_V1.0_260620"
+#define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260620"
+/* 软件版本:        V1.0
+** 完成日期:        2026.06.20
+** 作    者:       周森达 (zhousenda@jimiiot.com)
+** 修改内容:        1.新增SPA06-003驱动层(drivers/SPA06)：实现传感器初始化、校准系数解析(含 c31/c40 四阶系数)、采样率与过采样配置、四阶多项式气压补偿及温度补偿计算
+**                 2.支持单次/连续 共7种工作模式(温度/气压/温压组合)，按过采样档位动态计算测量超时，连续气压模式下定期重测温度补偿温漂误差
+**                 3.新增气压模块统一API层：封装底层驱动差异，提供初始化、工作模式设置、温压数据读取、读取芯片ID接口
+**                 4.输出气压DEMO使用事例，便于后续开发使用
+***/
+
+// #define SOFTWARE_VERSION "LL320D_EM01_V1.0_260620"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.06.20
 ** 作    者:       周森达 (zhousenda@jimiiot.com)
