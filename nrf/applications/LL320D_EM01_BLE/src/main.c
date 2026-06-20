@@ -11,7 +11,6 @@ static k_tid_t s_my_main_task_id = NULL;
 static k_tid_t s_my_ble_task_id = NULL;
 static k_tid_t s_my_ctrl_task_id = NULL;
 static k_tid_t s_my_lte_task_id = NULL;
-static k_tid_t s_my_nfc_task_id = NULL;
 static k_tid_t s_my_gsensor_task_id = NULL;
 
 static k_tid_t s_my_task_info[MAX_MY_MOD_TYPE] = {NULL};
@@ -68,7 +67,6 @@ void custom_task_info_init(void)
     s_my_task_info[MOD_BLE] = s_my_ble_task_id;
     s_my_task_info[MOD_CTRL] = s_my_ctrl_task_id;
     s_my_task_info[MOD_LTE] = s_my_lte_task_id;
-    s_my_task_info[MOD_NFC] = s_my_nfc_task_id;
     s_my_task_info[MOD_GSENSOR] = s_my_gsensor_task_id;
 }
 
@@ -502,131 +500,6 @@ static void print_app_info(void)
 }
 
 /********************************************************************
-**函数名称:  handle_verify_nfc_card
-**入口参数:  result   --- 接收应答结构体
-**出口参数:  无
-**函数功能:  执行获取经纬度的应答结果（并进行校验开关锁），主要包括：
-**            1. 解析返回的经纬度字符串
-**            2. 校验经纬度数据的有效性（全有或全无）
-**            3. 判断当前位置是否在 NFC 卡片设定的电子围栏范围内
-**           4. 若在范围内，根据 NFC 卡片的权限状态触发开锁或关锁消息
-**返 回 值:  0      --- 处理成功（已触发开锁或关锁消息）
-            -1     --- 处理失败（参数错误或超出范围）
-*********************************************************************/
-void handle_verify_nfc_card(ble_rsp_result_t *result)
-{
-    char is_ok[16] = {0};
-    char lat[16] = {0};
-    char lon[16] = {0};
-    int32_t lat_value;
-    uint8_t lat_valid;
-    int32_t lon_value;
-    uint8_t lon_valid;
-    uint8_t seq[8] = {0};
-    bool ret;
-
-    //只有一个参数
-    if (result->param_count < 1)
-    {
-        MY_LOG_ERR("param count error");
-        return;
-    }
-
-    ret = my_get_str_at_pos(result->params, 0, ',', is_ok, sizeof(is_ok));
-    if (strcmp(is_ok, "FAIL") == 0)
-    {
-        MY_LOG_ERR("location response FAIL");
-
-        //NFC解锁失败提示音
-        my_set_buzzer_mode(BUZZER_ERROR_TONE);
-        return;
-    }
-
-    //后续无参数，说明只是应答，无需处理
-    if (!ret)
-    {
-        return;
-    }
-
-    //下面解析处理必须要4个参数
-    if (result->param_count != 4)
-    {
-        MY_LOG_ERR("param count error");
-        return;
-    }
-
-    // 继续提取经纬度参数，进行相关处理
-    my_get_str_at_pos(result->params, 1, ',', seq, sizeof(seq));
-    my_get_str_at_pos(result->params, 2, ',', lat, sizeof(lat));
-    my_get_str_at_pos(result->params, 3, ',', lon, sizeof(lon));
-    MY_LOG_INF("Received location: lat=%s, lon=%s, seq=%s", lat, lon, seq);
-
-    // 验证 seq 是否与当前 NFC 卡索引匹配，如果等待4G回复期间刷了第二张不同的卡，需要跳过前一张未处理的卡
-    if (atoi(seq) != g_nfc_card_index)
-    {
-        MY_LOG_ERR("seq not match, seq=%s, expected_seq=%d", seq, g_nfc_card_index);
-        return;
-    }
-
-    g_last_card_index = -1;
-
-    // 经纬度参数解析和校验
-    if (parse_coordinate_value(lat, 1, &lat_value, &lat_valid) != 0)
-    {
-        LOG_INF("invalid LAT param: %s", lat);
-        return;
-    }
-
-    if (parse_coordinate_value(lon, 0, &lon_value, &lon_valid) != 0)
-    {
-        LOG_INF("invalid LON param: %s", lon);
-        return;
-    }
-
-    if ((lon_valid == 0) || (lat_valid == 0))
-    {
-        LOG_INF("invalid LAT or LON param");
-        return;
-    }
-
-    // 更新存储点
-    g_location_point.lat = lat_value;
-    g_location_point.lon = lon_value;
-    g_location_point.timestamp_s = my_get_system_time_sec();
-
-    // 判断是否在允许半径内
-    if (!is_point_in_circle(lat_value, lon_value,
-                            gConfigParam.nfcauth_config.nfcauth_cards[g_nfc_card_index].lat,
-                            gConfigParam.nfcauth_config.nfcauth_cards[g_nfc_card_index].lon,
-                            gConfigParam.nfcauth_config.nfcauth_cards[g_nfc_card_index].radius))
-    {
-        LOG_INF("device is out of allowed area");
-        return;
-    }
-    // 若卡的次数有限,需要消耗次数(-1为无限次数)
-    if (gConfigParam.nfcauth_config.nfcauth_cards[g_nfc_card_index].unlock_times != 0 && get_openlock_state() == false)
-    {
-        if (gConfigParam.nfcauth_config.nfcauth_cards[g_nfc_card_index].unlock_times > 0)
-        {
-            gConfigParam.nfcauth_config.nfcauth_cards[g_nfc_card_index].unlock_times--;
-            my_user_data_write(ZMS_ID_NFCAUTH_CONFIG, &gConfigParam.nfcauth_config, sizeof(nfcauth_config_t));
-        }
-        my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_CTRL_OPENLOCKING);
-        MY_LOG_INF("start to openlock");
-    }
-    else if (gConfigParam.nfcauth_config.nfcauth_cards[g_nfc_card_index].lock_times != 0 && get_closelock_state() == false)
-    {
-        if (gConfigParam.nfcauth_config.nfcauth_cards[g_nfc_card_index].lock_times > 0)
-        {
-            gConfigParam.nfcauth_config.nfcauth_cards[g_nfc_card_index].lock_times--;
-            my_user_data_write(ZMS_ID_NFCAUTH_CONFIG, &gConfigParam.nfcauth_config, sizeof(nfcauth_config_t));
-        }
-        my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_CTRL_CLOSELOCKING);
-        MY_LOG_INF("start to closelock");
-    }
-}
-
-/********************************************************************
 **函数名称:  print_reset_reason
 **入口参数:  无
 **出口参数:  无
@@ -773,13 +646,6 @@ int main(void)
         MY_LOG_ERR("Failed to initialize G-Sensor (err %d)", err);
     }
 
-    /* 初始化 NFC 模块 */
-    err = my_nfc_init(&s_my_nfc_task_id);
-    if (err)
-    {
-        MY_LOG_ERR("Failed to initialize NFC (err %d)", err);
-    }
-
     /* 初始化系统控制模块 (LED, Buzzer, Key) */
     err = my_ctrl_init(&s_my_ctrl_task_id);
     if (err)
@@ -813,28 +679,10 @@ int main(void)
                 }
                 break;
 
-            case MY_MSG_NFC_CARD_EVENT:
-                MY_LOG_INF("NFC event received, DataLen=%d, expected=%d", msg.DataLen, sizeof(struct nfc_card_info));
-                if (msg.pData && msg.DataLen == sizeof(struct nfc_card_info))
-                {
-                    struct nfc_card_info *card = (struct nfc_card_info *)msg.pData;
-                    MY_LOG_INF("NFC Card detected, type: %d", card->type);
-                    LOG_HEXDUMP_INF(card->uid, card->uid_len, "NFC UID");
-                    //读卡成功提示音
-                    my_set_buzzer_mode(BUZZER_EVENT_READ_NFC_SUCCESS);
-                    /* 刷卡检测流程 */
-                    handle_nfc_card_event(card->uid, card->uid_len);
-                }
-                break;
-
             case MY_MSG_CTRL_KEY_SHORT_PRESS:
                 MY_LOG_INF("KEY EVENT: Short press detected");
-                /* 启动 NFC 轮询 */
-                my_nfc_start_poll(10);
                 /* 短按唤醒后，显示电池状态，LED显示*/
                 my_battery_show();
-                //短按唤醒读卡器，蜂鸣器提示100ms
-                my_set_buzzer_mode(BUZZER_EVENT_NFC_ACTIVATE);
                 break;
 
             case MY_MSG_CTRL_KEY_LONG_PRESS:
@@ -929,21 +777,6 @@ int main(void)
                 MY_LOG_INF("DFU fail received");
                 break;
 
-            case MY_MSG_VERIFY_UNLOCK:
-                MY_LOG_INF("Verify unlock request received");
-                if (msg.pData && msg.DataLen == sizeof(ble_rsp_result_t))
-                {
-                    // 处理开锁规则验证流程
-                    handle_verify_nfc_card((ble_rsp_result_t *)msg.pData);
-                }
-
-                // 处理完毕后释放消息数据内存
-                if(msg.pData != NULL)
-                {
-                    MY_FREE_BUFFER(msg.pData);
-                    msg.pData = NULL;
-                }
-                break;
             case MY_MSG_SHUTDOWN:
                 if (gConfigParam.pwsave_config.pwsave_sw == 1)
                 {

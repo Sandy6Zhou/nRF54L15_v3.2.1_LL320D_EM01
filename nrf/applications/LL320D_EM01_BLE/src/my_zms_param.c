@@ -42,7 +42,7 @@ const ble_tx_power_t gDefaultBleTxPower =
  * - BLE 模块 (bit1): 蓝牙核心模块，使用蓝牙日志会导致递归发送
  * - DFU 模块 (bit2): OTA升级期间使用蓝牙日志会干扰升级流程
  * - SHELL 模块 (bit6): Shell 通过 RTT 交互，无需蓝牙日志
- * - CMD 模块 (bit10): 蓝牙指令处理模块，指令响应已通过 BLE 通道返回
+ * - CMD 模块 (bit8): 蓝牙指令处理模块，指令响应已通过 BLE 通道返回
  * 以上模块即使开启开关，也应保持 mod_level 为 LOG_LEVEL_NONE
  */
 const ble_log_config_t gDefaultBleLogConfig =
@@ -58,14 +58,12 @@ const ble_log_config_t gDefaultBleLogConfig =
         (1U << BLE_LOG_MOD_LTE)    |   /* bit4: LTE     - 开启 */
         (1U << BLE_LOG_MOD_CTRL)   |   /* bit5: CTRL    - 开启 */
         (0U << BLE_LOG_MOD_SHELL)  |   /* bit6: SHELL   - 关闭，shell模块没有必要加蓝牙日志 */
-        (1U << BLE_LOG_MOD_NFC)    |   /* bit7: NFC     - 开启 */
-        (1U << BLE_LOG_MOD_BATTERY)|   /* bit8: BATTERY - 开启 */
-        (1U << BLE_LOG_MOD_MOTOR)  |   /* bit9: MOTOR   - 开启 */
-        (0U << BLE_LOG_MOD_CMD)    |   /* bit10: CMD    - 关闭，指令模块避免递归 */
-        (1U << BLE_LOG_MOD_TOOL)   |   /* bit11: TOOL   - 开启 */
-        (1U << BLE_LOG_MOD_PARAM)  |   /* bit12: PARAM  - 开启 */
-        (1U << BLE_LOG_MOD_WDT)    |   /* bit13: WDT    - 开启 */
-        (0U << BLE_LOG_MOD_OTHER),     /* bit14: OTHER  - 关闭 */
+        (1U << BLE_LOG_MOD_BATTERY)|   /* bit7: BATTERY - 开启 */
+        (0U << BLE_LOG_MOD_CMD)    |   /* bit8: CMD    - 关闭，指令模块避免递归 */
+        (1U << BLE_LOG_MOD_TOOL)   |   /* bit9: TOOL   - 开启 */
+        (1U << BLE_LOG_MOD_PARAM)  |   /* bit10: PARAM  - 开启 */
+        (1U << BLE_LOG_MOD_WDT)    |   /* bit11: WDT    - 开启 */
+        (0U << BLE_LOG_MOD_OTHER),     /* bit12: OTHER  - 关闭 */
     .mod_level = {
         [BLE_LOG_MOD_MAIN]   = LOG_LEVEL_INF,    /* bit0: MAIN    - 开启 */
         [BLE_LOG_MOD_BLE]    = LOG_LEVEL_NONE,   /* bit1: BLE     - 关闭，避免递归 */
@@ -74,14 +72,12 @@ const ble_log_config_t gDefaultBleLogConfig =
         [BLE_LOG_MOD_LTE]    = LOG_LEVEL_INF,    /* bit4: LTE     - 开启 */
         [BLE_LOG_MOD_CTRL]   = LOG_LEVEL_INF,    /* bit5: CTRL    - 开启 */
         [BLE_LOG_MOD_SHELL]  = LOG_LEVEL_INF,    /* bit6: SHELL   - 开启 */
-        [BLE_LOG_MOD_NFC]    = LOG_LEVEL_INF,    /* bit7: NFC     - 开启 */
-        [BLE_LOG_MOD_BATTERY] = LOG_LEVEL_INF,   /* bit8: BATTERY - 开启 */
-        [BLE_LOG_MOD_MOTOR]  = LOG_LEVEL_INF,    /* bit9: MOTOR   - 开启 */
-        [BLE_LOG_MOD_CMD]    = LOG_LEVEL_NONE,   /* bit10: CMD    - 关闭，指令模块避免递归 */
-        [BLE_LOG_MOD_TOOL]   = LOG_LEVEL_INF,    /* bit11: TOOL   - 开启 */
-        [BLE_LOG_MOD_PARAM]  = LOG_LEVEL_INF,    /* bit12: PARAM  - 开启 */
-        [BLE_LOG_MOD_WDT]    = LOG_LEVEL_INF,    /* bit13: WDT    - 开启 */
-        [BLE_LOG_MOD_OTHER]  = LOG_LEVEL_NONE,   /* bit14: OTHER  - 关闭 */
+        [BLE_LOG_MOD_BATTERY] = LOG_LEVEL_INF,   /* bit7: BATTERY - 开启 */
+        [BLE_LOG_MOD_CMD]    = LOG_LEVEL_NONE,   /* bit8: CMD    - 关闭，指令模块避免递归 */
+        [BLE_LOG_MOD_TOOL]   = LOG_LEVEL_INF,    /* bit9: TOOL   - 开启 */
+        [BLE_LOG_MOD_PARAM]  = LOG_LEVEL_INF,    /* bit10: PARAM  - 开启 */
+        [BLE_LOG_MOD_WDT]    = LOG_LEVEL_INF,    /* bit11: WDT    - 开启 */
+        [BLE_LOG_MOD_OTHER]  = LOG_LEVEL_NONE,   /* bit12: OTHER  - 关闭 */
     }
 };
 
@@ -117,27 +113,6 @@ const remalm_config_t gDefaultRemAlmConfig =
     .flag = FLAG_VALID,
     .remalm_sw = 0,                    /* 默认关闭 */
     .remalm_mode = REPORT_MODE_GPRS,                  /* 默认GPRS */
-};
-
-const lockpin_cyt_config_t gDefaultLockPinCytConfig =
-{
-    .flag = FLAG_VALID,
-    .lockpincyt_report = REPORT_MODE_GPRS,             /* 默认GPRS */
-    .lockpincyt_buzzer = ALARM_TEMPORARY,             /* 默认报警30s */
-};
-
-const pin_stat_config_t gDefaultPinStatConfig =
-{
-    .flag = FLAG_VALID,
-    .pinstat_report = REPORT_MODE_GPRS,               /* 默认GPRS */
-    .pinstat_trigger = PINSTAT_TRIGGER_MODE_BOTH,              /* 默认都触发 */
-};
-
-const lock_stat_config_t gDefaultLockStatConfig =
-{
-    .flag = FLAG_VALID,
-    .lockstat_report = REPORT_MODE_GPRS,              /* 默认GPRS */
-    .lockstat_trigger = LOCK_TRIGGER_NONE,             /* 默认都不触发 */
 };
 
 const mot_det_config_t gDefaultMotDetConfig =
@@ -197,12 +172,6 @@ const tag_config_t gDefaultTagConfig =
     .tag_interval = 2000,              /* 默认2000ms */
 };
 
-const locked_config_t gDefaultLockedConfig =
-{
-    .flag = FLAG_VALID,
-    .lockcd_countdown = 3,             /* 默认3秒 */
-};
-
 const led_config_t gDefaultLedConfig =
 {
     .flag = FLAG_VALID,
@@ -213,30 +182,6 @@ const buzzer_config_t gDefaultBuzzerConfig =
 {
     .flag = FLAG_VALID,
     .buzzer_operator = 0,             /* 默认停止 */
-};
-
-const nfctrig_config_t gDefaultNfctrigConfig =
-{
-    .flag = FLAG_VALID,
-    .nfctrig_table = 0,                    /* 默认关闭 */
-};
-
-const nfcauth_config_t gDefaultNfcauthConfig =
-{
-    .flag = FLAG_VALID,
-    .nfcauth_card_count = 0,         /* 默认0张卡 */
-};
-
-const nfcopralm_config_t gDefaultNfcopralmConfig =
-{
-    .flag = FLAG_VALID,
-    .nfcopralm_type = 1,                 /* 默认GPRS */
-};
-
-const bkey_config_t gDefaultBkeyConfig =
-{
-    .flag = FLAG_VALID,
-    .bt_key = "000000",              /* 默认密钥 */
 };
 
 const bparmac_config_t gDefaultBparmacConfig =
@@ -479,51 +424,6 @@ void my_param_load_config(void)
                     gConfigParam.remalm_config.remalm_mode, gConfigParam.remalm_config.remalm_sw);
     }
 
-    //--------Load Lock Pin CyT Config ---------------------
-    length = sizeof(lockpin_cyt_config_t);
-    ret = my_user_data_read(ZMS_ID_LOCK_PIN_CYT_CONFIG, &gConfigParam.lockpincyt_config, length);
-    if (ret != length)
-    {
-        memcpy(&gConfigParam.lockpincyt_config, &gDefaultLockPinCytConfig, length);
-        MY_LOG_INF("Lock pin cyt config not found. Use default:lockpincyt_buzzer(%d), lockpincyt_report(%d)",
-                    gConfigParam.lockpincyt_config.lockpincyt_buzzer, gConfigParam.lockpincyt_config.lockpincyt_report);
-    }
-    else
-    {
-        MY_LOG_INF("Lock pin cyt config loaded: lockpincyt_buzzer(%d), lockpincyt_report(%d)",
-                    gConfigParam.lockpincyt_config.lockpincyt_buzzer, gConfigParam.lockpincyt_config.lockpincyt_report);
-    }
-
-    //--------Load Pin Stat Config ---------------------
-    length = sizeof(pin_stat_config_t);
-    ret = my_user_data_read(ZMS_ID_PIN_STAT_CONFIG, &gConfigParam.pinstat_config, length);
-    if (ret != length)
-    {
-        memcpy(&gConfigParam.pinstat_config, &gDefaultPinStatConfig, length);
-        MY_LOG_INF("Pin stat config not found. Use default:pinstat_report(%d), pinstat_trigger(%d)",
-                    gConfigParam.pinstat_config.pinstat_report, gConfigParam.pinstat_config.pinstat_trigger);
-    }
-    else
-    {
-        MY_LOG_INF("Pin stat config loaded: pinstat_report(%d), pinstat_trigger(%d)",
-                    gConfigParam.pinstat_config.pinstat_report, gConfigParam.pinstat_config.pinstat_trigger);
-    }
-
-    //--------Load Lock Stat Config ---------------------
-    length = sizeof(lock_stat_config_t);
-    ret = my_user_data_read(ZMS_ID_LOCK_STAT_CONFIG, &gConfigParam.lockstat_config, length);
-    if (ret != length)
-    {
-        memcpy(&gConfigParam.lockstat_config, &gDefaultLockStatConfig, length);
-        MY_LOG_INF("Lock stat config not found. Use default:lockstat_report(%d), lockstat_trigger(%d)",
-                    gConfigParam.lockstat_config.lockstat_report, gConfigParam.lockstat_config.lockstat_trigger);
-    }
-    else
-    {
-        MY_LOG_INF("Lock stat config loaded: lockstat_report(%d), lockstat_trigger(%d)",
-                    gConfigParam.lockstat_config.lockstat_report, gConfigParam.lockstat_config.lockstat_trigger);
-    }
-
     //--------Load Mot Det Config ---------------------
     length = sizeof(mot_det_config_t);
     ret = my_user_data_read(ZMS_ID_MOT_DET_CONFIG, &gConfigParam.motdet_config, length);
@@ -635,19 +535,6 @@ void my_param_load_config(void)
         MY_LOG_INF("Tag config loaded: tag_sw(%d), tag_interval(%d)", gConfigParam.tag_config.tag_sw, gConfigParam.tag_config.tag_interval);
     }
 
-    //--------Load Locked Config ---------------------
-    length = sizeof(locked_config_t);
-    ret = my_user_data_read(ZMS_ID_LOCKED_CONFIG, &gConfigParam.locked_config, length);
-    if (ret != length)
-    {
-        memcpy(&gConfigParam.locked_config, &gDefaultLockedConfig, length);
-        MY_LOG_INF("Locked config not found. Use default:locked_countdown(%d)", gConfigParam.locked_config.lockcd_countdown);
-    }
-    else
-    {
-        MY_LOG_INF("Locked config loaded: locked_countdown(%d)", gConfigParam.locked_config.lockcd_countdown);
-    }
-
     //--------Load Led Config ---------------------
     length = sizeof(led_config_t);
     ret = my_user_data_read(ZMS_ID_LED_CONFIG, &gConfigParam.led_config, length);
@@ -672,50 +559,6 @@ void my_param_load_config(void)
     else
     {
         MY_LOG_INF("Buzzer config loaded: buzzer_operator(%d)", gConfigParam.buzzer_config.buzzer_operator);
-    }
-
-    //--------Load Nfctrig Config ---------------------
-    length = sizeof(nfctrig_config_t);
-    ret = my_user_data_read(ZMS_ID_NFTRIG_CONFIG, &gConfigParam.nfctrig_config, length);
-    if (ret != length)
-    {
-        memcpy(&gConfigParam.nfctrig_config, &gDefaultNfctrigConfig, length);
-        MY_LOG_INF("Nfctrig config not found. Use default.");
-    }
-
-    //--------Load Nfcauth Config ---------------------
-    length = sizeof(nfcauth_config_t);
-    ret = my_user_data_read(ZMS_ID_NFCAUTH_CONFIG, &gConfigParam.nfcauth_config, length);
-    if (ret != length)
-    {
-        memcpy(&gConfigParam.nfcauth_config, &gDefaultNfcauthConfig, length);
-        MY_LOG_INF("Nfcauth config not found. Use default:card_count(%d)", gConfigParam.nfcauth_config.nfcauth_card_count);
-    }
-    else
-    {
-        MY_LOG_INF("Nfcauth config loaded: card_count(%d)", gConfigParam.nfcauth_config.nfcauth_card_count);
-    }
-
-    //--------Load Nfcopralm Config ---------------------
-    length = sizeof(nfcopralm_config_t);
-    ret = my_user_data_read(ZMS_ID_NFCOPRALM_CONFIG, &gConfigParam.nfcopralm_config, length);
-    if (ret != length)
-    {
-        memcpy(&gConfigParam.nfcopralm_config, &gDefaultNfcopralmConfig, length);
-        MY_LOG_INF("Nfcopralm config not found. Use default.");
-    }
-    else
-    {
-        MY_LOG_INF("Nfcopralm config loaded: type(%d)", gConfigParam.nfcopralm_config.nfcopralm_type);
-    }
-
-    //--------Load Bkey Config ---------------------
-    length = sizeof(bkey_config_t);
-    ret = my_user_data_read(ZMS_ID_BT_KEY_CONFIG, &gConfigParam.bkey_config, length);
-    if (ret != length)
-    {
-        memcpy(&gConfigParam.bkey_config, &gDefaultBkeyConfig, length);
-        MY_LOG_INF("Bkey config not found. Use default.");
     }
 
     //--------Load Bparmac Config ---------------------

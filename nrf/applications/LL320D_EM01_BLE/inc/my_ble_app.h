@@ -38,7 +38,7 @@
 #define BLE_DATA_TYPE_AT_CMD                    0x5808          //用户指令
 
 /* 单模块回复传输（0xFF 0x01 / 0xFF 0x02）
- * 用于大数据量返回，如NFCTRIG CHECK返回结果
+ * 用于大数据量返回
  * 1. 可单包发送时走 FF01：payload 格式为 len(Varint, 0-512) + Module id(Varint,固定0x08) + Module len(Varint) + data
  *    APP 回复解密后 payload 固定为 0x00
  * 2. 需分包发送时走 FF02：payload 格式为 Len(Varint, 0-512) + Seq(1B) + [首包附带 Module id + Module len] + data

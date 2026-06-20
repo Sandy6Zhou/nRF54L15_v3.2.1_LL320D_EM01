@@ -21,7 +21,6 @@
 #define MY_BLE_TASK_STACK_SIZE     4 * 1024 // 2K测试空间不够，暂修改为4K
 #define MY_CTRL_TASK_STACK_SIZE    1 * 1024 // 先改为4K，未来开发过程中不够再调整
 #define MY_LTE_TASK_STACK_SIZE     8 * 1024
-#define MY_NFC_TASK_STACK_SIZE     4 * 1024 // 先改为4K，未来开发过程中不够再调整
 #define MY_GSENSOR_TASK_STACK_SIZE 4 * 1024 // 先改为4K，未来开发过程中不够再调整
 
 /* 任务优先级定义 */
@@ -29,14 +28,10 @@
 #define MY_BLE_TASK_PRIORITY     5
 #define MY_CTRL_TASK_PRIORITY    5
 #define MY_LTE_TASK_PRIORITY     5
-#define MY_NFC_TASK_PRIORITY     5
 #define MY_GSENSOR_TASK_PRIORITY 5
 
 /* 定时器回调函数类型定义 */
 typedef void (*TIMER_FUN)(void *param);
-
-//NFC联动最大数量
-#define NFCTRIG_MAX_RULES  10
 
 /* 消息结构体定义 */
 typedef struct
@@ -85,21 +80,6 @@ typedef struct {
     intelligent_mode_t intelligent;           // 智能模式
 } device_work_mode_config_t;
 
-/* NFC卡权限结构体 */
-typedef struct
-{
-    char     nfc_no[32];           /* NFC卡号 */
-    int32_t  lat;                  /* 纬度，单位：微度 */
-    int32_t  lon;                  /* 经度，单位：微度 */
-    uint8_t  lat_lon_valid;        /* 经纬度有效标志: 0-不限制, 1-有效 */
-    uint32_t radius;               /* 半径，单位米 */
-    char     start_time[12];       /* 开始时间，格式YYMMDDHHMM */
-    char     end_time[12];         /* 结束时间，格式YYMMDDHHMM */
-    uint8_t  time_valid;           /* 起止时间有效标志: 0-不限制, 1-有效 */
-    int16_t  unlock_times;         /* 解锁可用次数，-1表示不限次数 */
-    int16_t  lock_times;           /* 上锁可用次数，-1表示不限次数 */
-} nfc_auth_card_t;
-
 /* 上报方式枚举定义 */
 typedef enum
 {
@@ -117,24 +97,6 @@ typedef enum
     ALARM_CONTINUOUS,   /* 2-持续报警 */
 } alarm_mode_t;
 
-/* 锁销状态触发方式枚举定义 */
-typedef enum
-{
-    PINSTAT_TRIGGER_MODE_NONE,          /* 0-都不触发 */
-    PINSTAT_TRIGGER_MODE_INSERT,        /* 1-插入触发 */
-    PINSTAT_TRIGGER_MODE_REMOVE,        /* 2-拔出触发 */
-    PINSTAT_TRIGGER_MODE_BOTH,          /* 3-插入拔出均触发 */
-} pinstat_trigger_mode_t;
-
-/* 锁状态触发方式枚举定义 */
-typedef enum
-{
-    LOCK_TRIGGER_NONE = 0,          /* 0-都不触发 */
-    LOCK_TRIGGER_LOCK,          /* 1-上锁触发 */
-    LOCK_TRIGGER_UNLOCK,        /* 2-解锁触发 */
-    LOCK_TRIGGER_BOTH,          /* 3-上锁解锁均触发 */
-} lock_trigger_mode_t;
-
 /* Empty状态触发方式枚举定义 */
 typedef enum
 {
@@ -142,20 +104,6 @@ typedef enum
     EMPTY_TRIGGER_ONLINE,           /* 1-在线触发 */
     EMPTY_TRIGGER_CHANGE,           /* 2-状态变化触发 */
 } empty_trigger_mode_t;
-
-//NFC触发规则项结构体，用于存储单个NFC卡号与指令的关联关系
-typedef struct
-{
-    char  nfctrig_nfc_no[32];       /* 联动的NFC卡号 */
-    char     nfctrig_command[128];      /* 需要执行的完整可执行指令 */
-} nfctrig_rule_t;
-
-//NFC触发规则表结构体，管理所有已配置的NFC触发规则
-typedef struct
-{
-    nfctrig_rule_t nfctrig_rule[NFCTRIG_MAX_RULES];
-    uint8_t count;              //当前nfc_add数量
-} nfctrig_table_t;
 
 /*********************************************************************
 **函数名称:  my_system_reset

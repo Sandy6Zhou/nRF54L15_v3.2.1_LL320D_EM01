@@ -133,7 +133,6 @@ typedef struct
     uint8_t used;      // 是否占用（0=空闲，1=使用中）
 } async_resp_tiem_t;
 
-// LTE+CMD4G透传指令需要异步回复的队列大小（目前就LTE+CMD=UNLOCK,.../LTE+CMD=CLCOK网络开锁和解锁）
 #define ASYNC_QUEUE_SIZE 6
 
 async_resp_tiem_t g_async_queue[ASYNC_QUEUE_SIZE];
@@ -207,9 +206,6 @@ cmd_struct_t AT_CMD_INNER[] = {
 };
 // 发送脉冲消息声明
 static void send_lte_pulse(void);
-
-// 网络解锁全局变量
-net_unlock_ctrl_t g_net_unlock = {0};
 
 // 脉冲消息计数器
 static uint16_t s_lte_pulse_count = 0;
@@ -848,7 +844,7 @@ int async_add_item(char *cmd_name, char *id)
 
 /********************************************************************
 **函数名称:  async_match_and_resp
-**入口参数:  data      ---        数据（格式：指令头,回复内容）如CUNLOCK,Unlock failed. No unlock state detected.
+**入口参数:  data      ---        数据（格式：指令头,回复内容）
 **出口参数:  无
 **函数功能:  解析数据头，在队列中查找匹配项；若匹配成功，将元素前移并发送响应给LTE
 **返 回 值:  0表示匹配成功并发送，-1表示未匹配到对应指令
@@ -1498,7 +1494,6 @@ static char *my_handle_at_pcba_cmd(char **pParam, int nParam)
     uint8_t data_buff[64] = {0};
     const gsm_imei_t *gsmImei;
     const uint8_t *edr_addr;
-    uint8_t version = 0;
     int ret;
 
     LOG_INF("%s: %s", __func__, pParam[0]);
@@ -1687,13 +1682,11 @@ static char *my_handle_at_pcba_cmd(char **pParam, int nParam)
             if (CMD_MATCHED(pParam[3], "ON"))
             {
                 batt_led_set_level(3);
-                lock_led_set(true);
                 sprintf(resp, "RETURN_LED_ON");
             }
             else if (CMD_MATCHED(pParam[3], "OFF"))
             {
                 batt_led_set_level(0);
-                lock_led_set(false);
                 sprintf(resp, "RETURN_LED_OFF");
             }
         }
@@ -1709,11 +1702,6 @@ static char *my_handle_at_pcba_cmd(char **pParam, int nParam)
         else if (CMD_MATCHED(pParam[2], "GSENSOR"))
         {
             sprintf(resp, "RETURN_MCU_GSENSOR:0x%02X", get_chip_id());
-        }
-        else if (CMD_MATCHED(pParam[2], "NFC"))
-        {
-            fm175xx_read_reg(JREG_VERSION, &version);
-            sprintf(resp, "RETURN_MCU_NFC:0x%02X", version);
         }
 
     }
@@ -2166,51 +2154,6 @@ static int my_lte_handle_ntc_set(char *data)
     return 0;
 }
 
-/********************************************************************
-**函数名称:  netunlock_start_timer_handler
-**入口参数:  timer   ---   定时器句柄 (此处未使用)
-**出口参数:  无
-**函数功能:  网络开锁定时器回调：执行实际的开锁动作
-**           1. 状态检查：检测当前是否已处于解锁状态
-**           2. 若已解锁，开启窗口定时器倒计时
-**           3. 未解锁：更新全局锁状态为 UNLOCKING 并发送控制消息解锁（解锁成功才需要开启窗口定时器）
-**返 回 值:  无
-*********************************************************************/
-void netunlock_start_timer_handler(struct k_timer *timer)
-{
-    ARG_UNUSED(timer);
-
-    // 检查当前锁状态：通过开锁限位判断是否已解锁
-    if (get_openlock_state())
-    {
-        //窗口定时器 开启标记
-        g_net_unlock.netunlock_flag = 1;
-        k_timer_start(&g_net_unlock.delay_timer, K_MSEC(g_net_unlock.delay_sec * 1000), K_NO_WAIT);
-
-        return;
-    }
-
-    g_netLockState = UNLOCKING;
-    //表示到时开启定时器解锁（不需要异步回复）
-    g_net_unlock.start_timer_flag = 1;
-
-    my_send_msg(MOD_MAIN, MOD_CTRL, MY_MSG_CTRL_OPENLOCKING);
-}
-
-/********************************************************************
-**函数名称:  netunlock_delay_timer_handler
-**入口参数:  timer   ---   定时器句柄 (此处未使用)
-**出口参数:  无
-**函数功能:  窗口定时到时，清空标志位（自动上锁恢复）
-**返 回 值:  无
-*********************************************************************/
-void netunlock_delay_timer_handler(struct k_timer *timer)
-{
-    ARG_UNUSED(timer);
-
-    g_net_unlock.netunlock_flag = 0;
-}
-
 static int my_lte_handle_transmit(char *data)
 {
     return 0;
@@ -2241,8 +2184,6 @@ static int my_lte_handle_fota(char *data)
 **函数功能:  执行LTE+CMD=<号码>,<指令内容>,并根据指令内容的执行回复对应的结果给4G模块
 **            <指令内容>与通过蓝牙指令下发下来的内容一致，按照相关指令格式填写即可
 **          如:LTE+CMD=111,VERSION/LTE+CMD=111,VERSION#/末尾加不加#都可以
-**          LTE+CMD=111,NFCTRIG,ADD,1234456789,
-**          "NFCAUTH,SET,88040FBE99050B,+22277120,13516763,999900,2603200000,2603201200,1"
 *********************************************************************/
 int my_lte_handle_cmd(char *data)
 {
@@ -2367,29 +2308,13 @@ out:
 **函数名称:  my_lte_handle_location_rsp
 **入口参数:  result   --- 接收应答结构体
 **出口参数:  无
-**函数功能:  发送消息给MAIN线程去处理开锁相关规则：
+**函数功能:  处理获取经纬度应答
 **返 回 值:  0      --- 处理完成
 *********************************************************************/
 //处理获取经纬度
 static int my_lte_handle_location_rsp(ble_rsp_result_t *result)
 {
-    msg_t msg;
-    ble_rsp_result_t *result_loc;
-    // 动态分配内存存储回复消息
-    MY_MALLOC_BUFFER(result_loc, sizeof(ble_rsp_result_t));
-    if(result_loc == NULL)
-    {
-        MY_LOG_ERR("result_loc malloc failed");
-        return 0;
-    }
-    memcpy(result_loc, result, sizeof(ble_rsp_result_t));
-
-    // 构建消息结构体并发送给MAIN模块
-    msg.msgID = MY_MSG_VERIFY_UNLOCK;
-    msg.pData = result_loc;
-    msg.DataLen = sizeof(ble_rsp_result_t);
-
-    my_send_msg_data(MOD_LTE, MOD_MAIN, &msg);
+    ARG_UNUSED(result);
 
     return 0;
 }
@@ -2883,63 +2808,6 @@ bool my_check_location_valid(location_storage_t *point)
     return true;
 }
 
-/********************************************************************
-**函数名称:  my_verify_nfc_permission
-**入口参数:  无
-**出口参数:  无
-**函数功能:  执行刷卡位置校验，主要包括：
-**            1. 校验当前储存点位置数据的有效性，有效就根据 NFC 卡片的权限状态执行开锁或关锁规则
-**            2.储存点无效发送BLE+LOCATION=seq;seq为刷卡索引，获取经纬度信息
-**返 回 值:  无
-********************************************************************/
-void my_verify_nfc_permission(void)
-{
-    char card_index[10]={0};
-    //先验证存储点是否有效
-    if (my_check_location_valid(&g_location_point))
-    {
-        //再验证是否在电子围栏范围内
-        if (is_point_in_circle(g_location_point.lat, g_location_point.lon,
-            gConfigParam.nfcauth_config.nfcauth_cards[g_nfc_card_index].lat,
-            gConfigParam.nfcauth_config.nfcauth_cards[g_nfc_card_index].lon,
-            gConfigParam.nfcauth_config.nfcauth_cards[g_nfc_card_index].radius))
-        {
-            if (gConfigParam.nfcauth_config.nfcauth_cards[g_nfc_card_index].unlock_times != 0 && get_openlock_state() == false)
-            {
-                if (gConfigParam.nfcauth_config.nfcauth_cards[g_nfc_card_index].unlock_times > 0)
-                {
-                    gConfigParam.nfcauth_config.nfcauth_cards[g_nfc_card_index].unlock_times--;
-                    my_user_data_write(ZMS_ID_NFCAUTH_CONFIG, &gConfigParam.nfcauth_config, sizeof(nfcauth_config_t));
-                }
-                my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_CTRL_OPENLOCKING);
-                MY_LOG_INF("start to openlock");
-            }
-            else if (gConfigParam.nfcauth_config.nfcauth_cards[g_nfc_card_index].lock_times != 0 && get_closelock_state() == false)
-            {
-                if (gConfigParam.nfcauth_config.nfcauth_cards[g_nfc_card_index].lock_times > 0)
-                {
-                    gConfigParam.nfcauth_config.nfcauth_cards[g_nfc_card_index].lock_times--;
-                    my_user_data_write(ZMS_ID_NFCAUTH_CONFIG, &gConfigParam.nfcauth_config, sizeof(nfcauth_config_t));
-                }
-                my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_CTRL_CLOSELOCKING);
-                MY_LOG_INF("start to closelock");
-            }
-        }
-        else
-        {
-            LOG_INF("device is out of allowed area");
-        }
-
-        g_last_card_index = -1;
-    }
-    else
-    {
-        // 通过发消息通知4G需要获取经纬度信息
-        sprintf(card_index, "%d", g_nfc_card_index);
-        lte_send_command("LOCATION", card_index);
-    }
-    return;
-}
 
 /*
  * 处理各个协议指令
@@ -3247,10 +3115,6 @@ int my_lte_init(k_tid_t *tid)
 
     /* 初始化完成后默认开启模块电源 */
     my_lte_pwr_on(true);
-
-    // 网络解锁相关定时器
-    k_timer_init(&g_net_unlock.start_timer, netunlock_start_timer_handler, NULL);
-    k_timer_init(&g_net_unlock.delay_timer, netunlock_delay_timer_handler, NULL);
 
     return 0;
 }

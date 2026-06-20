@@ -13,7 +13,6 @@
 **   2. 总线电源管理：通过 pm_device_runtime_get/put 控制 I2C/UART 状态
 **
 ** 总线分配:
-**   - I2C22: NFC 模块
 **   - I2C21: G-Sensor 模块
 **   - UART : LTE 模块
 **
@@ -32,7 +31,6 @@
 /* ========== 电源管理设备ID枚举 ========== */
 typedef enum
 {
-    MY_PM_DEV_NFC,     /* NFC模块：I2C22 + FM175XX */
     MY_PM_DEV_GSENSOR, /* G-Sensor模块：I2C21 + LSM6DSV16X */
     MY_PM_DEV_LTE,     /* LTE模块：UART + 电源控制 */
     MY_PM_DEV_BATTERY, /* Battery模块：ADC采样 */

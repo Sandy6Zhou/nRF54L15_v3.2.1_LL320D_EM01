@@ -12,7 +12,14 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260618"
+#define SOFTWARE_VERSION "LL320D_EM01_V1.0_260620"
+/* 软件版本:        V1.0
+** 完成日期:        2026.06.20
+** 作    者:       周森达 (zhousenda@jimiiot.com)
+** 修改内容:        1.移除NFC读卡和电机开关锁功能模块
+***/
+
+// #define SOFTWARE_VERSION "LL311_NRF54L15_V1.0_260618"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.06.18
 ** 作    者:       曹阳1 (caoyang@jimiiot.com)

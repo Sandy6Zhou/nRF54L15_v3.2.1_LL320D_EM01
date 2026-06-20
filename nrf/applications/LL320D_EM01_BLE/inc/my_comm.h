@@ -7,7 +7,7 @@
 **完成日期:        2026.01.15
 *********************************************************************
 ** 功能描述:        集中引用所有模块头文件，便于统一管控
-**                 包含：Main、BLE、Shell、Ctrl、LTE、NFC、GSensor 模块
+**                 包含：Main、BLE、Shell、Ctrl、LTE、GSensor 模块
 *********************************************************************/
 
 #ifndef _MY_COMMON_H_
@@ -79,10 +79,6 @@
 #include <soc.h>
 #include <uart_async_adapter.h>
 
-// 包含 FM175XX 相关头文件
-#include "../inc/fm175xx_driver.h"
-#include "../inc/fm175xx_reg.h"
-
 /* ========== 通用宏定义 ========== */
 #define JM_SLEEP(timeout) k_sleep(timeout)
 #define MY_MALLOC_BUFFER(PTR, BUFFER_SIZE) \
@@ -105,7 +101,6 @@ typedef enum
     MOD_BLE,         // BLE处理程序
     MOD_CTRL,        // Control处理程序
     MOD_LTE,         // LTE处理程序
-    MOD_NFC,         // NFC处理程序
     MOD_GSENSOR,     // G-Sensor处理程序
     MOD_FOTA,        // FOTA处理程序
     MAX_MY_MOD_TYPE, // 最大模块类型
@@ -115,8 +110,6 @@ typedef enum
 typedef enum
 {
     ALARM_OPEN = 1,         // 拆壳告警
-    ALARM_UNLOCK,           // 开锁告警
-    ALARM_LOCK,             // 上锁告警
     ALARM_STILL,            // 静止状态告警
     ALARM_SEA,              // 海运状态告警
     ALARM_LAND,             // 陆运状态告警
@@ -125,9 +118,6 @@ typedef enum
     ALARM_CHARGE_FULL,      // 充满状态告警
     ALARM_IMPACT,           // 撞击检测告警
     ALARM_CUT,              // 剪线告警
-    ALARM_LOCKPIN_IN,       // 锁销插入状态告警
-    ALARM_LOCKPIN_OUT,       // 锁销拔出状态告警
-    ALARM_NFC,              // NFC告警
     ALARM_BATT,             // 电池状态告警
     ALARM_OTHER,            // 其他类型告警
 } alarm_type_t;
@@ -200,8 +190,6 @@ typedef enum
     MY_MSG_WORK_MODE_SWITCH,
     MY_MSG_SHOW_CHARG, // 充电状态显示LED消息
     MY_MSG_UPDATE_BATTERY, // 更新电池状态消息
-    MY_MSG_CTRL_LOCK_LED, // 锁LED控制消息
-    MY_MSG_VERIFY_UNLOCK, // 处理开锁规则
 
 
 
@@ -225,19 +213,11 @@ typedef enum
     MY_MSG_GPS_SPEED_UPDATE ,       /* 处理GPS速度消息 */
     MY_MSG_SHOCK_SW,                /* 处理撞击检测开关消息 */
 
-    /* NFC处理程序消息 */
-    MY_MSG_NFC_START_POLL,   /* 启动NFC轮询 */
-    MY_MSG_NFC_STOP_POLL,    /* 停止NFC轮询 */
-    MY_MSG_NFC_CARD_EVENT,   /* NFC卡片事件 */
-    MY_MSG_NFC_POLL_TIMEOUT, /* NFC轮询超时 */
-
     /* CTRL处理程序消息 */
     MY_MSG_CTRL_KEY_SHORT_PRESS,       /* 按键短按事件 */
     MY_MSG_CTRL_KEY_LONG_PRESS,        /* 按键长按事件（2秒） */
     MY_MSG_CTRL_LIGHT_SENSOR_DARK,     /* 光传感器检测到黑暗环境 */
     MY_MSG_CTRL_LIGHT_SENSOR_BRIGHT,   /* 光传感器检测到光明环境 */
-    MY_MSG_CTRL_LOCK_PIN_INSERTED,     /* 锁销插入检测 */
-    MY_MSG_CTRL_LOCK_PIN_DISCONNECTED, /* 锁销断开检测 */
     MY_MSG_CTRL_SHUTDOWN_REQUEST,      /* 关机请求 */
 
     /* BLE 处理程序消息 */
@@ -246,7 +226,6 @@ typedef enum
     // 处理4G过来LTE+CMD数据透传
     MY_MSG_LTE_CMD_RX,
     MY_MSG_LTE_CMD_ASYNC_RESP,
-    MY_MSG_BLE_NFCTRIG_EVENT,  // 处理NFC联动指令
 
     //处理透传mac和tag数据传输（单条上报)
     MY_MSG_UPLOAD_TAG_AND_MAC,
@@ -257,13 +236,6 @@ typedef enum
     MY_MSG_DFU_COMPLETE, /* DFU OTA 完成 */
     MY_MSG_DFU_FAIL,     /* DFU OTA 失败 */
 
-    /* 开关锁状态消息 */
-    MY_MSG_CTRL_OPENLOCKING,    /* 开锁中 */
-    MY_MSG_CTRL_CLOSELOCKING,   /* 关锁中 */
-    MY_MSG_CTRL_STOPLOCK,       /* 停止开/关锁 */
-    MY_MSG_CTRL_OPENLOCKED,     /* 已开锁 */
-    MY_MSG_CTRL_CLOSELOCKED,    /* 已关锁 */
-    MY_MSG_BLE_LOCK_RESULT,     /* 蓝牙开/关锁结果通知消息 */
     MY_MSG_BLE_CMD,             /* 指令透传回复消息 */
 
     MY_MSG_LTE_BLE_DATA,        /* 蓝牙指令数据 */
@@ -290,10 +262,8 @@ typedef enum
 #include "my_shell.h"
 #include "my_ctrl.h"
 #include "my_lte.h"
-#include "my_nfc.h"
 #include "my_gsensor.h"
 #include "my_gsensor_algorithm.h"
-#include "my_motor.h"
 #include "my_battery.h"
 // #include "my_wdt.h"
 #include "my_tool.h"

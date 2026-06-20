@@ -452,56 +452,6 @@ static int shell_at_test(const struct shell *sh, size_t argc, char **argv)
 }
 
 /********************************************************************
-**函数名称:  cmd_nfc_poll
-**入口参数:  shell   ---        Shell 实例指针
-**           argc    ---        参数数量
-**           argv    ---        参数数组
-**出口参数:  无
-**函数功能:  启动或停止 NFC 轮询（读到卡或超时后自动进入 HPD）
-**返 回 值:  0 表示成功
-*********************************************************************/
-static int cmd_nfc_poll(const struct shell *shell, size_t argc, char **argv)
-{
-    if (argc < 2)
-    {
-        shell_print(shell, "Usage: app nfc_poll <start|stop> [timeout_sec]");
-        shell_print(shell, "  start [timeout_sec] - Start NFC polling (default 30s, auto HPD after card detected or timeout)");
-        shell_print(shell, "  stop                - Stop NFC polling and enter HPD mode");
-        return -EINVAL;
-    }
-
-    if (strcmp(argv[1], "start") == 0)
-    {
-        uint32_t timeout_s = 30; /* 默认30秒 */
-        if (argc >= 3)
-        {
-            timeout_s = atoi(argv[2]);
-            if (timeout_s == 0)
-            {
-                timeout_s = 30; /* 如果输入无效，使用默认值 */
-            }
-        }
-        shell_print(shell, "Starting NFC polling for %d seconds...", timeout_s);
-        my_nfc_start_poll(timeout_s);
-        shell_print(shell, "NFC polling started: %ds timeout, will enter HPD mode when card detected or timeout", timeout_s);
-    }
-    else if (strcmp(argv[1], "stop") == 0)
-    {
-        shell_print(shell, "Stopping NFC polling...");
-        my_nfc_stop_poll();
-        shell_print(shell, "NFC polling stopped, entered HPD mode");
-    }
-    else
-    {
-        shell_error(shell, "Invalid parameter: %s", argv[1]);
-        shell_print(shell, "Usage: app nfc_poll <start|stop> [timeout_sec]");
-        return -EINVAL;
-    }
-
-    return 0;
-}
-
-/********************************************************************
 **函数名称：cmd_shutdown
 **入口参数：shell   ---        Shell 实例指针
 **           argc    ---        参数数量
@@ -617,8 +567,8 @@ static int cmd_ble_log_config(const struct shell *shell, size_t argc, char **arg
         shell_print(shell, "  app blogcfg level <name> <0-4>  - Set module level");
         shell_print(shell, "  app blogcfg show                - Show configuration");
         shell_print(shell, "Module names:");
-        shell_print(shell, "  MAIN, BLE, DFU, SENSOR, LTE, CTRL, SHELL, NFC,");
-        shell_print(shell, "  BATTERY, MOTOR, CMD, TOOL, PARAM, WDT, OTHER");
+        shell_print(shell, "  MAIN, BLE, DFU, SENSOR, LTE, CTRL, SHELL,");
+        shell_print(shell, "  BATTERY, CMD, TOOL, PARAM, WDT, OTHER");
         shell_print(shell, "Level: 0=NONE, 1=ERR, 2=WRN, 3=INF, 4=DBG");
         return -1;
     }
@@ -678,12 +628,8 @@ static int cmd_ble_log_config(const struct shell *shell, size_t argc, char **arg
             shell_print(shell, "SHELL module does not support BLE log (recursive risk)");
             return -1;
         }
-        else if (strcmp(argv[2], "NFC") == 0)
-            mod_id = BLE_LOG_MOD_NFC;
         else if (strcmp(argv[2], "BATTERY") == 0)
             mod_id = BLE_LOG_MOD_BATTERY;
-        else if (strcmp(argv[2], "MOTOR") == 0)
-            mod_id = BLE_LOG_MOD_MOTOR;
         else if (strcmp(argv[2], "CMD") == 0) // CMD 模块不支持 BLE 日志（递归风险），初始化时已禁用
         {
             shell_print(shell, "CMD module does not support BLE log (recursive risk)");
@@ -746,12 +692,8 @@ static int cmd_ble_log_config(const struct shell *shell, size_t argc, char **arg
             shell_print(shell, "SHELL module does not support BLE log (recursive risk)");
             return -1;
         }
-        else if (strcmp(argv[2], "NFC") == 0)
-            mod_id = BLE_LOG_MOD_NFC;
         else if (strcmp(argv[2], "BATTERY") == 0)
             mod_id = BLE_LOG_MOD_BATTERY;
-        else if (strcmp(argv[2], "MOTOR") == 0)
-            mod_id = BLE_LOG_MOD_MOTOR;
         else if (strcmp(argv[2], "CMD") == 0) // CMD 模块不支持 BLE 日志（递归风险），初始化时已禁用
         {
             shell_print(shell, "CMD module does not support BLE log (recursive risk)");
@@ -807,15 +749,9 @@ static int cmd_ble_log_config(const struct shell *shell, size_t argc, char **arg
         shell_print(shell, "    SHELL:  %s  %d",
                     BLE_LOG_MOD_IS_ENABLED(config, BLE_LOG_MOD_SHELL) ? "ON" : "OFF",
                     config->mod_level[BLE_LOG_MOD_SHELL]);
-        shell_print(shell, "    NFC:    %s  %d",
-                    BLE_LOG_MOD_IS_ENABLED(config, BLE_LOG_MOD_NFC) ? "ON" : "OFF",
-                    config->mod_level[BLE_LOG_MOD_NFC]);
         shell_print(shell, "    BATTERY: %s  %d",
                     BLE_LOG_MOD_IS_ENABLED(config, BLE_LOG_MOD_BATTERY) ? "ON" : "OFF",
                     config->mod_level[BLE_LOG_MOD_BATTERY]);
-        shell_print(shell, "    MOTOR:  %s  %d",
-                    BLE_LOG_MOD_IS_ENABLED(config, BLE_LOG_MOD_MOTOR) ? "ON" : "OFF",
-                    config->mod_level[BLE_LOG_MOD_MOTOR]);
         shell_print(shell, "    CMD:    %s  %d",
                     BLE_LOG_MOD_IS_ENABLED(config, BLE_LOG_MOD_CMD) ? "ON" : "OFF",
                     config->mod_level[BLE_LOG_MOD_CMD]);
@@ -901,104 +837,6 @@ static int cmd_buzzer_test(const struct shell *sh, size_t argc, char **argv)
     shell_print(sh, "param: %s, len: %d", argv[1], len);
     my_set_buzzer_mode(atoi(argv[1]));
 
-    return 0;
-}
-
-/********************************************************************
-**函数名称:  cmd_nfctrig_test
-**入口参数:  sh    ---        Shell句柄，用于输出信息
-            argc  ---        参数个数
-            argv  ---        参数数组，argv[1]为测试参数字符串
-**出口参数:  无
-**函数功能:  测试NFC联动指令，接收参数并执行对应的NFC联动命令
-**返 回 值:  0表示成功
-*********************************************************************/
-static int cmd_nfctrig_test(const struct shell *sh, size_t argc, char **argv)
-{
-    int len;
-    uint8_t card_index = 0;
-    uint16_t ret = 0;
-
-    if (argc < 2)
-    {
-        shell_error(sh, "Missing parameter");
-        return -EINVAL;
-    }
-
-    memset(g_shell_test_buff, 0, sizeof(g_shell_test_buff));
-
-    len = strlen(argv[1]);
-    memcpy(g_shell_test_buff, argv[1], len);
-    g_shell_test_buff[len] = 0;
-
-    shell_print(sh, "param: %s, len: %d", argv[1], len);
-
-    //执行NFC联动指令
-    ret = run_nfc_cmd(argv[1], &card_index);
-    if (ret)
-    {
-        MY_LOG_INF("Command executed success: cmd_type:%d; command:%s", ret, gConfigParam.nfctrig_config.nfctrig_table.nfctrig_rule[card_index].nfctrig_command);
-    }
-    else
-    {
-        MY_LOG_INF("Command executed fail: cmd_type:%d", ret);
-    }
-
-
-    return 0;
-}
-
-/********************************************************************
-**函数名称:  cmd_nfc_swipe_test
-**入口参数:  sh    ---        Shell句柄，用于输出信息
-            argc  ---        参数个数
-            argv  ---        参数数组，argv[1]为测试参数字符串
-**出口参数:  无
-**函数功能:  处理NFC刷卡测试命令，执行对应的NFC刷卡测试逻辑（模拟刷卡事件）
-**返 回 值:  0表示成功
-*********************************************************************/
-static int cmd_nfc_swip_test(const struct shell *sh, size_t argc, char **argv)
-{
-    int len;
-    uint8_t select = 0;
-    // 定义 10 个测试二进制卡号
-    uint8_t test_data[10][7] = {
-        {0x88, 0x04, 0x0F, 0xBE, 0x99, 0x05, 0x0B}, // 1
-        {0x88, 0x04, 0x0F, 0xBE, 0x99, 0x05, 0xCC}, // 2
-        {0x88, 0x04, 0x0F, 0xBE}, // 3
-        {0x00}, // 4 (预留位置，可根据需要填充)
-        {0x00}, // 5
-        {0x00}, // 6
-        {0x00}, // 7
-        {0x00}, // 8
-        {0x00}, // 9
-        {0x00}  // 10
-    };
-    //对应的卡号长度，按序
-    uint8_t test_lens[] = {7, 7, 4, 1, 1, 1, 1, 1, 1, 1};
-
-    if (argc < 2)
-    {
-        shell_error(sh, "Missing parameter");
-        return -EINVAL;
-    }
-
-    memset(g_shell_test_buff, 0, sizeof(g_shell_test_buff));
-
-    len = strlen(argv[1]);
-    select = atoi(argv[1]);
-    memcpy(g_shell_test_buff, argv[1], len);
-    g_shell_test_buff[len] = 0;
-
-    shell_print(sh, "param: %s, len: %d", argv[1], len);
-    if (select < 1 || select > 10)
-    {
-        shell_error(sh, "Invalid selection: %d (Range: 1-10)", select);
-        return -EINVAL;
-    }
-
-    //刷卡处理
-    handle_nfc_card_event(test_data[select - 1], test_lens[select-1]);
     return 0;
 }
 
@@ -1116,9 +954,8 @@ static int cmd_alarm_test(const struct shell *sh, size_t argc, char **argv)
     if (argc < 2)
     {
         shell_print(sh, "Usage: app alarmtest <type> [info]");
-        shell_print(sh, "  type: 0=OPEN, 1=ILLEGALUNLOCK, 2=LOCK, 3=MOTION,");
-        shell_print(sh, "        4=BATT, 5=CHARGE, 6=IMPACT, 7=SEPARATE,");
-        shell_print(sh, "        8=NFC, 9=CUT, 10=OTHER");
+        shell_print(sh, "  type: 1=OPEN, 2=STILL, 3=SEA, 4=LAND,");
+        shell_print(sh, "        5=BATT, 6=CHARGE_FULL, 7=IMPACT, 8=CUT, 9=OTHER");
         shell_print(sh, "  info: optional additional info string");
         return -EINVAL;
     }
@@ -1202,16 +1039,8 @@ static int cmd_hardware_test(const struct shell *sh, size_t argc, char **argv)
 {
     int mode = 0;
 
-    // 锁电源使能测试
-    if (strcmp(argv[1], "lockpwren") == 0)
-    {
-        //lockpwren 0/1      (锁控制电源关/开)
-        mode = atoi(argv[2]);
-
-        motor_power_set(mode);
-    }
     // G-Sensor电源使能测试
-    else if (strcmp(argv[1], "gsensorpwren") == 0)
+    if (strcmp(argv[1], "gsensorpwren") == 0)
     {
         //gsensorpwren 0/1      (G-Sensor控制电源关/开)
         mode = atoi(argv[2]);
@@ -1234,6 +1063,8 @@ static int cmd_hardware_test(const struct shell *sh, size_t argc, char **argv)
 
         my_lte_pwr_on(mode);
     }
+
+    return 0;
 }
 
 #if FS_STORE_TEST_ENABLE
@@ -1638,14 +1469,11 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_app,
     SHELL_CMD(gettime, NULL, "gettime unix seconds", cmd_get_time),
     SHELL_CMD(modeset, NULL, "Configure longlife or smart mode parameters", cmd_modeset),
     SHELL_CMD(AT_TEST, NULL, "Usage:app AT_TEST \"TEST xxxx(AT^GT_CM=xxxx)\"", shell_at_test),
-    SHELL_CMD(nfc_poll, NULL, "NFC polling: app nfc_poll <start|stop>", cmd_nfc_poll),
     SHELL_CMD(shutdown, NULL, "Shutdown system (enter ultra-low power mode)", cmd_shutdown),
     SHELL_CMD(blog, NULL, "Send BLE log test message: app blog <message>", cmd_ble_log_test),
     SHELL_CMD(blogcfg, NULL, "BLE log config: app blogcfg <global|mod|level|show>", cmd_ble_log_config),
     SHELL_CMD(ble_test, NULL, "test", cmd_ble_test),
     SHELL_CMD(buzzer_test, NULL, "Run Buzzer test", cmd_buzzer_test),
-    SHELL_CMD(nfctrig_test, NULL, "Run nfctrig test", cmd_nfctrig_test),
-    SHELL_CMD(nfc_swip_test, NULL, "Run nfc swipe test", cmd_nfc_swip_test),
     SHELL_CMD(tagscan, NULL, "Set tag scan config: app tagscan <mode> <scan_interval> <scan_length> <upload_interval>", cmd_tag_scan_set_config),
     SHELL_CMD(alarmtest, NULL, "Test alarm message: app alarmtest <type> [info]", cmd_alarm_test),
     SHELL_CMD(retransmit_check_test, NULL, "Run retransmit_check_test test", cmd_retransmit_check_test),

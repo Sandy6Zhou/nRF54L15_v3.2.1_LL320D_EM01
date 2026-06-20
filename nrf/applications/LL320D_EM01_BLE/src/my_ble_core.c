@@ -1254,12 +1254,6 @@ static void my_ble_task(void *p1, void *p2, void *p3)
                 }
                 break;
 
-            /* 蓝牙开/关锁结果通知 */
-            case MY_MSG_BLE_LOCK_RESULT:
-                /* 根据数据大小动态使用单包或分包 */
-                ble_packet_trans_send(msg.pData, msg.DataLen);
-                break;
-
             /* BLE包传输应答超时处理 */
             case MY_MSG_BLE_PACKET_TIMEOUT:
                 ble_packet_trans_timeout_handler();
@@ -1299,28 +1293,6 @@ static void my_ble_task(void *p1, void *p2, void *p3)
                 // 释放动态分配的内存
                 if(msg.pData != NULL)
                 {
-                    MY_FREE_BUFFER(msg.pData);
-                    msg.pData = NULL;
-                }
-                break;
-
-            case MY_MSG_BLE_NFCTRIG_EVENT:
-                if (msg.pData)
-                {
-                    nfctrig_cmd_t *card = (nfctrig_cmd_t *)msg.pData;
-                    //执行NFC联动指令
-                    ret = run_nfc_cmd(card->card_id, &card->card_index);
-                    if (ret)
-                    {
-                        //命令匹配成功，具体执行结果看命令响应
-                        MY_LOG_INF("Command matched success: cmd_type:%d; command:%s", ret, gConfigParam.nfctrig_config.nfctrig_table.nfctrig_rule[card->card_index].nfctrig_command);
-                    }
-                    else
-                    {
-                        MY_LOG_INF("Command not matched or failed to parse: cmd_type:%d; card_id:%s", ret, card->card_id);
-                    }
-
-                    // 处理完毕后释放消息数据内存
                     MY_FREE_BUFFER(msg.pData);
                     msg.pData = NULL;
                 }

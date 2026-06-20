@@ -46,9 +46,9 @@ static void wdt_feed_timer_callback(void *p1)
 {
     ARG_UNUSED(p1);
 
-    /* 检查关键线程是否都活跃: Main, BLE, Ctrl, LTE, NFC, GSensor */
+    /* 检查关键线程是否都活跃: Main, BLE, Ctrl, LTE, GSensor */
     uint32_t expected_flags = (1 << MOD_MAIN) | (1 << MOD_BLE) | (1 << MOD_CTRL) |
-                              (1 << MOD_LTE) | (1 << MOD_NFC) | (1 << MOD_GSENSOR);
+                              (1 << MOD_LTE) | (1 << MOD_GSENSOR);
 
     if ((s_thread_alive_flags & expected_flags) == expected_flags)
     {

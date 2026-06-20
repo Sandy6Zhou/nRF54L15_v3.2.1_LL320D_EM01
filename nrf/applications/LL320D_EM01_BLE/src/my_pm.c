@@ -13,7 +13,6 @@
 **   2. 总线电源管理：通过 pm_device_runtime_get/put 控制 I2C/UART 状态
 **
 ** 总线分配:
-**   - I2C22: NFC 模块
 **   - I2C21: G-Sensor 模块
 **   - UART : LTE 模块
 **
@@ -34,9 +33,6 @@
 /* 注册 PM 模块日志 */
 LOG_MODULE_REGISTER(my_pm, LOG_LEVEL_INF);
 
-/* ========== I2C22 总线设备节点（NFC使用） ========== */
-#define I2C22_NODE DT_ALIAS(nfc_i2c)
-
 /* ========== I2C21 总线设备节点（G-Sensor使用） ========== */
 #define I2C21_NODE DT_ALIAS(gsensor_i2c)
 
@@ -51,81 +47,6 @@ LOG_MODULE_REGISTER(my_pm, LOG_LEVEL_INF);
 
 /* ========== 设备上下文数组 ========== */
 static pm_device_ctx_t s_pm_devices[MY_PM_DEV_MAX];
-
-/********************************************************************
-**函数名称:  my_pm_get_i2c22_device
-**入口参数:  无
-**出口参数:  无
-**函数功能:  获取 I2C22 总线设备句柄
-**返 回 值:  I2C 设备指针，未就绪返回 NULL
-*********************************************************************/
-static const struct device *my_pm_get_i2c22_device(void)
-{
-    const struct device *dev = DEVICE_DT_GET_OR_NULL(I2C22_NODE);
-    return dev;
-}
-
-/********************************************************************
-**函数名称:  my_pm_i2c22_resume
-**入口参数:  无
-**出口参数:  无
-**函数功能:  恢复 I2C22 总线（使用 Runtime PM API）
-**           与 CONFIG_PM_DEVICE_RUNTIME=y 兼容
-**返 回 值:  0 表示成功，负值表示错误码
-*********************************************************************/
-static int my_pm_i2c22_resume(void)
-{
-    const struct device *dev = my_pm_get_i2c22_device();
-    int ret = 0;
-
-    if (dev == NULL)
-    {
-        MY_LOG_ERR("I2C22 device not found");
-        return -ENODEV;
-    }
-
-    /* 使用 Runtime PM API，引用计数+1，首次调用时自动 resume */
-    ret = pm_device_runtime_get(dev);
-    if (ret < 0)
-    {
-        MY_LOG_ERR("I2C22 runtime get failed: %d", ret);
-        return ret;
-    }
-
-    MY_LOG_DBG("I2C22 runtime get OK");
-    return 0;
-}
-
-/********************************************************************
-**函数名称:  my_pm_i2c22_suspend
-**入口参数:  无
-**出口参数:  无
-**函数功能:  挂起 I2C22 总线（使用 Runtime PM API）
-**           与 CONFIG_PM_DEVICE_RUNTIME=y 兼容
-**返 回 值:  0 表示成功，负值表示错误码
-*********************************************************************/
-static int my_pm_i2c22_suspend(void)
-{
-    const struct device *dev = my_pm_get_i2c22_device();
-    int ret = 0;
-
-    if (dev == NULL)
-    {
-        MY_LOG_ERR("I2C22 device not found");
-        return -ENODEV;
-    }
-
-    /* 使用 Runtime PM API，引用计数-1，为0时自动 suspend */
-    ret = pm_device_runtime_put(dev);
-    if (ret < 0)
-    {
-        MY_LOG_ERR("I2C22 runtime put failed: %d", ret);
-        return ret;
-    }
-
-    MY_LOG_DBG("I2C22 runtime put OK");
-    return 0;
-}
 
 /********************************************************************
 **函数名称:  my_pm_get_i2c21_device
@@ -463,10 +384,6 @@ int my_pm_device_register(my_pm_dev_id_t dev_id, const pm_device_ops_t *ops)
         /* 先执行一次 Resume 总线（确保总线可用） */
         switch (dev_id)
         {
-            case MY_PM_DEV_NFC:
-                ret = my_pm_i2c22_resume();
-                break;
-
             case MY_PM_DEV_GSENSOR:
                 ret = my_pm_i2c21_resume();
                 break;
@@ -497,10 +414,6 @@ int my_pm_device_register(my_pm_dev_id_t dev_id, const pm_device_ops_t *ops)
         /* 再执行一次 Suspend 总线（进入低功耗） */
         switch (dev_id)
         {
-            case MY_PM_DEV_NFC:
-                ret = my_pm_i2c22_suspend();
-                break;
-
             case MY_PM_DEV_GSENSOR:
                 ret = my_pm_i2c21_suspend();
                 break;
@@ -586,10 +499,6 @@ int my_pm_device_resume(my_pm_dev_id_t dev_id)
     /* 根据设备ID，调用相应的 resume 函数 */
     switch (dev_id)
     {
-        case MY_PM_DEV_NFC:
-            ret = my_pm_i2c22_resume();
-            break;
-
         case MY_PM_DEV_GSENSOR:
             ret = my_pm_i2c21_resume();
             break;
@@ -629,10 +538,6 @@ int my_pm_device_resume(my_pm_dev_id_t dev_id)
             /* resume 失败，回退总线状态，避免设备永久无法使用 */
             switch (dev_id)
             {
-                case MY_PM_DEV_NFC:
-                    ret = my_pm_i2c22_suspend();
-                    break;
-
                 case MY_PM_DEV_GSENSOR:
                     ret = my_pm_i2c21_suspend();
                     break;
@@ -718,10 +623,6 @@ int my_pm_device_suspend(my_pm_dev_id_t dev_id)
     /* 再根据设备ID挂起对应总线，避免模块回调阶段访问已挂起的总线 */
     switch (dev_id)
     {
-        case MY_PM_DEV_NFC:
-            ret = my_pm_i2c22_suspend();
-            break;
-
         case MY_PM_DEV_GSENSOR:
             ret = my_pm_i2c21_suspend();
             break;

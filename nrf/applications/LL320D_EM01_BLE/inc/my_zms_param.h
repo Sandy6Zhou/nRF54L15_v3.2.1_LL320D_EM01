@@ -27,16 +27,14 @@
 #define BLE_LOG_MOD_LTE      4 /* LTE模块 */
 #define BLE_LOG_MOD_CTRL     5 /* 控制模块 */
 #define BLE_LOG_MOD_SHELL    6 /* Shell模块 */
-#define BLE_LOG_MOD_NFC      7 /* NFC模块 */
-#define BLE_LOG_MOD_BATTERY  8 /* 电池模块 */
-#define BLE_LOG_MOD_MOTOR    9 /* 电机模块 */
-#define BLE_LOG_MOD_CMD     10 /* 命令设置模块 */
-#define BLE_LOG_MOD_TOOL    11 /* 工具模块 */
-#define BLE_LOG_MOD_PARAM   12 /* 参数模块 */
-#define BLE_LOG_MOD_WDT     13 /* 看门狗模块 */
-#define BLE_LOG_MOD_ALGORITHM 14 /* 算法模块 */
-#define BLE_LOG_MOD_OTHER   15 /* 其他模块 */
-#define BLE_LOG_MOD_MAX     16 /* 最大模块数 */
+#define BLE_LOG_MOD_BATTERY  7 /* 电池模块 */
+#define BLE_LOG_MOD_CMD      8 /* 命令设置模块 */
+#define BLE_LOG_MOD_TOOL     9 /* 工具模块 */
+#define BLE_LOG_MOD_PARAM   10 /* 参数模块 */
+#define BLE_LOG_MOD_WDT     11 /* 看门狗模块 */
+#define BLE_LOG_MOD_ALGORITHM 12 /* 算法模块 */
+#define BLE_LOG_MOD_OTHER   13 /* 其他模块 */
+#define BLE_LOG_MOD_MAX     14 /* 最大模块数 */
 
 /* 获取指定模块在 mod_en bitmap 中的开关状态
  * 使用32位bitmap，mod_id 直接对应位位置 (0-31) */
@@ -55,9 +53,6 @@ typedef enum                           // 参数ID定义
     ZMS_ID_BLE_LOG_CONFIG,             // 蓝牙日志配置参数ID
     ZMS_ID_WORK_MODE_CONFIG,           // 设备工作模式配置参数ID
     ZMS_ID_REM_ALM_CONFIG,             // 防拆报警配置参数ID
-    ZMS_ID_LOCK_PIN_CYT_CONFIG,        // 锁销非法拔除报警配置参数ID
-    ZMS_ID_PIN_STAT_CONFIG,            // 锁销状态报警配置参数ID
-    ZMS_ID_LOCK_STAT_CONFIG,           // 锁状态报警配置参数ID
     ZMS_ID_MOT_DET_CONFIG,             // 运动检测报警配置参数ID
     ZMS_ID_BAT_LEVEL_CONFIG,           // 电池状态和充电状态报警配置参数ID
     ZMS_ID_SHOCK_ALARM_CONFIG,         // 撞击报警配置参数ID
@@ -65,13 +60,8 @@ typedef enum                           // 参数ID定义
     ZMS_ID_PWSAVE_CONFIG,              // 低功耗运输状态配置参数ID
     ZMS_ID_BT_UPDATA_CONFIG,           // 蓝牙数据上传配置参数ID
     ZMS_ID_TAG_CONFIG,                 // Tag定位功能配置参数ID
-    ZMS_ID_LOCKED_CONFIG,              // 自动上锁配置参数ID
     ZMS_ID_LED_CONFIG,                 // LED显示配置参数ID
     ZMS_ID_BUZZER_CONFIG,              // 蜂鸣器配置参数ID
-    ZMS_ID_NFTRIG_CONFIG,              // NFC触发规则配置参数ID
-    ZMS_ID_NFCAUTH_CONFIG,             // NFC卡权限配置参数ID
-    ZMS_ID_NFCOPRALM_CONFIG,           // NFC上报模式配置参数ID
-    ZMS_ID_BT_KEY_CONFIG,              // 蓝牙解锁密钥配置参数ID
     ZMS_ID_BT_PARMAC_CONFIG,           // 透传MAC地址配置参数ID
     ZMS_ID_BLE_TAG_STORE_META,         // BLE TAG扫描数据循环存储区元数据ID
     ZMS_ID_BLE_MAC_STORE_META,         // BLE 透传MAC扫描数据循环存储区元数据ID
@@ -136,27 +126,6 @@ typedef struct                              // 存储的防拆报警配置参数
     uint8_t remalm_mode;                    // 报警上报方式: 0-不上报, 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
 } remalm_config_t;
 
-typedef struct                              // 存储的锁销非法拔除报警配置参数
-{
-    uint8_t flag;                           // 参数有效标志
-    uint8_t lockpincyt_report;              // 锁销非法拔除上报方式: 0-不上报, 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
-    uint8_t lockpincyt_buzzer;              // 锁销非法拔除蜂鸣器报警方式: 0-不报警, 1-报警30s, 2-持续报警
-} lockpin_cyt_config_t;
-
-typedef struct                              // 存储的锁销状态报警配置参数
-{
-    uint8_t flag;                           // 参数有效标志
-    uint8_t pinstat_report;                 // 锁销状态上报方式: 0-不上报, 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
-    uint8_t pinstat_trigger;                // 锁销状态触发方式: 0-都不触发, 1-插入触发, 2-拔出触发, 3-插入拔出均触发
-} pin_stat_config_t;
-
-typedef struct                              // 存储的锁状态报警配置参数
-{
-    uint8_t flag;                           // 参数有效标志
-    uint8_t lockstat_report;                // 锁状态上报方式: 0-不上报, 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
-    uint8_t lockstat_trigger;               // 锁状态触发方式: 0-都不触发, 1-上锁触发, 2-解锁触发, 3-上锁解锁均触发
-} lock_stat_config_t;
-
 typedef struct                              // 存储的运动检测报警配置参数
 {
     uint8_t flag;                           // 参数有效标志
@@ -214,12 +183,6 @@ typedef struct                              // 存储的Tag定位功能配置参
     uint16_t tag_interval;                  // 广播间隔: 100-60000ms
 } tag_config_t;
 
-typedef struct                              // 存储的自动上锁配置参数
-{
-    uint8_t flag;                           // 参数有效标志
-    uint16_t lockcd_countdown;              // 插入后上锁倒计时: 0-3600秒, 0代表不自动上锁
-} locked_config_t;
-
 typedef struct                              // 存储的LED显示配置参数
 {
     uint8_t flag;                           // 参数有效标志
@@ -231,31 +194,6 @@ typedef struct                              // 存储的蜂鸣器配置参数
     uint8_t flag;                           // 参数有效标志
     uint8_t buzzer_operator;                // 蜂鸣器操作: 0-停止, 1-持续报警, 2-成功提示音, 3-失败提示音, 4-异常提示音, 5-一般报警音
 } buzzer_config_t;
-
-typedef struct                              // 存储的NFC触发规则配置参数
-{
-    uint8_t flag;                           // 参数有效标志
-    nfctrig_table_t nfctrig_table;          // NFC触发规则表，管理所有已配置的NFC触发规则
-} nfctrig_config_t;
-
-typedef struct                              // 存储的NFC卡权限配置参数
-{
-    uint8_t flag;                           // 参数有效标志
-    nfc_auth_card_t nfcauth_cards[10];          // NFC卡权限数组，最多10张卡
-    uint8_t     nfcauth_card_count;         // 已授权卡数量
-} nfcauth_config_t;
-
-typedef struct                              // 存储的NFC刷卡报警配置参数
-{
-    uint8_t flag;                           // 参数有效标志
-    uint8_t nfcopralm_type;                 // NFC防拆报警类型: 0-不上报, 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
-} nfcopralm_config_t;
-
-typedef struct                              // 存储的蓝牙解锁密钥配置参数
-{
-    uint8_t flag;                           // 参数有效标志
-    char        bt_key[7];                  // 蓝牙解锁密钥，6位数字 + 结束符
-} bkey_config_t;
 
 typedef struct                              // 存储的透传mac地址配置数据
 {
@@ -276,9 +214,6 @@ typedef struct
     ble_log_config_t            ble_log_config;             // 蓝牙日志配置
     work_mode_config_t          device_workmode_config;     // 设备工作模式配置
     remalm_config_t             remalm_config;              // 防拆报警配置
-    lockpin_cyt_config_t        lockpincyt_config;          // 锁销非法拔除报警配置
-    pin_stat_config_t           pinstat_config;             // 锁销状态报警配置
-    lock_stat_config_t          lockstat_config;            // 锁状态报警配置
     mot_det_config_t            motdet_config;              // 运动检测报警配置
     bat_level_config_t          batlevel_config;            // 电池状态和充电状态报警配置
     shock_alarm_config_t        shockalarm_config;          // 撞击报警配置
@@ -286,13 +221,8 @@ typedef struct
     pwr_save_config_t           pwsave_config;              // 低功耗运输状态配置
     bt_updata_config_t          bt_updata_config;           // 蓝牙数据上传配置
     tag_config_t                tag_config;                 // Tag定位功能配置
-    locked_config_t             locked_config;              // 自动上锁配置
     led_config_t                led_config;                 // LED显示配置
     buzzer_config_t             buzzer_config;              // 蜂鸣器配置
-    nfctrig_config_t            nfctrig_config;             // NFC触发规则配置
-    nfcauth_config_t            nfcauth_config;             // NFC卡权限配置
-    nfcopralm_config_t          nfcopralm_config;           // NFC刷卡报警配置
-    bkey_config_t               bkey_config;                // 蓝牙解锁密钥配置
     bparmac_config_t            bparmac_config;             // 透传mac地址配置
 } config_param_t;
 

@@ -28,20 +28,10 @@ typedef enum
     /* 指令控制类型 (BUZZER 指令) */
     BUZZER_STOP = 0,             // 0: 停止蜂鸣器
     BUZZER_CONTINUOUS_ALARM,     // 1: 持续报警 (200ms ON, 500ms OFF, 不停止)
-    BUZZER_UNLOCK_SUCCESS,       // 2: 成功提示音 (500ms ON)/解锁成功提示: 长鸣 500ms
-    BUZZER_FAIL_TONE,            // 3: 失败提示音 (200ms ON, 200ms OFF, 响3声)
-    BUZZER_ERROR_TONE,           // 4: 异常提示音/未授权提示音:(NFC/蓝牙上锁/解锁未授权), 5次短鸣, 每次100ms, 间隔100ms
-    BUZZER_GENERAL_ALARM,        // 5: 一般报警音 (200ms ON, 300ms OFF, 持续30s)
-
-    BUZZER_EVENT_LOCK_SUCCESS = 6,          // 上锁成功提示: 短鸣2次, 每次100ms, 间隔300ms
-    BUZZER_EVENT_LOCK_FAIL,             // 上锁/解锁失败提示(滑块异常): 3次长鸣, 每次1000ms, 间隔500ms
-    BUZZER_EVENT_NFC_ACTIVATE,          // NFC激活提示: 蜂鸣器提示 100ms
-
-    BUZZER_EVENT_READ_NFC_SUCCESS        // 9: NFC 读卡成功 200ms
+    BUZZER_FAIL_TONE,            // 2: 失败提示音 (200ms ON, 200ms OFF, 响3声)
+    BUZZER_ERROR_TONE,           // 3: 异常提示音: 5次短鸣, 每次100ms, 间隔100ms
+    BUZZER_GENERAL_ALARM,        // 4: 一般报警音 (200ms ON, 300ms OFF, 持续30s)
 } my_buzzer_mode_t;
-
-extern uint8_t g_nfc_card_index; // 处理NFC刷卡事件卡号索引
-extern int g_last_card_index;
 
 typedef struct {
     int tick;          // 当前计数（单位：100ms）
@@ -65,20 +55,6 @@ typedef enum
     BATT_LED2,  /**< 电池 LED 2 */
     BATT_LED3,  /**< 电池 LED 3 */
 } my_led_id_t;
-
-typedef enum
-{
-    LOCK_LED_CLOSE,              /**< 关闭锁 LED 模式 */
-    LOCK_LED_NFC_START,          /**< NFC 启动模式，LED 以 200ms 亮、500ms 灭的频率闪烁*/
-    LOCK_LED_LOCKED,   /**< 解锁中和上锁中模式，LED 以 200ms 亮、200ms 灭的频率持续闪烁 */
-    LOCK_LED_UNLOCK,             /**< 已解锁模式，LED 以 500ms 亮、1000ms 灭的频率闪烁，持续 18 秒 */
-} my_lock_led_mode_t;
-
-// 用于刷卡执行联调指令（申请空间到蓝牙线程处理）
-typedef struct {
-    char card_id[32];
-    uint8_t card_index; // 匹配到刷卡的索引（仅打印）
-} nfctrig_cmd_t;
 
 /* --- 接口函数 --- */
 
@@ -128,48 +104,11 @@ int my_ctrl_buzzer_play_sequence(const struct my_buzzer_note *notes, uint32_t nu
 *********************************************************************/
 int batt_led_set_level(uint8_t level);
 
-/********************************************************************
-**函数名称:  handle_nfc_card_event
-**入口参数:  card_id    ---        输入，NFC卡号指针
-            id_len     ---        输入，卡号长度
-**出口参数:  无
-**函数功能:  处理NFC刷卡事件，检查重复刷卡、验证卡片权限并执行相应操作
-**返 回 值:  无
-*********************************************************************/
-void handle_nfc_card_event(uint8_t *card_id, uint8_t id_len);
-
-/*********************************************************************
-**函数名称:  my_lock_led_set_mode
-**入口参数:  mode  ---        LED 显示模式，使用 my_lock_led_mode_t 枚举类型
-**出口参数:  无
-**函数功能:  该函数根据传入的模式参数，设置锁 LED 的不同显示模式，
-**          包括关闭、NFC启动、解锁中和上锁中和已解锁模式。
-*********************************************************************/
-void my_lock_led_set_mode(my_lock_led_mode_t mode);
-
-/*********************************************************************
-**函数名称:  my_lock_led_msg_send
-**入口参数:  mode  ---        LED 显示模式，使用 my_lock_led_mode_t 枚举类型
-**出口参数:  无
-**函数功能:  用于发送锁 LED 控制消息到控制模块，设置锁 LED 的显示模式
-*********************************************************************/
-void my_lock_led_msg_send(my_lock_led_mode_t mode);
-
-/********************************************************************
-**函数名称:  get_lockpin_insert_state
-**入口参数:  无
-**出口参数:  无
-**函数功能:  获取锁销插入状态
-**返 回 值:  true  ---        锁销已插入
-            false ---        锁销未插入
-*********************************************************************/
-bool get_lockpin_insert_state(void);
-
 /**
 ********************************************************************
 **函数名称：  my_set_buzzer_mode
 **入口参数：  buzzer_mode - 蜂鸣器模式枚举值 (my_buzzer_mode_t)
-**                        例如: BUZZER_STOP, BUZZER_EVENT_NFC_SUCCESS 等
+**                        例如: BUZZER_STOP 等
 **出口参数：  无
 **函数功能：  设置蜂鸣器工作模式并触发控制任务处理
 **返 回 值：  无
@@ -201,16 +140,6 @@ void send_alarm_message_to_lte(alarm_type_t alarm_type, const char *additional_i
 **           4. 进入 System OFF 模式
 *********************************************************************/
 void go_to_system_off(void);
-
-/********************************************************************
-**函数名称:  lock_led_set
-**入口参数:  on       ---   true 点亮，false 熄灭
-**出口参数:  无
-**函数功能:  设置锁状态指示灯
-**返 回 值:  无
-**功能描述:  根据 on 参数控制锁状态 LED 亮灭
-*********************************************************************/
-void lock_led_set(bool on);
 
 /************************************************************
 **函数名称:  get_light_state

@@ -65,20 +65,6 @@ typedef struct
     int64_t timestamp_s; // 获取时间戳（秒）
 } location_storage_t;
 
-typedef struct
-{
-    char start[16];             //记录开始时间用于查询
-    uint16_t delay;             //记录窗口时间（用于查询）
-    struct k_timer start_timer; // 网络开锁开始倒计时定时器
-    struct k_timer delay_timer; // 网络开锁成功之后窗口期倒计时定时器
-    uint16_t delay_sec;         // 窗口期时长（秒）（delay_timer定时器时长）
-    uint8_t netunlock_flag;     // 在窗口期时长内开锁标志
-    uint8_t start_timer_flag;   // 开始定时器开启过标志位（开启了start定时器意味着不需要回复）
-} net_unlock_ctrl_t;
-
-//网络解锁全局变量
-extern net_unlock_ctrl_t g_net_unlock;
-
 //全局经纬度存储点
 extern location_storage_t g_location_point;
 
@@ -180,24 +166,11 @@ void set_lte_boot_reason(lte_boot_reason_t reason);
 lte_boot_reason_t get_lte_boot_reason(void);
 
 /********************************************************************
-**函数名称:  my_verify_nfc_permission
-**入口参数:  无
-**出口参数:  无
-**函数功能:  执行刷卡位置校验，主要包括：
-**            1. 校验当前储存点位置数据的有效性，有效就根据 NFC 卡片的权限状态执行开锁或关锁规则
-**            2.储存点无效发送BLE+LOCATION=seq;seq为刷卡索引，获取经纬度信息
-**返 回 值:  无
-********************************************************************/
-void my_verify_nfc_permission(void);
-
-/********************************************************************
 **函数名称:  my_lte_handle_cmd
 **入口参数:  data      ---   接收4G的数据
 **函数功能:  执行LTE+CMD=<号码>,<指令内容>,并根据指令内容的执行回复对应的结果给4G模块
 **            <指令内容>与通过蓝牙指令下发下来的内容一致，按照相关指令格式填写即可
 **          如:LTE+CMD=111,VERSION/LTE+CMD=111,VERSION#/末尾加不加#都可以
-**          LTE+CMD=111,NFCTRIG,ADD,1234456789,
-**          "NFCAUTH,SET,88040FBE99050B,+22277120,13516763,999900,2603200000,2603201200,1"
 *********************************************************************/
 int my_lte_handle_cmd(char *data);
 
@@ -215,7 +188,7 @@ void lte_send_cmd_with_retry(const char *cmd_name, const char *param);
 
 /********************************************************************
 **函数名称:  async_match_and_resp
-**入口参数:  data      ---        数据（格式：指令头,回复内容）如CUNLOCK,Unlock failed. No unlock state detected.
+**入口参数:  data      ---        数据（格式：指令头,回复内容）
 **出口参数:  无
 **函数功能:  解析数据头，在队列中查找匹配项；若匹配成功，将元素前移并发送响应给LTE
 **返 回 值:  0表示匹配成功并发送，-1表示未匹配到对应指令
