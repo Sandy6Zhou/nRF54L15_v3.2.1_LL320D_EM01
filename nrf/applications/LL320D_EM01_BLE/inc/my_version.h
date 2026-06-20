@@ -16,6 +16,14 @@
 /* 软件版本:        V1.0
 ** 完成日期:        2026.06.20
 ** 作    者:       周森达 (zhousenda@jimiiot.com)
+** 修改内容:        1.移植温湿度驱动并封装对应的API接口(初始化、温湿度数据转换、获取sensor ID)
+**                 2.更换IO适配目前的硬件设计:CHG_STAT(P1.07->p0.02),CHG_DET(P1.08->p0.03),TEMP_DPS_SDA(P1.07),TEMP_DPS_SCL(P1.08)
+***/
+
+// #define SOFTWARE_VERSION "LL320D_EM01_V1.0_260620"
+/* 软件版本:        V1.0
+** 完成日期:        2026.06.20
+** 作    者:       周森达 (zhousenda@jimiiot.com)
 ** 修改内容:        1.移除NFC读卡和电机开关锁功能模块
 ***/
 

@@ -400,7 +400,7 @@ void batt_chg_det_handle(struct k_timer *timer)
     }
 }
 
-/* 共用 ISR：根据 pins 掩码区分是 P1.7 还是 P1.8 触发 */
+/* 共用 ISR：根据 pins 掩码区分是 P0.2 还是 P0.3 触发 */
 static void batt_gpio_isr(const struct device *dev,
                         struct gpio_callback *cb,
                         uint32_t pins)
@@ -410,7 +410,7 @@ static void batt_gpio_isr(const struct device *dev,
 
     if (pins & BIT(charge_state.pin))
     {
-        /* P1.7 触发：电池状态变化（充电中 / 充满） */
+        /* P0.2 触发：电池状态变化（充电中 / 充满） */
         s_chg_stat_level = gpio_pin_get_dt(&charge_state);
         //50ms消抖处理
         k_timer_start(&s_chg_stat_timer, K_MSEC(CHG_DEBOUNCE_MS), K_NO_WAIT);
@@ -418,7 +418,7 @@ static void batt_gpio_isr(const struct device *dev,
 
     if (pins & BIT(charge_det.pin))
     {
-        /* P1.8 触发：充电检测变化（开始充电 / 停止充电） */
+        /* P0.3 触发：充电检测变化（开始充电 / 停止充电） */
         s_chg_det_level = gpio_pin_get_dt(&charge_det);
         //50ms消抖处理
         k_timer_start(&s_chg_det_timer, K_MSEC(CHG_DEBOUNCE_MS), K_NO_WAIT);

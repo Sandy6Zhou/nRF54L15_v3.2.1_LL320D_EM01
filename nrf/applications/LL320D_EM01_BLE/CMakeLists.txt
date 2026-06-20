@@ -11,6 +11,8 @@ project(LL311_BLE)
 target_include_directories(app PRIVATE
  ./inc
  ./src
+#  ./ext_module/temp_humi/api
+#  ./ext_module/temp_humi/drivers/SHTC3/inc
 )
 
 # NORDIC SDK APP START
@@ -33,6 +35,8 @@ target_sources(app PRIVATE
   src/my_dfu_jimi.c
   src/my_pm.c
   src/my_ble_scan.c
+  # ext_module/temp_humi/api/temp_humi_api.c
+  # ext_module/temp_humi/drivers/SHTC3/src/shtc3_driver.c
   src/my_flash_store.c
 )
 
