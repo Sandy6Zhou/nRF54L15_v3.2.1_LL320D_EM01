@@ -92,18 +92,17 @@ const work_mode_config_t gDefaultWorkModeConfig =
             .reporting_interval_sec = 30,      // 默认30秒上报一次
             .reporting_interval_dis = 100,    // 默认100米上报一次
         },
-        .long_battery = // 长电池模式
+        .long_battery = // 长续航模式
         {
             .reporting_interval_min = 240,      // 默认240分钟上报一次
             .start_time = "0001",               // 默认00:01开始上报
+            .gnss_sw = 1,                       // 默认GNSS开启(ON)
         },
         .intelligent = // 智能模式
         {
-            .stop_status_interval_sec = 86400,  // 默认86400秒上报一次
-            .land_status_interval_sec = 15,     // 默认15秒上报一次
-            .land_status_interval_dis = 100,    // 默认100米上报一次
-            .sea_status_interval_sec = 14400,   // 默认14400秒上报一次
-            .sleep_switch = 2,                  // 休眠开关
+            .sub_mode = 5,                      // 默认子模式5（Cell+GNSS常开/秒）
+            .static_interval = 10,              // 默认静止间隔10（子模式5下单位为秒）
+            .moving_interval = 10,              // 默认运动间隔10（子模式5下单位为秒）
         },
     }
 };

@@ -127,6 +127,30 @@ static uint8_t s_chip_id = 0; // 存储识别到的芯片ID
 static lsm6dsv16x_pin_int_route_t s_int1_route = { 0 };     // 存储INT1引脚路由配置
 static bool s_shock_alarm_flag = false;                     // 敲击报警延时标志位
 
+/* 子模式规则表：[sub_mode][状态] -> {cell_always_on, interval_unit_is_sec}
+** 状态索引: 0=静止, 1=运动 */
+typedef struct
+{
+    bool cell_always_on;        // true=Cell常开不断电, false=Cell断电需定时唤醒
+    bool interval_unit_is_sec;  // true=间隔单位为秒, false=间隔单位为分钟
+} smart_sub_mode_cfg_t;
+
+static const smart_sub_mode_cfg_t s_smart_sub_mode_table[6][2] =
+{
+    /* sub0: 静止Sleep/min, 运动Sleep/min */
+    {{false, false}, {false, false}},
+    /* sub1: 静止Sleep/min, 运动Cell常开/min */
+    {{false, false}, {true,  false}},
+    /* sub2: 静止Sleep/min, 运动Cell+GNSS常开/sec */
+    {{false, false}, {true,  true}},
+    /* sub3: 静止Cell常开/min, 运动Cell常开/min */
+    {{true,  false}, {true,  false}},
+    /* sub4: 静止Cell常开/min, 运动Cell+GNSS常开/sec */
+    {{true,  false}, {true,  true}},
+    /* sub5: 静止Cell+GNSS常开/sec, 运动Cell+GNSS常开/sec */
+    {{true,  true},  {true,  true}},
+};
+
 /********************************************************************
 **函数名称:  gsensor_is_smart_mode
 **入口参数:  无
@@ -537,63 +561,116 @@ static int analyze_gsensor_state(const gsensor_data_t *data)
 **函数名称:  get_motion_status
 **入口参数:  无
 **出口参数:  无
-**函数功能:  获取当前运动状态，根据状态设置LTE电源定时器间隔
+**函数功能:  获取当前运动状态，根据子模式规则表决定LTE电源策略和定时器间隔
 **返 回 值:  无
+**注意事项:  子模式0~4静止间隔单位为分钟，子模式5为秒；
+**           子模式0~1运动间隔为分钟，子模式2~5为秒；
+**           Cell常开时不启动唤醒定时器，Cell断电时按间隔启动定时器唤醒4G
+*********************************************************************/
+/********************************************************************
+**函数名称:  smart_mode_apply_lte_policy
+**入口参数:  无
+**出口参数:  无
+**函数功能:  根据当前运动状态和智能模式子模式参数，重新应用LTE唤醒定时器策略
+**返 回 值:  无
+**注意事项:  不发送状态切换告警，仅设置LTE电源策略和定时器间隔
+**           适用于参数更新但运动状态未变的场景
+*********************************************************************/
+void smart_mode_apply_lte_policy(void)
+{
+    uint32_t raw_interval = 0;
+    uint32_t timer_interval_sec = 0;
+    uint8_t sub_mode;
+    bool is_moving;
+    bool cell_always_on;
+    bool unit_is_sec;
+    gsensor_state_t state;
+
+    sub_mode = gConfigParam.device_workmode_config.workmode_config.intelligent.sub_mode;
+    state = my_gsensor_get_state();
+
+    // 判断运动/静止（陆运和海运统一视为运动状态）
+    if (state == STATE_STATIC)
+    {
+        is_moving = false;
+        raw_interval = gConfigParam.device_workmode_config.workmode_config.intelligent.static_interval;
+        MY_LOG_INF("Smart policy: STATIC, raw_interval = %d", raw_interval);
+    }
+    else
+    {
+        is_moving = true;
+        raw_interval = gConfigParam.device_workmode_config.workmode_config.intelligent.moving_interval;
+        MY_LOG_INF("Smart policy: MOVING, raw_interval = %d", raw_interval);
+    }
+
+    // 静止间隔为0表示静止不周期上报，不启动定时器
+    if (!is_moving && raw_interval == 0)
+    {
+        my_stop_timer(MY_TIMER_LTE_POWER);
+        MY_LOG_INF("Smart policy: STATIC interval=0, no periodic reporting");
+        return;
+    }
+
+    // 查子模式规则表
+    cell_always_on = s_smart_sub_mode_table[sub_mode][is_moving ? 1 : 0].cell_always_on;
+    unit_is_sec = s_smart_sub_mode_table[sub_mode][is_moving ? 1 : 0].interval_unit_is_sec;
+    MY_LOG_INF("Smart policy: sub_mode=%d, moving=%d, raw_interval=%d, unit=%s, cell_always_on=%d",
+        sub_mode, is_moving, raw_interval, unit_is_sec ? "sec" : "min", cell_always_on);
+
+    // 将原始间隔值转换为秒
+    if (unit_is_sec)
+    {
+        timer_interval_sec = raw_interval;
+    }
+    else
+    {
+        timer_interval_sec = raw_interval * 60;  // 分钟转秒
+    }
+
+    /* 开启LTE */
+    my_send_msg(MOD_GSENSOR, MOD_LTE, MY_MSG_LTE_PWRON);
+
+    /* 根据子模式决定4G电源策略 */
+    if (cell_always_on)
+    {
+        // Cell常开，不需要唤醒定时器
+        my_stop_timer(MY_TIMER_LTE_POWER);
+        MY_LOG_INF("Smart policy: sub%d, Cell always ON, no timer needed", sub_mode);
+    }
+    else
+    {
+        // Cell休眠，启动周期唤醒定时器
+        my_start_timer(MY_TIMER_LTE_POWER, timer_interval_sec * 1000, true, awaken_lte_timer_callback);
+        MY_LOG_INF("Smart policy: sub%d, Cell sleep, timer = %d sec", sub_mode, timer_interval_sec);
+    }
+}
+
+/********************************************************************
+**函数名称:  get_motion_status
+**入口参数:  无
+**出口参数:  无
+**函数功能:  获取当前运动状态，发送状态切换告警并应用LTE唤醒策略
+**返 回 值:  无
+**注意事项:  仅在运动状态真正切换时调用，包含告警发送
 *********************************************************************/
 void get_motion_status(void)
 {
-    uint32_t timer_interval = 0;
+    gsensor_state_t state;
 
-    /* 根据当前GSENSOR状态确定定时器间隔 */
-    switch (my_gsensor_get_state())
+    state = my_gsensor_get_state();
+
+    // 发送状态切换告警
+    if (state == STATE_STATIC)
     {
-        case STATE_STATIC:
-            timer_interval = gConfigParam.device_workmode_config.workmode_config.intelligent.stop_status_interval_sec;  // 静止状态：默认86400秒（24小时）
-            MY_LOG_INF("Smart mode: STATIC state, interval = %d", timer_interval);
-            send_alarm_message_to_lte(ALARM_STILL, NULL);
-            break;
-
-        case STATE_LAND_TRANSPORT:
-            timer_interval = gConfigParam.device_workmode_config.workmode_config.intelligent.land_status_interval_sec;  // 陆运状态：默认15秒
-            MY_LOG_INF("Smart mode: LAND TRANSPORT state, interval = %d", timer_interval);
-            send_alarm_message_to_lte(ALARM_LAND, NULL);
-            break;
-
-        case STATE_SEA_TRANSPORT:
-            timer_interval = gConfigParam.device_workmode_config.workmode_config.intelligent.sea_status_interval_sec;  // 海运状态：默认14400秒（4小时）
-            MY_LOG_INF("Smart mode: SEA TRANSPORT state, interval = %d", timer_interval);
-            send_alarm_message_to_lte(ALARM_SEA, NULL);
-            break;
-
-        default:
-            timer_interval = STATIC_INTERVAL;  // 默认使用静止状态间隔
-            break;
+        send_alarm_message_to_lte(ALARM_STILL, NULL);
+    }
+    else
+    {
+        send_alarm_message_to_lte(ALARM_LAND, NULL);
     }
 
-    /* 等获取到运动状态再开启LTE */
-    my_send_msg(MOD_GSENSOR, MOD_LTE, MY_MSG_LTE_PWRON);
-
-    /* sleep_switch为0、1的情况下,4G不会断电,所以无需开启唤醒4G定时器 */
-    if (gConfigParam.device_workmode_config.workmode_config.intelligent.sleep_switch == 0 ||
-        gConfigParam.device_workmode_config.workmode_config.intelligent.sleep_switch == 1)
-    {
-        my_stop_timer(MY_TIMER_LTE_POWER);
-        return ;
-    }
-    else if (gConfigParam.device_workmode_config.workmode_config.intelligent.sleep_switch == 2)
-    {
-        /* 当设置的定时间隔>600时,4G是会整个断电的,所以需要启动定时器，使用动态确定的间隔 */
-        if (timer_interval > 600)
-        {
-            my_start_timer(MY_TIMER_LTE_POWER, timer_interval * 1000, true, awaken_lte_timer_callback);
-        }
-        else
-        {
-            my_stop_timer(MY_TIMER_LTE_POWER);
-        }
-    }
-
-    //TODO 后续运动状态改变,需要将运动状态传给4G
+    // 应用LTE唤醒策略
+    smart_mode_apply_lte_policy();
 }
 
 /********************************************************************

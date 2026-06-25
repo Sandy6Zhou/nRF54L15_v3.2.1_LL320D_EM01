@@ -254,8 +254,9 @@ static int cmd_modeset(const struct shell *sh, size_t argc, char **argv)
     device_work_mode_config_t *p_workmode;
     char *endptr;
     uint32_t mode_flag;
-    uint32_t report_interval, static_int, land_int, land_distance, sea_int;
-    uint8_t sleep_sw;
+    uint32_t report_interval, static_int, moving_int;
+    uint8_t sub_mode;
+    uint8_t gnss_sw;
 
     p_workmode = &gConfigParam.device_workmode_config.workmode_config;
 
@@ -263,7 +264,7 @@ static int cmd_modeset(const struct shell *sh, size_t argc, char **argv)
     mode_flag = strtoul(argv[1], &endptr, 10);
     if (*endptr != '\0')
     {
-        shell_print(sh, "Error: mode_flag must be a number (1 or 2)!");
+        shell_print(sh, "Error: mode_flag must be a number (1, 2, or 3)!");
         return -1;
     }
 
@@ -272,13 +273,14 @@ static int cmd_modeset(const struct shell *sh, size_t argc, char **argv)
     {
         case 1: // 长续航模式
         {
-            // 校验参数个数（app modeset 1 10 0001 → argc=4）
-            if (argc != 4)
+            // 校验参数个数（app modeset 1 240 0001 ON → argc=5）
+            if (argc != 5)
             {
                 shell_print(sh, "Invalid argument count for mode 1!");
-                shell_print(sh, "Usage: app modeset 1 <report_interval> <start_time>");
+                shell_print(sh, "Usage: app modeset 1 <report_interval> <start_time> <gnss_sw>");
                 shell_print(sh, "  report_interval: 5-1440 minutes (range limit)");
                 shell_print(sh, "  start_time    : HHMM (24h format, 0000-2359)");
+                shell_print(sh, "  gnss_sw       : ON or OFF");
                 return -1;
             }
 
@@ -305,74 +307,80 @@ static int cmd_modeset(const struct shell *sh, size_t argc, char **argv)
                 }
             }
 
+            // 解析GNSS开关
+            if (strcmp(argv[4], "ON") == 0)
+            {
+                gnss_sw = 1;
+            }
+            else if (strcmp(argv[4], "OFF") == 0)
+            {
+                gnss_sw = 0;
+            }
+            else
+            {
+                shell_print(sh, "Error: gnss_sw must be ON or OFF!");
+                return -1;
+            }
+
             // 设置长续航模式参数
-            set_long_battery_params(p_workmode, report_interval, argv[3]);
+            set_long_battery_params(p_workmode, report_interval, argv[3], gnss_sw);
             shell_print(sh, "Longlife mode config success!");
 
             break;
         }
         case 2: // 智能模式
         {
-            // 校验参数个数（app modeset 2 s l ld se sw → argc=7）
-            if (argc != 7)
+            // 校验参数个数（app modeset 2 5 5 10 → argc=5）
+            if (argc != 5)
             {
                 shell_print(sh, "Invalid argument count for mode 2!");
-                shell_print(sh, "Usage: app modeset 2 <static_int> <land_int> <land_distance> <sea_int> <sleep_sw>");
-                shell_print(sh, "  static_int    : Static state threshold (integer)");
-                shell_print(sh, "  land_int      : Land transport threshold (integer)");
-                shell_print(sh, "  land_distance : Land distance threshold (integer)");
-                shell_print(sh, "  sea_int       : Sea transport threshold (integer)");
-                shell_print(sh, "  sleep_sw      : Sleep switch (0/1/2)");
+                shell_print(sh, "Usage: app modeset 2 <sub_mode> <static_int> <moving_int>");
+                shell_print(sh, "  sub_mode   : 0~5 (sub mode controls Cell/GNSS sleep strategy)");
+                shell_print(sh, "  static_int : Static state interval (unit depends on sub_mode)");
+                shell_print(sh, "  moving_int : Moving state interval (unit depends on sub_mode)");
                 return -1;
             }
 
-            // 解析并校验static_int（正整数）
-            static_int = strtoul(argv[2], &endptr, 10);
+            // 解析并校验sub_mode（0~5）
+            sub_mode = (uint8_t)strtoul(argv[2], &endptr, 10);
+            if (*endptr != '\0' || sub_mode > 5)
+            {
+                shell_print(sh, "Error: sub_mode must be 0~5!");
+                return -1;
+            }
+
+            // 解析static_int
+            static_int = strtoul(argv[3], &endptr, 10);
             if (*endptr != '\0')
             {
                 shell_print(sh, "Error: static_int must be an integer!");
                 return -1;
             }
 
-            // 解析并校验land_int（正整数）
-            land_int = strtoul(argv[3], &endptr, 10);
+            // 解析moving_int
+            moving_int = strtoul(argv[4], &endptr, 10);
             if (*endptr != '\0')
             {
-                shell_print(sh, "Error: land_int must be an integer!");
-                return -1;
-            }
-
-            // 解析并校验land_distance（正整数）
-            land_distance = strtoul(argv[4], &endptr, 10);
-            if (*endptr != '\0')
-            {
-                shell_print(sh, "Error: land_distance must be an integer!");
-                return -1;
-            }
-
-            // 解析并校验sea_int（正整数）
-            sea_int = strtoul(argv[5], &endptr, 10);
-            if (*endptr != '\0')
-            {
-                shell_print(sh, "Error: sea_int must be an integer!");
-                return -1;
-            }
-
-            // 解析并校验sleep_sw（仅支持0或1或2）
-            sleep_sw = (uint8_t)strtoul(argv[6], &endptr, 10);
-            if (*endptr != '\0' || (sleep_sw != 0 && sleep_sw != 1 && sleep_sw != 2))
-            {
-                shell_print(sh, "Error: sleep_sw must be 0 or 1 or 2!");
+                shell_print(sh, "Error: moving_int must be an integer!");
                 return -1;
             }
 
             // 设置智能模式参数
-            set_intelligent_params(p_workmode, static_int, land_int, land_distance, sea_int, sleep_sw);
-            shell_print(sh, "Sensor mode config success!");
+            if (set_intelligent_params(p_workmode, sub_mode, static_int, moving_int) < 0)
+            {
+                shell_print(sh, "Error: parameter validation failed!");
+                return -1;
+            }
+            shell_print(sh, "Smart mode config success!");
+            break;
+        }
+        case 3: // 常在线模式
+        {
+            shell_print(sh, "Always-online mode has no parameters to configure.");
             break;
         }
         default: // 不支持的模式标识
-            shell_print(sh, "Error: Unsupported mode_flag! Only 1 (longlife) or 2 (smart) are supported!");
+            shell_print(sh, "Error: Unsupported mode_flag! Only 1 (longlife), 2 (smart), or 3 (always-online) are supported!");
             return -1;
     }
 

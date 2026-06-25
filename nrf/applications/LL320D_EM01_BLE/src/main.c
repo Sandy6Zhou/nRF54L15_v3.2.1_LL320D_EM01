@@ -250,34 +250,41 @@ bool my_time_is_run(int timerId)
 **函数名称:  send_work_mode_command
 **入口参数:  mode     --  要切换到的工作模式
 **出口参数:  无
-**函数功能:  发送工作模式给LTE模块
+**函数功能:  发送工作模式参数给LTE模块
+**返 回 值:  无
 *********************************************************************/
 void send_work_mode_command(work_mode_t mode)
 {
-    char buf[30];
+    char buf[40];
+
+    memset(buf, 0, sizeof(buf));
 
     switch (mode)
     {
         case MY_MODE_CONTINUOUS:
             snprintf(buf, sizeof(buf), "%d,%d,%d", mode,
-            gConfigParam.device_workmode_config.workmode_config.continuous_tracking.reporting_interval_sec,
-            gConfigParam.device_workmode_config.workmode_config.continuous_tracking.reporting_interval_dis);
+                gConfigParam.device_workmode_config.workmode_config.continuous_tracking.reporting_interval_sec,
+                gConfigParam.device_workmode_config.workmode_config.continuous_tracking.reporting_interval_dis);
             break;
 
         case MY_MODE_LONG_LIFE:
-            snprintf(buf, sizeof(buf), "%d,%d,%s", mode,
-            gConfigParam.device_workmode_config.workmode_config.long_battery.reporting_interval_min,
-            gConfigParam.device_workmode_config.workmode_config.long_battery.start_time);
+            snprintf(buf, sizeof(buf), "%d,%d,%s,%s", mode,
+                gConfigParam.device_workmode_config.workmode_config.long_battery.reporting_interval_min,
+                gConfigParam.device_workmode_config.workmode_config.long_battery.start_time,
+                gConfigParam.device_workmode_config.workmode_config.long_battery.gnss_sw ? "ON" : "OFF");
             break;
 
         case MY_MODE_SMART:
-            snprintf(buf, sizeof(buf), "%d,%d,%d,%d,%d,%d", mode,
-            gConfigParam.device_workmode_config.workmode_config.intelligent.stop_status_interval_sec,
-            gConfigParam.device_workmode_config.workmode_config.intelligent.land_status_interval_sec,
-            gConfigParam.device_workmode_config.workmode_config.intelligent.land_status_interval_dis,
-            gConfigParam.device_workmode_config.workmode_config.intelligent.sea_status_interval_sec,
-            gConfigParam.device_workmode_config.workmode_config.intelligent.sleep_switch);
+            snprintf(buf, sizeof(buf), "%d,%d,%d,%d", mode,
+                gConfigParam.device_workmode_config.workmode_config.intelligent.sub_mode,
+                gConfigParam.device_workmode_config.workmode_config.intelligent.static_interval,
+                gConfigParam.device_workmode_config.workmode_config.intelligent.moving_interval);
             break;
+
+        case MY_MODE_ALWAYS_ONLINE:
+            snprintf(buf, sizeof(buf), "%d", mode);
+            break;
+
         default:
             return;
     }
@@ -301,6 +308,9 @@ void switch_work_mode(work_mode_t mode)
     lte_boot_reason_t boot_reason;
     static work_mode_t last_mode = MY_MODE_SHUTDOWN;
 
+    MY_LOG_INF("switch_work_mode request: last=%d, target=%d, current=%d", last_mode, mode,
+        gConfigParam.device_workmode_config.workmode_config.current_mode);
+
     // 当前模式与目标模式相同，无需切换
     if (last_mode == mode)
     {
@@ -309,24 +319,22 @@ void switch_work_mode(work_mode_t mode)
 
     last_mode = mode;
 
+    // 关机模式独立处理
+    if (mode == MY_MODE_SHUTDOWN)
+    {
+        go_to_system_off();
+        return;
+    }
+
     // 根据工作模式设置对应的开机原因
     switch (mode)
     {
         case MY_MODE_CONTINUOUS:
-            boot_reason = LTE_BOOT_REASON_CONTINUOUS;
-            break;
-
         case MY_MODE_LONG_LIFE:
-            boot_reason = LTE_BOOT_REASON_LONG_LIFE;
-            break;
-
         case MY_MODE_SMART:
-            boot_reason = LTE_BOOT_REASON_SMART;
+        case MY_MODE_ALWAYS_ONLINE:
+            boot_reason = LTE_BOOT_REASON_INTERVAL;
             break;
-
-        case MY_MODE_SHUTDOWN:
-            go_to_system_off();
-            return;
 
         default:
             boot_reason = LTE_BOOT_REASON_RESERVED;
@@ -360,16 +368,19 @@ void switch_work_mode(work_mode_t mode)
 **出口参数:  无
 **函数功能:  LTE唤醒定时器超时回调函数
 **           1. 向LTE线程发送上电消息，开启4G电源
-**           2. 向主线程发送消息触发重置LTE定时器（用于长续航模式下,下次唤醒）
+**           2. 长续航模式下，向主线程发送消息触发重置LTE定时器
+**           3. 设置LTE开机原因为间隔唤醒
 **返 回 值:  无
 *********************************************************************/
 void awaken_lte_timer_callback(void *timer)
 {
-    /* 长续航模式下才需要去重置LTE定时器 */
     if (gConfigParam.device_workmode_config.workmode_config.current_mode == MY_MODE_LONG_LIFE)
     {
         my_send_msg(MOD_MAIN, MOD_MAIN, MY_MSG_RESET_LTE_TIMER);
     }
+
+    /* 设置LTE开机原因为间隔唤醒 */
+    set_lte_boot_reason(LTE_BOOT_REASON_INTERVAL);
 
     /* 开启LTE */
     my_send_msg(MOD_MAIN, MOD_LTE, MY_MSG_LTE_PWRON);
@@ -429,6 +440,27 @@ void handle_continuous_mode(void)
     my_send_msg(MOD_MAIN, MOD_GSENSOR, MY_MSG_GSENSOR_LOW_POWER);
 
     /* 开启LTE */
+    my_send_msg(MOD_MAIN, MOD_LTE, MY_MSG_LTE_PWRON);
+}
+
+/*********************************************************************
+**函数名称:  handle_always_online_mode
+**入口参数:  无
+**出口参数:  无
+**函数功能:  处理常在线模式
+**           1. 停止LTE间隔唤醒定时器（4G永久在线）
+**           2. 开启G-Sensor正常采样（支持震动、移动报警）
+**           3. 开启LTE模块保持永久在线
+**返 回 值:  无
+*********************************************************************/
+void handle_always_online_mode(void)
+{
+    my_stop_timer(MY_TIMER_LTE_POWER);
+
+    /* 开启GSENSOR正常采样，支持震动/移动报警 */
+    my_send_msg(MOD_MAIN, MOD_GSENSOR, MY_MSG_GSENSOR_SAMPLE);
+
+    /* 开启LTE，永久保持在线 */
     my_send_msg(MOD_MAIN, MOD_LTE, MY_MSG_LTE_PWRON);
 }
 
@@ -724,6 +756,12 @@ int main(void)
                     case MY_MODE_CONTINUOUS:
                         MY_LOG_INF("Switched to CONTINUOUS mode");
                         handle_continuous_mode();
+                        break;
+
+                    case MY_MODE_ALWAYS_ONLINE:
+                        MY_LOG_INF("Switched to ALWAYS_ONLINE mode");
+                        // TODO 没有真正启用 G-Sensor 常采样，后续需完善
+                        handle_always_online_mode();
                         break;
 
                     case MY_MODE_SHUTDOWN:

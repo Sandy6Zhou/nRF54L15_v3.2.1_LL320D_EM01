@@ -334,39 +334,17 @@ static int lte_cmd_handler(at_cmd_t* msg)
 }
 
 /*********************************************************************
-**函数名称:  set_work_mode
-**入口参数:  p_workmode  --  设备工作模式配置结构体指针
-**           mode        --  目标工作模式
-**出口参数:  无
-**函数功能:  设置工作模式
-**返 回 值:  0 表示成功，-1 表示失败（模式非法）
-*********************************************************************/
-int set_work_mode(device_work_mode_config_t *p_workmode, work_mode_t mode)
-{
-    if (p_workmode == NULL) return -1;
-
-    if (mode < MY_MODE_CONTINUOUS || mode > MY_MODE_SMART)
-    {
-        LOG_INF("Error: Invalid work mode %d", mode);
-        return -1;
-    }
-
-    p_workmode->current_mode = mode;
-    LOG_INF("Set work mode to %d success", mode);
-    return 0;
-}
-
-/*********************************************************************
 **函数名称:  set_long_battery_params
 **入口参数:  p_workmode        --  设备工作模式配置结构体指针
-**           reporting_interval --  静止上报间隔（分钟）
-**           start_time_str     --  首次唤醒基准时间（字符指针，HHMM格式，如"0800"、"2400"）
+**           reporting_interval --  上报间隔（分钟，5~1440）
+**           start_time_str     --  首次唤醒基准时间（字符指针，HHMM格式，如"0800"）
+**           gnss_sw            --  GNSS开关（1=ON, 0=OFF）
 **出口参数:  无
 **函数功能:  设置长续航模式参数
 **返 回 值:  0 表示成功，-1 表示失败（参数非法）
 *********************************************************************/
 int set_long_battery_params(device_work_mode_config_t *p_workmode,
-                     uint16_t reporting_interval, const char *start_time_str)
+                     uint16_t reporting_interval, const char *start_time_str, uint8_t gnss_sw)
 {
     int str_len;
     int i;
@@ -424,73 +402,94 @@ int set_long_battery_params(device_work_mode_config_t *p_workmode,
         return -1;
     }
 
-    // ========== 5. 赋值到工作模式配置结构体 ==========
+    // ========== 5. 校验GNSS开关 ==========
+    if (gnss_sw > 1)
+    {
+        LOG_INF("Error: gnss_sw %u out of range (0/1)", gnss_sw);
+        return -1;
+    }
+
+    // ========== 6. 赋值到工作模式配置结构体 ==========
     p_workmode->long_battery.reporting_interval_min = reporting_interval;
     strcpy(p_workmode->long_battery.start_time, start_time_str);
+    p_workmode->long_battery.gnss_sw = gnss_sw;
 
-    LOG_INF("Set long_battery: reporting_interval=%u, start_time=%s", reporting_interval, start_time_str);
+    LOG_INF("Set long_battery: reporting_interval=%u, start_time=%s, gnss_sw=%u", reporting_interval, start_time_str, gnss_sw);
     return 0;
 }
 
 /*********************************************************************
 **函数名称:  set_intelligent_params
 **入口参数:  p_workmode  --  设备工作模式配置结构体指针
-**           static_int  --  停止状态上报间隔（秒）
-**           land_int    --  陆运状态上报间隔（秒）
-**           land_distance --  陆运距离（米）
-**           sea_int     --  海运状态上报间隔（秒）
-**           sleep_sw    --  休眠开关（0/1/2）
+**           sub_mode    --  子模式（0~5）
+**           static_int  --  静止状态上报间隔（原始值，单位由子模式决定）
+**           moving_int  --  运动状态上报间隔（原始值，单位由子模式决定）
 **出口参数:  无
-**函数功能:  设置智能模式参数
+**函数功能:  设置智能模式参数，根据子模式校验间隔范围
 **返 回 值:  0 表示成功，-1 表示失败（参数非法）
+**注意事项:  子模式0~4静止间隔单位为分钟(0/3~60)，子模式5为秒(0/10~86400)
+**           子模式0~1运动间隔单位为分钟(3~60)，子模式2~5为秒(10~86400)
 *********************************************************************/
-int set_intelligent_params(device_work_mode_config_t *p_workmode, uint32_t static_int,
-                     uint32_t land_int, uint32_t land_distance, uint32_t sea_int, uint8_t sleep_sw)
+int set_intelligent_params(device_work_mode_config_t *p_workmode, uint8_t sub_mode,
+                     uint32_t static_int, uint32_t moving_int)
 {
     if (p_workmode == NULL) return -1;
 
-    // 校验停止状态上报间隔
-    if (static_int < 10 || static_int > 86400)
+    // 校验子模式范围
+    if (sub_mode > 5)
     {
-        LOG_INF("Error: intelligent static_int %u out of range (10~86400)", static_int);
+        LOG_INF("Error: intelligent sub_mode %u out of range (0~5)", sub_mode);
         return -1;
     }
 
-    // 校验陆运状态上报间隔
-    if (land_int < 10 || land_int > 86400)
+    // 校验静止间隔（0=静止不上报，允许）
+    if (static_int != 0)
     {
-        LOG_INF("Error: intelligent land_int %u out of range (10~86400)", land_int);
-        return -1;
+        if (sub_mode <= 4)
+        {
+            // 子模式0~4：静止间隔单位为分钟，范围3~60
+            if (static_int < 3 || static_int > 60)
+            {
+                LOG_INF("Error: intelligent static_int %u out of range (0/3~60 min) for sub_mode %u", static_int, sub_mode);
+                return -1;
+            }
+        }
+        else
+        {
+            // 子模式5：静止间隔单位为秒，范围10~86400
+            if (static_int < 10 || static_int > 86400)
+            {
+                LOG_INF("Error: intelligent static_int %u out of range (0/10~86400 sec) for sub_mode 5", static_int);
+                return -1;
+            }
+        }
     }
 
-    // 校验陆运距离
-    if (land_distance != 0 && (land_distance < 5 || land_distance > 1000))
+    // 校验运动间隔
+    if (sub_mode <= 1)
     {
-        LOG_INF("Error: intelligent land_distance %u out of range 0 or (5~1000)", land_distance);
-        return -1;
+        // 子模式0~1：运动间隔单位为分钟，范围3~60
+        if (moving_int < 3 || moving_int > 60)
+        {
+            LOG_INF("Error: intelligent moving_int %u out of range (3~60 min) for sub_mode %u", moving_int, sub_mode);
+            return -1;
+        }
+    }
+    else
+    {
+        // 子模式2~5：运动间隔单位为秒，范围10~86400
+        if (moving_int < 10 || moving_int > 86400)
+        {
+            LOG_INF("Error: intelligent moving_int %u out of range (10~86400 sec) for sub_mode %u", moving_int, sub_mode);
+            return -1;
+        }
     }
 
-    // 校验海运状态上报间隔
-    if (sea_int < 10 || sea_int > 86400)
-    {
-        LOG_INF("Error: intelligent sea_int %u out of range (10~86400)", sea_int);
-        return -1;
-    }
-
-    // 校验休眠开关
-    if (sleep_sw > 2)
-    {
-        LOG_INF("Error: intelligent sleep_sw %u out of range (0/1/2)", sleep_sw);
-        return -1;
-    }
-
-    p_workmode->intelligent.stop_status_interval_sec = static_int;
-    p_workmode->intelligent.land_status_interval_sec = land_int;
-    p_workmode->intelligent.land_status_interval_dis = land_distance;
-    p_workmode->intelligent.sea_status_interval_sec = sea_int;
-    p_workmode->intelligent.sleep_switch = sleep_sw;
-    LOG_INF("Set intelligent: static_int=%u, land_int=%u, sea_int=%u, sleep_sw=%u",
-           static_int, land_int, sea_int, sleep_sw);
+    p_workmode->intelligent.sub_mode = sub_mode;
+    p_workmode->intelligent.static_interval = static_int;
+    p_workmode->intelligent.moving_interval = moving_int;
+    LOG_INF("Set intelligent: sub_mode=%u, static_int=%u, moving_int=%u",
+           sub_mode, static_int, moving_int);
     return 0;
 }
 
@@ -2278,18 +2277,22 @@ static int version_cmd_handler(at_cmd_t* msg)
 **入口参数:  msg   ---   AT 命令消息结构体
 **出口参数:  msg   ---   填充响应消息
 **函数功能:  处理MODESET指令：设置设备工作模式
-**指令格式:  MODESET,[Work Mode]#
-**参数说明:  [Work Mode] - 工作模式
+**指令格式:  MODESET,[Work Mode],[参数...]#
+**参数说明:  模式0: MODESET,0,[Reporting INT],[Distance INT]#
+**           模式1: MODESET,1,[Reporting Interval],[Start Time],[GNSS SW]#
+**           模式2: MODESET,2,[Sub Mode],[Static INT],[MOVING INT]#
+**           模式3: MODESET,3#
 **返 回 值:  BLE数据类型
-**使用示例:  MODESET,1,10,0800#     // 设置长续航模式，上报间隔10分钟，启动时间08:00
-**           MODESET,2,3600,60,500,14400,2  // 设置智能模式，各状态间隔和睡眠开关
-**           MODESET,3             // 切换到连续模式
 *********************************************************************/
 static int modeset_cmd_handler(at_cmd_t* msg)
 {
     uint8_t no_count = 0;
-    uint16_t remaining;  // 响应消息缓冲区的剩余空间
-    device_work_mode_config_t param_work_mode_config;  // 工作模式配置结构体
+    uint16_t remaining;
+    device_work_mode_config_t param_work_mode_config;
+    uint8_t gnss_sw;
+    uint8_t sub_mode_val;
+    uint32_t static_int_val;
+    uint32_t moving_int_val;
 
     remaining = RESP_STRING_LENGTH_MAX;  // 计算响应消息缓冲区的大小
 
@@ -2307,13 +2310,13 @@ static int modeset_cmd_handler(at_cmd_t* msg)
     }
     // 解析当前模式参数（parm[1]）
     param_work_mode_config.current_mode = atoi(msg->parm[1]);
-    if (param_work_mode_config.current_mode < MY_MODE_CONTINUOUS || param_work_mode_config.current_mode > MY_MODE_SMART)
+    if (param_work_mode_config.current_mode >= MY_MODE_MAX)
     {
-        LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[1]);
+        LOG_INF("%s=>invalid mode: %d", __func__, param_work_mode_config.current_mode);
         goto param_invalid;
     }
 
-    // 只有模式参数的情况（切换模式）
+    // 只有模式参数的情况（仅切换模式，不改参数）
     if (msg->parm_count == 1)
     {
         // 切换到指定工作模式
@@ -2330,7 +2333,7 @@ static int modeset_cmd_handler(at_cmd_t* msg)
         return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
-    // 连续模式处理
+    // 连续追踪模式处理: MODESET,0,[Reporting INT],[Distance INT]#
     if (param_work_mode_config.current_mode == MY_MODE_CONTINUOUS)
     {
         /* 检查参数数量 */
@@ -2359,14 +2362,14 @@ static int modeset_cmd_handler(at_cmd_t* msg)
         // 检查参数是否有效
         if (param_work_mode_config.continuous_tracking.reporting_interval_sec < 5 || param_work_mode_config.continuous_tracking.reporting_interval_sec > 86400)
         {
-            LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+            LOG_INF("%s=>Reporting INT %u out of range (5~86400)", __func__, param_work_mode_config.continuous_tracking.reporting_interval_sec);
             goto param_invalid;
         }
-        if (param_work_mode_config.continuous_tracking.reporting_interval_dis !=0 &&
+        if (param_work_mode_config.continuous_tracking.reporting_interval_dis != 0 &&
             (param_work_mode_config.continuous_tracking.reporting_interval_dis < 5 ||
             param_work_mode_config.continuous_tracking.reporting_interval_dis > 1000))
         {
-            LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+            LOG_INF("%s=>Distance INT %u out of range (0/5~1000)", __func__, param_work_mode_config.continuous_tracking.reporting_interval_dis);
             goto param_invalid;
         }
 
@@ -2379,17 +2382,16 @@ static int modeset_cmd_handler(at_cmd_t* msg)
 
         if (gConfigParam.device_workmode_config.workmode_config.current_mode == MY_MODE_CONTINUOUS)
         {
-            // 切换到连续模式
             send_work_mode_command(param_work_mode_config.current_mode);
         }
 
         LOG_INF("%s,%s,%s,%s#", msg->parm[0], msg->parm[1], msg->parm[2], msg->parm[3]);
     }
-    // 长续航模式处理
+    // 长续航模式处理: MODESET,1,[Reporting Interval],[Start Time],[GNSS SW]#
     else if (param_work_mode_config.current_mode == MY_MODE_LONG_LIFE)
     {
         /* 检查参数数量 */
-        if (msg->parm_count != 3)
+        if (msg->parm_count != 4)
         {
             LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
             goto param_invalid;
@@ -2401,13 +2403,29 @@ static int modeset_cmd_handler(at_cmd_t* msg)
             LOG_INF("%s=>invalid Reporting Interval Min param: %s", __func__, msg->parm[2]);
             goto param_invalid;
         }
+
+        // 解析GNSS SW参数（ON/OFF字符串）
+        if (strcmp(msg->parm[4], "ON") == 0)
+        {
+            gnss_sw = 1;
+        }
+        else if (strcmp(msg->parm[4], "OFF") == 0)
+        {
+            gnss_sw = 0;
+        }
+        else
+        {
+            LOG_INF("%s=>invalid GNSS SW param: %s (expect ON/OFF)", __func__, msg->parm[4]);
+            goto param_invalid;
+        }
+
         // 解析长续航模式参数
         param_work_mode_config.long_battery.reporting_interval_min = atoi(msg->parm[2]);
         // 设置长续航模式参数
         if (set_long_battery_params(&gConfigParam.device_workmode_config.workmode_config,
-            param_work_mode_config.long_battery.reporting_interval_min, msg->parm[3]) < 0)
+            param_work_mode_config.long_battery.reporting_interval_min, msg->parm[3], gnss_sw) < 0)
         {
-            LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+            LOG_INF("%s=>set_long_battery_params failed", __func__);
             goto param_invalid;
         }
 
@@ -2417,19 +2435,18 @@ static int modeset_cmd_handler(at_cmd_t* msg)
 
         if (gConfigParam.device_workmode_config.workmode_config.current_mode == MY_MODE_LONG_LIFE)
         {
-            // 切换到长续航模式
             send_work_mode_command(param_work_mode_config.current_mode);
-            //重新开启LTE定时器
+            // 重新开启LTE定时器
             my_send_msg(MOD_MAIN, MOD_MAIN, MY_MSG_RESET_LTE_TIMER);
         }
 
-        LOG_INF("%s,%s,%s,%s#", msg->parm[0], msg->parm[1], msg->parm[2], msg->parm[3]);
+        LOG_INF("%s,%s,%s,%s,%s#", msg->parm[0], msg->parm[1], msg->parm[2], msg->parm[3], msg->parm[4]);
     }
-    // 智能模式处理
+    // 智能模式处理: MODESET,2,[Sub Mode],[Static INT],[MOVING INT]#
     else if (param_work_mode_config.current_mode == MY_MODE_SMART)
     {
         /* 检查参数数量 */
-        if (msg->parm_count != 6)
+        if (msg->parm_count != 4)
         {
             LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
             goto param_invalid;
@@ -2438,49 +2455,32 @@ static int modeset_cmd_handler(at_cmd_t* msg)
         no_count = string_check_is_number(0, msg->parm[2]);
         if (no_count == 0)
         {
-            LOG_INF("%s=>invalid Stop Status Interval Sec param: %s", __func__, msg->parm[2]);
+            LOG_INF("%s=>invalid Sub Mode param: %s", __func__, msg->parm[2]);
             goto param_invalid;
         }
         no_count = string_check_is_number(0, msg->parm[3]);
         if (no_count == 0)
         {
-            LOG_INF("%s=>invalid Land Status Interval Sec param: %s", __func__, msg->parm[3]);
+            LOG_INF("%s=>invalid Static INT param: %s", __func__, msg->parm[3]);
             goto param_invalid;
         }
         no_count = string_check_is_number(0, msg->parm[4]);
         if (no_count == 0)
         {
-            LOG_INF("%s=>invalid Land Status Interval Dis param: %s", __func__, msg->parm[4]);
+            LOG_INF("%s=>invalid Moving INT param: %s", __func__, msg->parm[4]);
             goto param_invalid;
         }
-        no_count = string_check_is_number(0, msg->parm[5]);
-        if (no_count == 0)
-        {
-            LOG_INF("%s=>invalid Sea Status Interval Sec param: %s", __func__, msg->parm[5]);
-            goto param_invalid;
-        }
-        no_count = string_check_is_number(0, msg->parm[6]);
-        if (no_count == 0)
-        {
-            LOG_INF("%s=>invalid Sleep Switch param: %s", __func__, msg->parm[6]);
-            goto param_invalid;
-        }
-        // 解析智能模式参数
-        param_work_mode_config.intelligent.stop_status_interval_sec = atoi(msg->parm[2]);      // 静止状态间隔（秒）
-        param_work_mode_config.intelligent.land_status_interval_sec = atoi(msg->parm[3]);      // 陆运状态间隔（秒）
-        param_work_mode_config.intelligent.land_status_interval_dis = atoi(msg->parm[4]);      // 陆运状态距离（米）
-        param_work_mode_config.intelligent.sea_status_interval_sec = atoi(msg->parm[5]);      // 海运状态间隔（秒）
-        param_work_mode_config.intelligent.sleep_switch = atoi(msg->parm[6]);                 // 睡眠开关（0-2）
 
-        // 设置智能模式参数
+        // 解析智能模式参数
+        sub_mode_val = atoi(msg->parm[2]);
+        static_int_val = atoi(msg->parm[3]);
+        moving_int_val = atoi(msg->parm[4]);
+
+        // 设置智能模式参数（内部完成参数校验）
         if (set_intelligent_params(&gConfigParam.device_workmode_config.workmode_config,
-            param_work_mode_config.intelligent.stop_status_interval_sec,
-            param_work_mode_config.intelligent.land_status_interval_sec,
-            param_work_mode_config.intelligent.land_status_interval_dis,
-            param_work_mode_config.intelligent.sea_status_interval_sec,
-            param_work_mode_config.intelligent.sleep_switch) < 0)
+            sub_mode_val, static_int_val, moving_int_val) < 0)
         {
-            LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+            LOG_INF("%s=>set_intelligent_params failed", __func__);
             goto param_invalid;
         }
 
@@ -2490,11 +2490,30 @@ static int modeset_cmd_handler(at_cmd_t* msg)
 
         if (gConfigParam.device_workmode_config.workmode_config.current_mode == MY_MODE_SMART)
         {
-            // 切换到智能模式
             send_work_mode_command(param_work_mode_config.current_mode);
+            // 参数变更后，基于当前运动状态重新应用LTE唤醒策略
+            smart_mode_apply_lte_policy();
         }
 
-        LOG_INF("%s,%s,%s,%s,%s,%s,%s#", msg->parm[0], msg->parm[1], msg->parm[2], msg->parm[3], msg->parm[4], msg->parm[5], msg->parm[6]);
+        LOG_INF("%s,%s,%s,%s,%s#", msg->parm[0], msg->parm[1], msg->parm[2], msg->parm[3], msg->parm[4]);
+    }
+    // 常在线模式处理: MODESET,3# （无附加参数）
+    else if (param_work_mode_config.current_mode == MY_MODE_ALWAYS_ONLINE)
+    {
+        if (msg->parm_count != 1)
+        {
+            LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+            goto param_invalid;
+        }
+
+        // 常在线模式无附加参数，仅切换模式
+        switch_work_mode(MY_MODE_ALWAYS_ONLINE);
+
+        gConfigParam.device_workmode_config.flag = FLAG_VALID;
+        /* 保存配置 */
+        my_user_data_write(ZMS_ID_WORK_MODE_CONFIG, &gConfigParam.device_workmode_config, sizeof(device_work_mode_config_t));
+
+        LOG_INF("MODESET,3 (ALWAYS_ONLINE)");
     }
 
     /* 生成成功响应 */
@@ -2515,14 +2534,12 @@ param_invalid:
 **出口参数:  msg   ---   填充响应消息
 **函数功能:  处理MODEGET指令：查询设备当前工作模式参数
 **指令格式:  MODEGET#
-**参数说明:  None
 **返 回 值:  BLE数据类型
-**使用示例:  MODEGET#     // 查询当前工作模式参数
 *********************************************************************/
 static int modeget_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;  // 响应消息缓冲区的剩余空间
-    int ret = -1;             // snprintf 函数的返回值
+    int ret = -1;        // snprintf 函数的返回值
 
     remaining = RESP_STRING_LENGTH_MAX;  // 计算响应消息缓冲区的大小
 
@@ -2541,20 +2558,24 @@ static int modeget_cmd_handler(at_cmd_t* msg)
                 break;
 
             case MY_MODE_LONG_LIFE:
-                ret = snprintf(msg->resp_msg, remaining, "MODE:%d,%d,%s",
+                ret = snprintf(msg->resp_msg, remaining, "MODE:%d,%d,%s,%s",
                     gConfigParam.device_workmode_config.workmode_config.current_mode,
                     gConfigParam.device_workmode_config.workmode_config.long_battery.reporting_interval_min,
-                    gConfigParam.device_workmode_config.workmode_config.long_battery.start_time);
+                    gConfigParam.device_workmode_config.workmode_config.long_battery.start_time,
+                    gConfigParam.device_workmode_config.workmode_config.long_battery.gnss_sw ? "ON" : "OFF");
                 break;
 
             case MY_MODE_SMART:
-                ret = snprintf(msg->resp_msg, remaining, "MODE:%d,%d,%d,%d,%d,%d",
+                ret = snprintf(msg->resp_msg, remaining, "MODE:%d,%d,%d,%d",
                     gConfigParam.device_workmode_config.workmode_config.current_mode,
-                    gConfigParam.device_workmode_config.workmode_config.intelligent.stop_status_interval_sec,
-                    gConfigParam.device_workmode_config.workmode_config.intelligent.land_status_interval_sec,
-                    gConfigParam.device_workmode_config.workmode_config.intelligent.land_status_interval_dis,
-                    gConfigParam.device_workmode_config.workmode_config.intelligent.sea_status_interval_sec,
-                    gConfigParam.device_workmode_config.workmode_config.intelligent.sleep_switch);
+                    gConfigParam.device_workmode_config.workmode_config.intelligent.sub_mode,
+                    gConfigParam.device_workmode_config.workmode_config.intelligent.static_interval,
+                    gConfigParam.device_workmode_config.workmode_config.intelligent.moving_interval);
+                break;
+
+            case MY_MODE_ALWAYS_ONLINE:
+                ret = snprintf(msg->resp_msg, remaining, "MODE:%d",
+                    gConfigParam.device_workmode_config.workmode_config.current_mode);
                 break;
 
             default:
@@ -2588,14 +2609,12 @@ static int modeget_cmd_handler(at_cmd_t* msg)
 **出口参数:  msg   ---   填充响应消息
 **函数功能:  处理MODEPARAM指令：查询设备所有工作模式参数
 **指令格式:  MODEPARAM#
-**参数说明:  None
 **返 回 值:  BLE数据类型
-**使用示例:  MODEPARAM#     // 查询所有工作模式参数
 *********************************************************************/
 static int modeparam_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;  // 响应消息缓冲区的剩余空间
-    int ret = -1;             // snprintf 函数的返回值
+    int ret = -1;        // snprintf 函数的返回值
 
     remaining = RESP_STRING_LENGTH_MAX;  // 计算响应消息缓冲区的大小
 
@@ -2604,19 +2623,20 @@ static int modeparam_cmd_handler(at_cmd_t* msg)
     {
         LOG_INF("%s=>%s", __func__, msg->parm[0]);  // 输出函数名和命令名
 
-        ret = snprintf(msg->resp_msg, remaining, "MODE:%d,%d,%d\nMODE:%d,%d,%s\nMODE:%d,%d,%d,%d,%d,%d",
+        ret = snprintf(msg->resp_msg, remaining,
+                    "MODE:%d,%d,%d\nMODE:%d,%d,%s,%s\nMODE:%d,%d,%d,%d\nMODE:%d",
                     MY_MODE_CONTINUOUS,
                     gConfigParam.device_workmode_config.workmode_config.continuous_tracking.reporting_interval_sec,
                     gConfigParam.device_workmode_config.workmode_config.continuous_tracking.reporting_interval_dis,
                     MY_MODE_LONG_LIFE,
                     gConfigParam.device_workmode_config.workmode_config.long_battery.reporting_interval_min,
                     gConfigParam.device_workmode_config.workmode_config.long_battery.start_time,
+                    gConfigParam.device_workmode_config.workmode_config.long_battery.gnss_sw ? "ON" : "OFF",
                     MY_MODE_SMART,
-                    gConfigParam.device_workmode_config.workmode_config.intelligent.stop_status_interval_sec,
-                    gConfigParam.device_workmode_config.workmode_config.intelligent.land_status_interval_sec,
-                    gConfigParam.device_workmode_config.workmode_config.intelligent.land_status_interval_dis,
-                    gConfigParam.device_workmode_config.workmode_config.intelligent.sea_status_interval_sec,
-                    gConfigParam.device_workmode_config.workmode_config.intelligent.sleep_switch);
+                    gConfigParam.device_workmode_config.workmode_config.intelligent.sub_mode,
+                    gConfigParam.device_workmode_config.workmode_config.intelligent.static_interval,
+                    gConfigParam.device_workmode_config.workmode_config.intelligent.moving_interval,
+                    MY_MODE_ALWAYS_ONLINE);
 
         if (ret > 0 && ret < remaining)  // 检查响应消息是否生成成功
         {

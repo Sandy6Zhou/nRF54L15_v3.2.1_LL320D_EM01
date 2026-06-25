@@ -44,10 +44,12 @@ typedef struct
 /* 工作模式定义 */
 typedef enum
 {
-    MY_MODE_CONTINUOUS,     // 连续追踪模式
-    MY_MODE_LONG_LIFE,      // 长续航模式
-    MY_MODE_SMART,          // 智能模式
-    MY_MODE_SHUTDOWN,       // 关机模式，该模式下所有功能关闭，只有按键可以唤醒设备，长按2秒开机，开机后智能模式，这种主要应用在仓储模式，进入超低功耗模式
+    MY_MODE_CONTINUOUS = 0,     // 模式0：连续追踪模式，Cell+GNSS常开，时间+距离双条件上报
+    MY_MODE_LONG_LIFE = 1,      // 模式1：长续航模式，定时唤醒定位
+    MY_MODE_SMART = 2,          // 模式2：智能模式（默认），G-Sensor区分静止/运动，子模式控制断电策略
+    MY_MODE_ALWAYS_ONLINE = 3,  // 模式3：常在线模式，4G永久在线，GNSS仅告警唤醒
+    MY_MODE_MAX,
+    MY_MODE_SHUTDOWN = 0xFF,    // 关机模式（独立于工作模式），所有功能关闭，长按2秒唤醒
 } work_mode_t;
 
 // 连续追踪模式参数结构体
@@ -59,17 +61,16 @@ typedef struct
 
 // 长续航模式参数结构体
 typedef struct {
-    uint32_t reporting_interval_min;    // 上传间隔，单位：分钟（非负整数）
+    uint32_t reporting_interval_min;    // 上传间隔，单位：分钟（5~1440），默认240
     char start_time[5];                 // 开始时间，格式HHMM（24小时制，如"0001"），长度5含字符串结束符
+    uint8_t gnss_sw;                    // GNSS开关：1=ON, 0=OFF，默认ON（由4G侧控制GPS启停）
 } long_battery_mode_t;
 
 // 智能模式参数结构体
 typedef struct {
-    uint32_t stop_status_interval_sec;  // 停止状态上传间隔，单位：秒（非负整数）
-    uint32_t land_status_interval_sec;  // 陆运状态上传间隔，单位：秒（非负整数）
-    uint32_t land_status_interval_dis;  // 陆运状态上传距离，单位：米（非负整数）
-    uint32_t sea_status_interval_sec;   // 海运状态上传间隔，单位：秒（非负整数）
-    uint8_t sleep_switch;               // 休眠开关，可设置范围：0/1/2
+    uint8_t sub_mode;               // 子模式 0~5，控制Cell/GNSS断电策略和间隔单位，默认5
+    uint32_t static_interval;       // 静止状态上报间隔（存储原始值，单位由子模式决定：0~4为分钟3~60，5为秒10~86400），0=静止不上报，默认5
+    uint32_t moving_interval;       // 运动状态上报间隔（存储原始值，单位由子模式决定：0~1为分钟3~60，2~5为秒10~86400），默认5
 } intelligent_mode_t;
 
 // 设备工作模式配置结构体
@@ -228,6 +229,14 @@ void handle_smart_mode(void);
 **函数功能:  处理连续追踪模式逻辑
 *********************************************************************/
 void handle_continuous_mode(void);
+
+/*********************************************************************
+**函数名称:  handle_always_online_mode
+**入口参数:  无
+**出口参数:  无
+**函数功能:  处理常在线模式逻辑，4G永久在线，G-Sensor正常采样支持告警
+*********************************************************************/
+void handle_always_online_mode(void);
 
 /*********************************************************************
 **函数名称:  awaken_lte_timer_callback

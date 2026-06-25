@@ -12,7 +12,17 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260623"
+#define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260625"
+/* 软件版本:        V1.0
+** 完成日期:        2026.06.25
+** 作    者:       周森达 (zhousenda@jimiiot.com)
+** 修改内容:        1.新增常在线模式，并同步调整连续/长续航/智能模式的参数定义与返回格式。
+**                 2.完成MODESET/MODEGET/MODEPARAM指令适配，支持长续航模式GNSS ON/OFF配置、智能模式sub_mode/static_interval/moving_interval新参数配置。
+**                 3.增加智能模式下G-Sensor与 LTE联动策略调整，按子模式区分Cell常开/断电及定时唤醒行为。
+**                 4.优化工作模式切换流程，补充常在线模式处理逻辑，并统一LTE间隔唤醒原因设置。
+***/
+
+// #define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260623"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.06.23
 ** 作    者:       曹阳 (caoyang@jimiiot.com)

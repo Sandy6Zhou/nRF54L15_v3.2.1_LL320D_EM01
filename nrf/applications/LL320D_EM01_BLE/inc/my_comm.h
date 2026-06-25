@@ -138,11 +138,10 @@ typedef enum
 
 typedef enum
 {
-    LTE_BOOT_REASON_CONTINUOUS = 0, // 连续追踪模式间隔定位上报
-    LTE_BOOT_REASON_LONG_LIFE = 1,  // 长续航模式间隔定位上报
-    LTE_BOOT_REASON_SMART = 2,      // 智能模式间隔定位上报
-    LTE_BOOT_REASON_ALARM = 3,      // 告警事件唤醒
-    LTE_BOOT_REASON_SCAN = 4,       // 扫描数据上报
+    LTE_BOOT_REASON_KEYPRESS = 0,   // 按键开机
+    LTE_BOOT_REASON_INTERVAL,       // 间隔定位上报
+    LTE_BOOT_REASON_ALARM,          // 告警事件唤醒
+    LTE_BOOT_REASON_SCAN,           // 扫描数据上报
     LTE_BOOT_REASON_RESERVED = 255, // 预留(未知原因)
 } lte_boot_reason_t;
 

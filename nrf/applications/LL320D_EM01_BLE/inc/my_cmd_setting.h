@@ -67,38 +67,28 @@ extern uint8_t g_lte_cmdSource;
 extern char g_resp_buf[RESP_STRING_LENGTH_MAX];
 
 /********************************************************************
-**函数名称:  set_work_mode
-**入口参数:  config   ---        指向设备工作模式配置结构体的指针
-**           mode     ---        要设置的工作模式（连续/长续航/智能等）
-**出口参数:  config   ---        更新后的配置结构体
-**函数功能:  设置设备的工作模式，将指定的工作模式写入作模式配置结构体
-**返 回 值:  0 表示成功，负值表示失败（如参数非法等）
-*********************************************************************/
-int set_work_mode(device_work_mode_config_t *config, work_mode_t mode);
-
-/********************************************************************
 **函数名称:  set_long_battery_params
 **入口参数:  config              ---    指向设备工作模式配置结构体的指针
-**           reporting_interval   ---    上报间隔时间（单位：分钟）
-**           start_time_str      ---    启动时间字符串（格式：HH:MM）
+**           reporting_interval   ---    上报间隔时间（单位：分钟，5~1440）
+**           start_time_str      ---    启动时间字符串（格式：HHMM）
+**           gnss_sw             ---    GNSS开关（1=ON, 0=OFF）
 **出口参数:  config              ---    更新后的长续航模式配置结构体
-**函数功能:  设置长续航模式的工作参数，包括上报间隔和启动时间
+**函数功能:  设置长续航模式的工作参数，包括上报间隔、启动时间和GNSS开关
 **返 回 值:  0 表示成功，负值表示失败（如时间格式错误等）
 *********************************************************************/
-int set_long_battery_params(device_work_mode_config_t *config, uint16_t reporting_interval, const char *start_time_str);
+int set_long_battery_params(device_work_mode_config_t *config, uint16_t reporting_interval, const char *start_time_str, uint8_t gnss_sw);
 
 /********************************************************************
 **函数名称:  set_intelligent_params
-**入口参数:  config   ---        指向设备工作模式配置结构体的指针
-**           static_int ---      静态状态上报间隔（单位：秒）
-**           land_int   ---      陆地状态上报间隔（单位：秒）
-**           sea_int    ---      海上状态上报间隔（单位：秒）
-**           sleep_sw   ---      睡眠模式标志（0:不休眠,1、2具体见产品设计）
-**出口参数:  config   ---        更新后的智能模式配置结构体
-**函数功能:  设置智能模式的工作参数，根据不同状态配置不同的上报间隔及睡眠模式
+**入口参数:  config     ---    指向设备工作模式配置结构体的指针
+**           sub_mode   ---    子模式（0~5），控制Cell/GNSS休眠策略
+**           static_int ---    静止状态上报间隔（原始值，单位由子模式决定）
+**           moving_int ---    运动状态上报间隔（原始值，单位由子模式决定）
+**出口参数:  config     ---    更新后的智能模式配置结构体
+**函数功能:  设置智能模式的工作参数，根据子模式配置静止/运动上报间隔
 **返 回 值:  0 表示成功，负值表示失败（如参数非法等）
 *********************************************************************/
-int set_intelligent_params(device_work_mode_config_t *config, uint32_t static_int, uint32_t land_int, uint32_t land_distance, uint32_t sea_int, uint8_t sleep_sw);
+int set_intelligent_params(device_work_mode_config_t *config, uint8_t sub_mode, uint32_t static_int, uint32_t moving_int);
 
 /********************************************************************
 **函数名称:  at_recv_cmd_handler
