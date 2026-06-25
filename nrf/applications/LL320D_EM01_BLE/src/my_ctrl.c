@@ -24,13 +24,12 @@ LOG_MODULE_REGISTER(my_ctrl, LOG_LEVEL_INF);
 #define KEY_POLL_PERIOD_MS   50
 /* 长按阈值：1.5秒 = 30个周期 */
 #define KEY_LONG_PRESS_COUNT (1500 / KEY_POLL_PERIOD_MS)
-/* 光感消抖时间：100ms */
-#define LIGHT_DEBOUNCE_MS 100
 
 /* 硬件设备树定义 */
 static const struct gpio_dt_spec fun_key = GPIO_DT_SPEC_GET(DT_ALIAS(fun_key), gpios);
 static const struct pwm_dt_spec buzzer = PWM_DT_SPEC_GET(DT_ALIAS(buzzer_pwm));
-static const struct gpio_dt_spec light_det = GPIO_DT_SPEC_GET(DT_ALIAS(light_detect), gpios);
+static const struct gpio_dt_spec light_tamper_det = GPIO_DT_SPEC_GET(DT_ALIAS(light_tamper_detect), gpios);
+static const struct gpio_dt_spec light_pull_det = GPIO_DT_SPEC_GET(DT_ALIAS(light_pull_detect), gpios);
 static const struct gpio_dt_spec batt_leds[] = {
     GPIO_DT_SPEC_GET(DT_ALIAS(battery_led0), gpios),
     GPIO_DT_SPEC_GET(DT_ALIAS(battery_led1), gpios),
@@ -55,18 +54,21 @@ static struct
 } key_ctrl_t;
 
 /* 光感检测控制结构 */
-static struct
+typedef struct
 {
-    struct k_timer timer;       /* 消抖定时器 */
+    struct k_timer timer;       /* 延时定时器 */
     bool state;                 /* 当前光感状态（true=有光，false=无光） */
-    bool debouncing;            /* 消抖中标志 */
 } light_sensor_t;
+
+static light_sensor_t light_tamper_sensor;
+static light_sensor_t light_pull_sensor;
 
 static buzzer_ctrl_t s_buzzer_ctrl = { 0 };
 
 /* 定时器回调前向声明 */
 static void key_timer_handler(struct k_timer *timer);
-static void light_sensor_timer_handler(struct k_timer *timer);
+static void light_tamper_sensor_timer_handler(struct k_timer *timer);
+static void light_pull_sensor_timer_handler(struct k_timer *timer);
 
 /* 消息队列定义 */
 K_MSGQ_DEFINE(my_ctrl_msgq, sizeof(msg_t), 10, 4);
@@ -80,15 +82,15 @@ static struct gpio_callback s_misc_io_cb;
 static struct k_timer s_buzzer_timer;
 
 /************************************************************
-**函数名称:  get_light_state
+**函数名称:  get_light_tamper_state
 **入口参数:  无
 **出口参数:  无
-**函数功能:  获取当前光感状态
+**函数功能:  获取当前拆壳光感状态
 **返回值:    光感状态（true=有光，false=无光）
 *********************************************************************/
-bool get_light_state(void)
+bool get_light_tamper_state(void)
 {
-    return light_sensor_t.state;
+    return light_tamper_sensor.state;
 }
 
 /********************************************************************
@@ -331,33 +333,29 @@ static void key_timer_handler(struct k_timer *timer)
 **函数名称:  light_sensor_timer_handler
 **入口参数:  timer    ---   定时器指针
 **出口参数:  无
-**函数功能:  光感消抖定时器回调
+**函数功能:  拆壳光感定时器回调
 **返 回 值:  无
-**功能描述:  1. 100ms后读取光感电平确认状态
-**           2. 状态变化时发送消息到主任务
-**           3. 清除消抖标志
+**功能描述:  1. 状态变化时发送消息到主任务
 *********************************************************************/
-static void light_sensor_timer_handler(struct k_timer *timer)
+static void light_tamper_sensor_timer_handler(struct k_timer *timer)
 {
     ARG_UNUSED(timer);
 
-    int level = gpio_pin_get(light_det.port, light_det.pin);
+    int level = gpio_pin_get(light_tamper_det.port, light_tamper_det.pin);
     bool new_state = (level == 1);
 
-    if (new_state != light_sensor_t.state)
+    if (new_state != light_tamper_sensor.state)
     {
-        light_sensor_t.state = new_state;
+        light_tamper_sensor.state = new_state;
         // MY_LOG_INF("Light state changed: %s", new_state ? "LIGHT" : "DARK");
 
         /* 发送光感状态变化消息到主任务 */
         msg_t msg;
-        msg.msgID = new_state ? MY_MSG_CTRL_LIGHT_SENSOR_BRIGHT : MY_MSG_CTRL_LIGHT_SENSOR_DARK;
+        msg.msgID = new_state ? MY_MSG_CTRL_LIGHT_TAMPER_SENSOR_BRIGHT : MY_MSG_CTRL_LIGHT_TAMPER_SENSOR_DARK;
         msg.pData = NULL;
         msg.DataLen = 0;
         my_send_msg_data(MOD_CTRL, MOD_CTRL, &msg);
     }
-
-    light_sensor_t.debouncing = false;
 }
 
 /********************************************************************
@@ -366,16 +364,102 @@ static void light_sensor_timer_handler(struct k_timer *timer)
 **出口参数:  无
 **函数功能:  光感双边沿中断处理
 **返 回 值:  无
-**功能描述:  1. 检测光感状态变化（有光/无光）
-**           2. 启动100ms消抖定时器
-**           3. 避免重复触发消抖
+**功能描述:  1. 读取光感GPIO引脚电平，判断当前光照状态（高电平=有光）
+**          2. 若状态发生变化：
+**             - 从无光→有光：启动定时器，超时时间为T1（从暗处到亮处的确认延时）
+**             - 从有光→无光：启动定时器，超时时间为T2（从亮处到暗处的确认延时）
+**          3. 若状态未变化：停止定时器（消抖复位）
+**          4. 注意：本函数仅负责定时器控制，状态更新由定时器回调完成
+**          5. 定时器超时后触发状态确认消息（MY_MSG_CTRL_LIGHT_SENSOR_BRIGHT/DARK）
 *********************************************************************/
-static void light_sensor_edge_handler(void)
+static void light_tamper_sensor_edge_handler(void)
 {
-    if (!light_sensor_t.debouncing)
+    int level = gpio_pin_get(light_tamper_det.port, light_tamper_det.pin);
+    uint16_t t1 = gConfigParam.ltint_config.T1;
+    uint16_t t2 = gConfigParam.ltint_config.T2;
+    bool new_state = (level == 1);
+
+    if (new_state != light_tamper_sensor.state)
     {
-        light_sensor_t.debouncing = true;
-        k_timer_start(&light_sensor_t.timer, K_MSEC(LIGHT_DEBOUNCE_MS), K_NO_WAIT);
+        if (light_tamper_sensor.state == false)
+        {
+            k_timer_start(&light_tamper_sensor.timer, K_MSEC(t1), K_NO_WAIT);
+        }
+        else
+        {
+            k_timer_start(&light_tamper_sensor.timer, K_MSEC(t2), K_NO_WAIT);
+        }
+    }
+    else
+    {
+        k_timer_stop(&light_tamper_sensor.timer);
+    }
+}
+
+/********************************************************************
+**函数名称:  light_pull_sensor_timer_handler
+**入口参数:  timer    ---   定时器指针
+**出口参数:  无
+**函数功能:  拆卸光感定时器回调
+**返 回 值:  无
+**功能描述:  1. 状态变化时发送消息到主任务
+*********************************************************************/
+static void light_pull_sensor_timer_handler(struct k_timer *timer)
+{
+    ARG_UNUSED(timer);
+
+    int level = gpio_pin_get(light_pull_det.port, light_pull_det.pin);
+    bool new_state = (level == 1);
+
+    if (new_state != light_pull_sensor.state)
+    {
+        light_pull_sensor.state = new_state;
+        // MY_LOG_INF("Light state changed: %s", new_state ? "LIGHT" : "DARK");
+
+        /* 发送光感状态变化消息到主任务 */
+        msg_t msg;
+        msg.msgID = new_state ? MY_MSG_CTRL_LIGHT_PULL_SENSOR_BRIGHT : MY_MSG_CTRL_LIGHT_PULL_SENSOR_DARK;
+        msg.pData = NULL;
+        msg.DataLen = 0;
+        my_send_msg_data(MOD_CTRL, MOD_CTRL, &msg);
+    }
+}
+
+/********************************************************************
+**函数名称:  light_pull_sensor_edge_handler
+**入口参数:  无
+**出口参数:  无
+**函数功能:  拆卸光感双边沿中断处理
+**返 回 值:  无
+**功能描述:  1. 读取拆卸光感GPIO引脚电平，判断当前拆卸状态（高电平=有拆卸）
+**          2. 若状态发生变化：
+**             - 从无拆卸→有拆卸：启动定时器，超时时间为T1（从无拆卸到有拆卸的确认延时）
+**             - 从有拆卸→无拆卸：启动定时器，超时时间为T2（从有拆卸到无拆卸的确认延时）
+**          3. 若状态未变化：停止定时器（消抖复位）
+**          4. 注意：本函数仅负责定时器控制，状态更新由定时器回调完成
+**          5. 定时器超时后触发状态确认消息（MY_MSG_CTRL_LIGHT_PULL_SENSOR_BRIGHT/DARK）
+*********************************************************************/
+static void light_pull_sensor_edge_handler(void)
+{
+    int level = gpio_pin_get(light_pull_det.port, light_pull_det.pin);
+    uint16_t t1 = gConfigParam.ltint_config.T1;
+    uint16_t t2 = gConfigParam.ltint_config.T2;
+    bool new_state = (level == 1);
+
+    if (new_state != light_pull_sensor.state)
+    {
+        if (light_pull_sensor.state == false)
+        {
+            k_timer_start(&light_pull_sensor.timer, K_MSEC(t1), K_NO_WAIT);
+        }
+        else
+        {
+            k_timer_start(&light_pull_sensor.timer, K_MSEC(t2), K_NO_WAIT);
+        }
+    }
+    else
+    {
+        k_timer_stop(&light_pull_sensor.timer);
     }
 }
 
@@ -406,10 +490,16 @@ static void misc_io_isr(const struct device *dev,
         }
     }
 
-    if (pins & BIT(light_det.pin))
+    if (pins & BIT(light_tamper_det.pin))
     {
         /* 双边沿触发，调用光感处理函数 */
-        light_sensor_edge_handler();
+        light_tamper_sensor_edge_handler();
+    }
+
+    if (pins & BIT(light_pull_det.pin))
+    {
+        /* 双边沿触发，调用拆卸光感处理函数 */
+        light_pull_sensor_edge_handler();
     }
 }
 
@@ -421,7 +511,7 @@ static void misc_io_isr(const struct device *dev,
 **返 回 值:  0 表示成功，负值表示失败
 **功能描述:  1. 检查 GPIO 设备就绪状态
 **           2. 配置 fun_key 为输入（内部下拉）
-**           3. 配置 light_det 为输入
+**           3. 配置 light_tamper_det 为输入
 **           4. 配置引脚中断触发
 **           5. 初始化按键定时器并注册中断回调
 *********************************************************************/
@@ -431,7 +521,7 @@ static int misc_io_init(void)
     int light_initial_level;
 
     if (!device_is_ready(fun_key.port) ||
-        !device_is_ready(light_det.port))
+        !device_is_ready(light_tamper_det.port))
     {
         return -ENODEV;
     }
@@ -444,11 +534,19 @@ static int misc_io_init(void)
         return ret;
     }
 
-    /* 配置为输入（light_det 配置为输入） */
-    ret = gpio_pin_configure_dt(&light_det, GPIO_INPUT);
+    /* 配置为输入（light_tamper_det 配置为输入） */
+    ret = gpio_pin_configure_dt(&light_tamper_det, GPIO_INPUT);
     if (ret)
     {
-        MY_LOG_ERR("Failed to configure light_det: %d", ret);
+        MY_LOG_ERR("Failed to configure light_tamper_det: %d", ret);
+        return ret;
+    }
+
+    /* 配置为输入（light_pull_det 配置为输入） */
+    ret = gpio_pin_configure_dt(&light_pull_det, GPIO_INPUT);
+    if (ret)
+    {
+        MY_LOG_ERR("Failed to configure light_pull_det: %d", ret);
         return ret;
     }
 
@@ -460,22 +558,37 @@ static int misc_io_init(void)
         return ret;
     }
 
-    /* 光感检测配置：配置光感中断：双边沿触发 */
-    ret = gpio_pin_interrupt_configure_dt(&light_det, GPIO_INT_EDGE_BOTH);
+    /* 拆壳光感检测配置：配置光感中断：双边沿触发 */
+    ret = gpio_pin_interrupt_configure_dt(&light_tamper_det, GPIO_INT_EDGE_BOTH);
     if (ret)
     {
-        MY_LOG_ERR("Failed to configure light_det interrupt: %d", ret);
+        MY_LOG_ERR("Failed to configure light_tamper_det interrupt: %d", ret);
         return ret;
     }
 
-    /* 初始化光感定时器和状态 */
-    k_timer_init(&light_sensor_t.timer, light_sensor_timer_handler, NULL);
-    light_sensor_t.state = false;
-    light_sensor_t.debouncing = false;
+    /* 初始化拆壳光感定时器和状态 */
+    k_timer_init(&light_tamper_sensor.timer, light_tamper_sensor_timer_handler, NULL);
+    light_tamper_sensor.state = false;
     /* 读取初始状态 */
-    light_initial_level = gpio_pin_get(light_det.port, light_det.pin);
-    light_sensor_t.state = (light_initial_level == 1);
-    MY_LOG_INF("Light initial state: %s", light_sensor_t.state ? "LIGHT" : "DARK");
+    light_initial_level = gpio_pin_get(light_tamper_det.port, light_tamper_det.pin);
+    light_tamper_sensor.state = (light_initial_level == 1);
+    MY_LOG_INF("Light_tamper state: %s", light_tamper_sensor.state ? "LIGHT" : "DARK");
+
+    /* 拆卸光感检测配置：配置光感中断：双边沿触发 */
+    ret = gpio_pin_interrupt_configure_dt(&light_pull_det, GPIO_INT_EDGE_BOTH);
+    if (ret)
+    {
+        MY_LOG_ERR("Failed to configure light_pull_det interrupt: %d", ret);
+        return ret;
+    }
+
+    /* 初始化拆卸光感定时器和状态 */
+    k_timer_init(&light_pull_sensor.timer, light_pull_sensor_timer_handler, NULL);
+    light_pull_sensor.state = false;
+    /* 读取初始状态 */
+    light_initial_level = gpio_pin_get(light_pull_det.port, light_pull_det.pin);
+    light_pull_sensor.state = (light_initial_level == 1);
+    MY_LOG_INF("Light_pull state: %s", light_pull_sensor.state ? "LIGHT" : "DARK");
 
     /* 初始化按键定时器 */
     key_timer_init();
@@ -483,7 +596,8 @@ static int misc_io_init(void)
     /* 一个回调处理两个引脚 */
     gpio_init_callback(&s_misc_io_cb, misc_io_isr,
                        BIT(fun_key.pin) |
-                       BIT(light_det.pin));
+                       BIT(light_tamper_det.pin) |
+                       BIT(light_pull_det.pin));
     gpio_add_callback(fun_key.port, &s_misc_io_cb);
 
     return 0;
@@ -936,8 +1050,8 @@ static void my_ctrl_task(void *p1, void *p2, void *p3)
                 }
                 break;
 
-            case MY_MSG_CTRL_LIGHT_SENSOR_BRIGHT:
-                MY_LOG_INF("Light sensor detected: BRIGHT");
+            case MY_MSG_CTRL_LIGHT_TAMPER_SENSOR_BRIGHT:
+                MY_LOG_INF("Light tamper sensor detected: BRIGHT");
                 //上报拆除检测告警
                 if(gConfigParam.remalm_config.remalm_sw)
                 {
@@ -945,8 +1059,17 @@ static void my_ctrl_task(void *p1, void *p2, void *p3)
                 }
                 break;
 
-            case MY_MSG_CTRL_LIGHT_SENSOR_DARK:
-                MY_LOG_INF("Light sensor detected: DARK");
+            case MY_MSG_CTRL_LIGHT_TAMPER_SENSOR_DARK:
+                MY_LOG_INF("Light tamper sensor detected: DARK");
+                break;
+
+            case MY_MSG_CTRL_LIGHT_PULL_SENSOR_BRIGHT:
+                MY_LOG_INF("Light pull sensor detected: BRIGHT");
+                // TODO: 上报拆卸报警
+                break;
+
+            case MY_MSG_CTRL_LIGHT_PULL_SENSOR_DARK:
+                MY_LOG_INF("Light pull sensor detected: DARK");
                 break;
 
             default:

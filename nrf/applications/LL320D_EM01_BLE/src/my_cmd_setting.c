@@ -54,6 +54,7 @@ static int tag_cmd_handler(at_cmd_t* msg);
 static int jatag_cmd_handler(at_cmd_t* msg);
 static int jgtag_cmd_handler(at_cmd_t* msg);
 static int led_cmd_handler(at_cmd_t* msg);
+static int ltint_cmd_handler(at_cmd_t* msg);
 static int buzzer_cmd_handler(at_cmd_t* msg);
 static int btlog_cmd_handler(at_cmd_t* msg);
 static int version_cmd_handler(at_cmd_t* msg);
@@ -79,6 +80,7 @@ static const at_cmd_attr_t at_cmd_attr_table[] =
     {"JATAG",          jatag_cmd_handler},
     {"JGTAG",          jgtag_cmd_handler},
     {"LED",            led_cmd_handler},
+    {"LTINT",          ltint_cmd_handler},
     {"BUZZER",         buzzer_cmd_handler},
     {"BTLOG",          btlog_cmd_handler},
     {"VERSION",        version_cmd_handler},
@@ -1993,6 +1995,84 @@ param_invalid:
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
+/*********************************************************************
+**函数名称:  ltint_cmd_handler
+**入口参数:  msg      ---        AT指令结构体指针
+**出口参数:  msg->resp_msg  ---  响应消息
+**           msg->resp_length --- 响应长度
+**函数功能:  处理LTINT指令：控制光感过滤
+**指令格式:  LTINT,[T1],[T2]#    - 开启光感过滤
+**           LTINT#       - 查询光感过滤参数
+**参数说明:  T1  - 检测到光的连续时间超过T1时，切换为“Light”状态 100~5000ms
+**          T2  - 检测到暗的连续时间超过T2时，切换为“Dark”状态 100~5000ms
+**          无参数 - 查询当前状态
+**返 回 值:  BLE数据类型
+*********************************************************************/
+static int ltint_cmd_handler(at_cmd_t* msg)
+{
+    uint16_t remaining;
+    uint16_t T1, T2;
+    uint8_t no_count = 0;
+
+    remaining = RESP_STRING_LENGTH_MAX;
+
+    // 无参数即查询
+    if (msg->parm_count == 0)
+    {
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "%s:%d,%d",msg->parm[0],gConfigParam.ltint_config.T1,gConfigParam.ltint_config.T2);
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
+    }
+
+    /* 检查参数数量 */
+    if (msg->parm_count != 2)
+    {
+        LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+        goto param_invalid;
+    }
+
+    no_count = string_check_is_number(0, msg->parm[1]);
+    if (no_count == 0 || no_count > 6)
+    {
+        LOG_INF("%s=>invalid T1 param: %s", __func__, msg->parm[1]);
+        goto param_invalid;
+    }
+
+    no_count = string_check_is_number(0, msg->parm[2]);
+    if (no_count == 0 || no_count > 6)
+    {
+        LOG_INF("%s=>invalid T2 param: %s", __func__, msg->parm[2]);
+        goto param_invalid;
+    }
+
+    T1 = atoi(msg->parm[1]);
+    T2 = atoi(msg->parm[2]);
+
+    if (T1 < 100 || T1 > 5000 || T2 < 100 || T2 > 5000)
+    {
+        LOG_INF("%s=>invalid T1 or T2 param: %s", __func__, msg->parm[1]);
+        goto param_invalid;
+    }
+
+    gConfigParam.ltint_config.flag = FLAG_VALID;
+    gConfigParam.ltint_config.T1 = T1;
+    gConfigParam.ltint_config.T2 = T2;
+
+    /* 保存配置 */
+    my_user_data_write(ZMS_ID_LTINT_CONFIG, &gConfigParam.ltint_config, sizeof(ltint_config_t));
+
+    LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
+
+    /* 生成成功响应 */
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
+    LOG_INF("LTINT: T1=%d,T2=%d", gConfigParam.ltint_config.T1,gConfigParam.ltint_config.T2);
+
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
+
+param_invalid:
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
+}
+
 /********************************************************************
 **函数名称:  buzzer_cmd_handler
 **入口参数:  msg      ---        AT指令结构体指针
@@ -2819,7 +2899,7 @@ static int status_cmd_handler(at_cmd_t* msg)
             g_charg_state == NO_CHARGING ? "Discharging" : "Charging",
             g_lte_net_flag == 0 ? "Disconnect" : "Connect",
             net_signal, gnss_signal, g_lte_gps_signal,
-            get_light_state() ? "Remove" : "Noemal",
+            get_light_tamper_state() ? "Remove" : "Noemal",
             motion, g_location_point.speed);
 
         if (ret > 0 && ret < remaining)  // 检查响应消息是否生成成功

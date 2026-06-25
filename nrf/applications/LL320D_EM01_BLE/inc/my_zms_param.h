@@ -61,6 +61,7 @@ typedef enum                           // 参数ID定义
     ZMS_ID_BT_UPDATA_CONFIG,           // 蓝牙数据上传配置参数ID
     ZMS_ID_TAG_CONFIG,                 // Tag定位功能配置参数ID
     ZMS_ID_LED_CONFIG,                 // LED显示配置参数ID
+    ZMS_ID_LTINT_CONFIG,               // 光感过滤配置参数ID
     ZMS_ID_BUZZER_CONFIG,              // 蜂鸣器配置参数ID
     ZMS_ID_BT_PARMAC_CONFIG,           // 透传MAC地址配置参数ID
     ZMS_ID_BLE_TAG_STORE_META,         // BLE TAG扫描数据循环存储区元数据ID
@@ -189,6 +190,13 @@ typedef struct                              // 存储的LED显示配置参数
     uint8_t led_display;                    // LED显示开关: 0-OFF, 1-ON
 } led_config_t;
 
+typedef struct                              // 存储的光感过滤配置参数
+{
+    uint8_t flag;                           // 参数有效标志
+    uint16_t T1;                            // 检测到光的连续时间超过T1时，切换为“Light”状态 100~5000ms
+    uint16_t T2;                            // 检测到暗的连续时间超过T2时，切换为“Dark”状态 100~5000ms
+} ltint_config_t;
+
 typedef struct                              // 存储的蜂鸣器配置参数
 {
     uint8_t flag;                           // 参数有效标志
@@ -222,6 +230,7 @@ typedef struct
     bt_updata_config_t          bt_updata_config;           // 蓝牙数据上传配置
     tag_config_t                tag_config;                 // Tag定位功能配置
     led_config_t                led_config;                 // LED显示配置
+    ltint_config_t              ltint_config;               // 光感过滤配置
     buzzer_config_t             buzzer_config;              // 蜂鸣器配置
     bparmac_config_t            bparmac_config;             // 透传mac地址配置
 } config_param_t;

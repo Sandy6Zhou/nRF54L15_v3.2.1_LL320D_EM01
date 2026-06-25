@@ -142,12 +142,12 @@ void send_alarm_message_to_lte(alarm_type_t alarm_type, const char *additional_i
 void go_to_system_off(void);
 
 /************************************************************
-**函数名称:  get_light_state
+**函数名称:  get_light_tamper_state
 **入口参数:  无
 **出口参数:  无
 **函数功能:  获取当前光感状态
 **返回值:    光感状态（true=有光，false=无光）
 *********************************************************************/
-bool get_light_state(void);
+bool get_light_tamper_state(void);
 
 #endif /* _MY_CTRL_H_ */

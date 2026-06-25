@@ -216,8 +216,10 @@ typedef enum
     /* CTRL处理程序消息 */
     MY_MSG_CTRL_KEY_SHORT_PRESS,       /* 按键短按事件 */
     MY_MSG_CTRL_KEY_LONG_PRESS,        /* 按键长按事件（2秒） */
-    MY_MSG_CTRL_LIGHT_SENSOR_DARK,     /* 光传感器检测到黑暗环境 */
-    MY_MSG_CTRL_LIGHT_SENSOR_BRIGHT,   /* 光传感器检测到光明环境 */
+    MY_MSG_CTRL_LIGHT_TAMPER_SENSOR_DARK,     /* 拆壳光传感器检测到黑暗环境 */
+    MY_MSG_CTRL_LIGHT_TAMPER_SENSOR_BRIGHT,   /* 拆壳光传感器检测到光明环境 */
+    MY_MSG_CTRL_LIGHT_PULL_SENSOR_BRIGHT,   /* 拆卸光传感器检测到光明环境 */
+    MY_MSG_CTRL_LIGHT_PULL_SENSOR_DARK,     /* 拆卸光传感器检测到黑暗环境 */
     MY_MSG_CTRL_SHUTDOWN_REQUEST,      /* 关机请求 */
 
     /* BLE 处理程序消息 */

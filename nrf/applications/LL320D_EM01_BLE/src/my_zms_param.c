@@ -178,6 +178,13 @@ const led_config_t gDefaultLedConfig =
     .led_display = 0,                  /* 默认关闭 */
 };
 
+const ltint_config_t gDefaultLtintConfig =
+{
+    .flag = FLAG_VALID,
+    .T1 = 1000,                          /* 默认1000ms */
+    .T2 = 1000,                          /* 默认1000ms */
+};
+
 const buzzer_config_t gDefaultBuzzerConfig =
 {
     .flag = FLAG_VALID,
@@ -546,6 +553,19 @@ void my_param_load_config(void)
     else
     {
         MY_LOG_INF("Led config loaded: led_display(%d)", gConfigParam.led_config.led_display);
+    }
+
+    //--------Load Ltint Config ---------------------
+    length = sizeof(ltint_config_t);
+    ret = my_user_data_read(ZMS_ID_LTINT_CONFIG, &gConfigParam.ltint_config, length);
+    if (ret != length)
+    {
+        memcpy(&gConfigParam.ltint_config, &gDefaultLtintConfig, length);
+        MY_LOG_INF("Ltint Config not found. Use default:T1(%d), T2(%d)", gConfigParam.ltint_config.T1, gConfigParam.ltint_config.T2);
+    }
+    else
+    {
+        MY_LOG_INF("Ltint Config loaded: T1(%d), T2(%d)", gConfigParam.ltint_config.T1, gConfigParam.ltint_config.T2);
     }
 
     //--------Load Buzzer Config ---------------------
