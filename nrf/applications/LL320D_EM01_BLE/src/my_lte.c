@@ -37,7 +37,7 @@ char LTE_CMD[] = "LTE+CMD=";
 char LTE_LOCATION[] = "LTE+LOCATION=";
 char LTE_FACTORY[] = "LTE+FACTORY=";
 char LTE_STATE[] = "LTE+STATE=";
-char LTE_IMEI[] = "LTE+IMEI=";
+char LTE_SN[] = "LTE+SN=";
 char LTE_GETMOT[] = "LTE+GETMOT=";
 char LTE_GETTIME[] = "LTE+GETTIME=";
 char LTE_GPSSTATE[] = "LTE+GPSSTATE=";
@@ -1482,7 +1482,7 @@ int my_lte_pwr_on(bool on)
 **入口参数:  pParam   ---        AT命令参数数组
 **           nParam   ---        参数个数
 **出口参数:  无
-**函数功能:  处理PCBA工厂命令，包括FF/GG/JATAG/JGTAG/MODIFYGV/IMEI/MAC等指令
+**函数功能:  处理PCBA工厂命令，包括FF/GG/JATAG/JGTAG/MODIFYGV/SN/MAC等指令
 **返 回 值:  响应字符串指针
 *********************************************************************/
 static char *my_handle_at_pcba_cmd(char **pParam, int nParam)
@@ -1492,7 +1492,7 @@ static char *my_handle_at_pcba_cmd(char **pParam, int nParam)
     const lic_gg_t *lic_gg;
     uint16_t ECDH_GValue;
     uint8_t data_buff[64] = {0};
-    const gsm_imei_t *gsmImei;
+    const gsm_sn_t *gsmSn;
     const uint8_t *edr_addr;
     int ret;
 
@@ -1616,31 +1616,34 @@ static char *my_handle_at_pcba_cmd(char **pParam, int nParam)
                 }
             }
         }
-        else if (CMD_MATCHED(pParam[2], "IMEI"))
+        else if (CMD_MATCHED(pParam[2], "SN"))
         {
-            // AT^GT_CM=PCBA,BT,IMEI
+            // AT^GT_CM=PCBA,BT,SN
             if (nParam == 3)
             {
-                gsmImei = my_param_get_imei();
-                if (gsmImei->flag == FLAG_VALID)
+                gsmSn = my_param_get_sn();
+                if (gsmSn->flag == FLAG_VALID)
                 {
-                    memcpy(data_buff, gsmImei->hex, sizeof(gsmImei->hex));
-                    sprintf(resp, "RETURN_IMEI:%s", data_buff);
+                    memcpy(data_buff, gsmSn->hex, sizeof(gsmSn->hex));
+                    sprintf(resp, "RETURN_SN:%s", data_buff);
                 }
                 else
                 {
-                    sprintf(resp, "RETURN_IMEI");
+                    sprintf(resp, "RETURN_SN");
                 }
             }
-            // AT^GT_CM=PCBA,BT,IMEI,xxxx
+            // AT^GT_CM=PCBA,BT,SN,xxxx
             else
             {
-                ret = my_param_set_imei(pParam[3], strlen(pParam[3]));
-                if (ret == 0){
+                ret = my_param_set_sn(pParam[3], strlen(pParam[3]));
+                if (ret == 0)
+                {
                     //TODO 更新广播数据？
-                    sprintf(resp, "RETURN_IMEI_SET_OK");
-                } else {
-                    sprintf(resp, "RETURN_IMEI_SET_FAIL");
+                    sprintf(resp, "RETURN_SN_SET_OK");
+                }
+                else
+                {
+                    sprintf(resp, "RETURN_SN_SET_FAIL");
                 }
             }
         }
@@ -2584,23 +2587,23 @@ static int my_lte_handle_state(char *data)
 }
 
 /********************************************************************
-**函数名称:  my_lte_handle_imei
-**入口参数:  data    ---   接收到的IMEI数据字符串
+**函数名称:  my_lte_handle_sn
+**入口参数:  data    ---   接收到的SN数据字符串
 **出口参数:  无
-**函数功能:  处理LTE+IMEI指令，解析IMEI并保存到参数存储区
+**函数功能:  处理LTE+SN指令，解析SN并保存到参数存储区
 **返 回 值:  0  --- 处理成功
 *********************************************************************/
-static int my_lte_handle_imei(char *data)
+static int my_lte_handle_sn(char *data)
 {
     int ret = -1;
-    char result[20] = {0}; //这个空间要大于IMEI长度
+    char result[20] = {0}; //这个空间要大于SN长度
     char send_buf[30] = {0};
 
-    // 解析IMEI参数
+    // 解析SN参数
     my_get_str_at_pos(data, 0, ',', result, sizeof(result));
 
-    // 保存IMEI到参数存储区
-    ret = my_param_set_imei(result, strlen(result));
+    // 保存SN到参数存储区
+    ret = my_param_set_sn(result, strlen(result));
 
     // 根据保存结果返回相应响应
     if (ret == 0)
@@ -2619,7 +2622,7 @@ static int my_lte_handle_imei(char *data)
         strncpy(result, "FAIL,SAVE_FAIL", sizeof("FAIL,SAVE_FAIL"));
     }
 
-    snprintf(send_buf, sizeof(send_buf), "LTE+IMEI=%s\r\n", result);
+    snprintf(send_buf, sizeof(send_buf), "LTE+SN=%s\r\n", result);
     my_lte_uart_send(send_buf, strlen(send_buf));
 
     return 0;
@@ -2901,9 +2904,9 @@ int my_lte_parse_cmd(char *cmd, int cmd_len)
         ret = my_lte_handle_state(p + strlen(LTE_STATE));
         goto END;
     }
-    else if (CMD_MATCHED(cmd, LTE_IMEI))
+    else if (CMD_MATCHED(cmd, LTE_SN))
     {
-        ret = my_lte_handle_imei(p + strlen(LTE_IMEI));
+        ret = my_lte_handle_sn(p + strlen(LTE_SN));
         goto END;
     }
     else if (CMD_MATCHED(cmd, LTE_GETMOT))

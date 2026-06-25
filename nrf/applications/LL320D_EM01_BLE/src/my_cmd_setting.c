@@ -48,11 +48,13 @@ static int shockalarm_cmd_handler(at_cmd_t* msg);
 static int pwsave_cmd_handler(at_cmd_t* msg);
 static int startr_cmd_handler(at_cmd_t* msg);
 static int cbmt_cmd_handler(at_cmd_t* msg);
+static int bt_mac_cmd_handler(at_cmd_t* msg);
 static int bt_crfpwr_cmd_handler(at_cmd_t* msg);
 static int bt_updata_cmd_handler(at_cmd_t* msg);
 static int tag_cmd_handler(at_cmd_t* msg);
 static int jatag_cmd_handler(at_cmd_t* msg);
 static int jgtag_cmd_handler(at_cmd_t* msg);
+static int taginit_param_cmd_handler(at_cmd_t* msg);
 static int led_cmd_handler(at_cmd_t* msg);
 static int ltint_cmd_handler(at_cmd_t* msg);
 static int buzzer_cmd_handler(at_cmd_t* msg);
@@ -74,11 +76,13 @@ static const at_cmd_attr_t at_cmd_attr_table[] =
     {"PWRSAVE",        pwsave_cmd_handler},
     {"STARTR",         startr_cmd_handler},
     {"CBMT",           cbmt_cmd_handler},
+    {"BT_MAC",         bt_mac_cmd_handler},
     {"BT_CRFPWR",      bt_crfpwr_cmd_handler},
     {"BT_UPDATA",      bt_updata_cmd_handler},
     {"TAG",            tag_cmd_handler},
     {"JATAG",          jatag_cmd_handler},
     {"JGTAG",          jgtag_cmd_handler},
+    {"TAGINIT_PARAM",  taginit_param_cmd_handler},
     {"LED",            led_cmd_handler},
     {"LTINT",          ltint_cmd_handler},
     {"BUZZER",         buzzer_cmd_handler},
@@ -1425,6 +1429,54 @@ static int cbmt_cmd_handler(at_cmd_t* msg)
 }
 
 /********************************************************************
+**函数名称:  bt_mac_cmd_handler
+**入口参数:  msg      ---        AT指令结构体指针
+**出口参数:  msg->resp_msg  ---  响应消息
+**          msg->resp_length --- 响应长度
+**函数功能:  处理BT_MAC指令：查询蓝牙MAC地址
+**指令格式:  BT_MAC#            查询蓝牙MAC地址
+**返回值说明: BT_MAC:00:00:00:00:00:00  (MAC地址示例)
+**返 回 值:  BLE数据类型
+*********************************************************************/
+static int bt_mac_cmd_handler(at_cmd_t* msg)
+{
+    uint16_t remaining;  // 响应消息缓冲区的剩余空间
+    int ret;             // snprintf 函数的返回值
+    uint8_t data_buff[6];
+
+    remaining = RESP_STRING_LENGTH_MAX;  // 计算响应消息缓冲区的大小
+
+    LOG_INF("%s=>%s", __func__, msg->parm[0]);
+    if (msg->parm_count == 0)
+    {
+        memcpy(data_buff, gConfigParam.my_macaddr.hex, sizeof(gConfigParam.my_macaddr.hex));
+        ret = snprintf(msg->resp_msg, remaining, "%s:%02x:%02x:%02x:%02x:%02x:%02x",
+        msg->parm[0], data_buff[5], data_buff[4], data_buff[3], data_buff[2], data_buff[1], data_buff[0]);
+        if (ret > 0 && ret < remaining)  // 检查响应消息是否生成成功
+        {
+            msg->resp_length = ret;  // 设置响应消息的长度
+            LOG_INF("%s", msg->resp_msg);  // 输出版本号信息
+        }
+        else  // 响应消息生成失败
+        {
+            // 生成失败响应消息
+            msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+        }
+    }
+    else
+    {
+        LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+        goto param_invalid;
+    }
+
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;  // 返回 BLE 数据类型
+
+param_invalid:
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
+}
+
+/********************************************************************
 **函数名称:  bt_crfpwr_cmd_handler
 **入口参数:  msg      ---        AT指令结构体指针
 **出口参数:  msg->resp_msg  ---  响应消息
@@ -1909,6 +1961,74 @@ static int jgtag_cmd_handler(at_cmd_t* msg)
     /* 生成成功响应 */
     msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
     LOG_INF("JGTAG: SW=%d, Interval=%u", gConfigParam.adv_valid_value.GoogleValid, gConfigParam.tag_config.tag_interval);
+
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
+
+param_invalid:
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
+}
+
+/********************************************************************
+**函数名称:  taginit_param_cmd_handler
+**入口参数:  msg      ---        AT指令结构体指针
+**出口参数:  msg->resp_msg  ---  响应消息
+**          msg->resp_length --- 响应长度
+**函数功能:  处理TAGINIT指令：远程下发FF和SN
+**指令格式:  TAGINIT_PARAM#
+**          TAGINIT_PARAM,FF,SN#
+**参数说明:  FF - 许证FF
+**          SN - 许证SN
+**返 回 值:  BLE数据类型
+*********************************************************************/
+static int taginit_param_cmd_handler(at_cmd_t* msg)
+{
+    uint16_t remaining;
+    uint8_t ff_buff[LICENSE_FF_STR_LEN + 1] = {0};
+    uint8_t sn_buff[GSM_SN_LENGTH + 1] = {0};
+
+    remaining = RESP_STRING_LENGTH_MAX;
+
+    // 无参数即查询
+    if (msg->parm_count == 0)
+    {
+        hex2hexstr(gConfigParam.lic_ff.hex, sizeof(gConfigParam.lic_ff.hex), ff_buff, sizeof(ff_buff));
+        memcpy(sn_buff, gConfigParam.gsm_sn.hex, sizeof(gConfigParam.gsm_sn.hex));
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "TAG:FF:%s;SN:%s", ff_buff, sn_buff);
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
+    }
+
+    /* 检查参数数量 */
+    if (msg->parm_count != 2)
+    {
+        LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
+    }
+
+    if (!my_param_check_license(msg->parm[1], strlen(msg->parm[1]), ZMS_ID_FF))
+    {
+        LOG_INF("my_param_check_license FF error!");
+        goto param_invalid;
+    }
+    if (!my_param_check_license(msg->parm[2], strlen(msg->parm[2]), ZMS_ID_SN))
+    {
+        LOG_INF("my_param_check_license SN error!");
+        goto param_invalid;
+    }
+
+    gConfigParam.lic_ff.flag = FLAG_VALID;
+    hexstr_to_hex((uint8_t *)gConfigParam.lic_ff.hex, sizeof(gConfigParam.lic_ff.hex), msg->parm[1]);
+    my_user_data_write(ZMS_ID_FF, &gConfigParam.lic_ff, sizeof(lic_ff_t));
+
+    gConfigParam.gsm_sn.flag = FLAG_VALID;
+    memcpy(gConfigParam.gsm_sn.hex, msg->parm[2], sizeof(gConfigParam.gsm_sn.hex));
+    my_user_data_write(ZMS_ID_SN, &gConfigParam.gsm_sn, sizeof(gsm_sn_t));
+
+    LOG_INF("%s=>%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2]);
+
+    /* 生成成功响应 */
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
 
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 

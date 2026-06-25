@@ -15,8 +15,8 @@
 
 #define FLAG_VALID 0xAA
 
-#define GSM_IMEI_LENGTH                     15
-#define DEV_NAME_USE_IMEI_POS               10
+#define GSM_SN_LENGTH                       12
+#define DEV_NAME_USE_SN_POS                 10
 #define MY_MAC_LENGTH                       6
 
 /* 蓝牙日志模块ID定义 */
@@ -47,7 +47,7 @@ typedef enum                           // 参数ID定义
     ZMS_ID_GG,                         // GG参数ID
     ZMS_ID_ADV_VALID,                  // 广播有效值参数ID
     ZMS_ID_ECDH_G,                     // ECDH_G参数ID
-    ZMS_ID_IMEI,                       // GSM IMEI参数ID
+    ZMS_ID_SN,                         // 设备序列号SN参数ID
     ZMS_ID_MAC,                        // 设备MAC地址参数ID
     ZMS_ID_BLE_TX_POWER,               // 蓝牙发射功率参数ID
     ZMS_ID_BLE_LOG_CONFIG,             // 蓝牙日志配置参数ID
@@ -87,11 +87,11 @@ typedef struct                              // 广播有效值参数
     uint8_t GoogleValid;                    // Google有效值
 } adv_valid_value_t;
 
-typedef struct                              // 存储的IMEI信息
+typedef struct                              // 存储的SN信息
 {
     uint8_t flag;                           // 参数有效标志
-    uint8_t hex[GSM_IMEI_LENGTH];           // GSM IMEI
-} gsm_imei_t;
+    uint8_t hex[GSM_SN_LENGTH];             // 设备序列号SN
+} gsm_sn_t;
 
 typedef struct                              // 存储的MAC地址信息
 {
@@ -216,7 +216,7 @@ typedef struct
     lic_gg_t                    lic_gg;                     // 存储的LICENSE GG信息
     adv_valid_value_t           adv_valid_value;            // 广播有效值
     uint16_t                    ECDH_GValue;                // ECDH_GValue值
-    gsm_imei_t                  gsm_imei;                   // GSM IMEI
+    gsm_sn_t                    gsm_sn;                     // 设备序列号SN
     macaddr_t                   my_macaddr;                 // 设备MAC地址
     ble_tx_power_t              ble_tx_power;               // 蓝牙发射功率
     ble_log_config_t            ble_log_config;             // 蓝牙日志配置
@@ -302,21 +302,21 @@ int my_param_set_Gvalue(char *param);
 *********************************************************************/
 const uint16_t my_param_get_Gvalue(void);
 /********************************************************************
-**函数名称:  my_param_set_imei
-**入口参数:  param: 要设置的IMEI值, len: 数据长度
+**函数名称:  my_param_set_sn
+**入口参数:  param: 要设置的设备序列号SN, len: 数据长度
 **出口参数:  无
-**函数功能:  设置IMEI值
+**函数功能:  设置设备序列号SN
 **返 回 值:  0表示成功，负值表示失败
 *********************************************************************/
-int my_param_set_imei(char *param, uint8_t len);
+int my_param_set_sn(char *param, uint8_t len);
 /********************************************************************
-**函数名称:  my_param_get_imei
+**函数名称:  my_param_get_sn
 **入口参数:  无
 **出口参数:  无
-**函数功能:  获取IMEI配置数据
-**返 回 值:  返回IMEI结构体指针
+**函数功能:  获取设备序列号SN配置数据
+**返 回 值:  返回设备序列号SN结构体指针
 *********************************************************************/
-const gsm_imei_t *my_param_get_imei(void);
+const gsm_sn_t *my_param_get_sn(void);
 /********************************************************************
 **函数名称:  my_param_set_mac
 **入口参数:  param: 要设置的MAC地址, len: 数据长度
@@ -401,5 +401,14 @@ int my_user_data_write(uint32_t id, const void *data, int len);
 **返 回 值:  >0 实际读取的字节数；0 表示未找到该 ID；负值为错误码
 *********************************************************************/
 int my_user_data_read(uint32_t id, void *data, int len);
+
+/********************************************************************
+**函数名称:  my_param_check_license
+**入口参数:  param: 要检查的许可证数据, len: 数据长度, id: 许可证ID
+**出口参数:  无
+**函数功能:  检查许可证数据是否有效
+**返 回 值:  true表示有效，false表示无效
+*********************************************************************/
+bool my_param_check_license(char *param, uint8_t len, my_zms_id_t id);
 
 #endif

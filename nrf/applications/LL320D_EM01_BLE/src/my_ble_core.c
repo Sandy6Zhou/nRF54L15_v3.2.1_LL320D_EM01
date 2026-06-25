@@ -135,7 +135,7 @@ static struct mgmt_callback s_ota_started_callback;
 static struct mgmt_callback s_ota_stopped_callback;
 static struct mgmt_callback s_ota_pending_callback;
 
-/* 配对密钥（IMEI 后 6 位）*/
+/* 配对密钥（SN 后 6 位）*/
 static uint32_t s_ota_passkey = 0;
 
 /********************************************************************
@@ -145,7 +145,7 @@ static uint32_t s_ota_passkey = 0;
 **函数功能:  输入配对密钥回调
 **返 回 值:  0 表示成功
 **功能描述:  1. 在需要输入配对密钥时触发
-**           2. 自动回复 IMEI 后 6 位作为配对密钥
+**           2. 自动回复 SN 后 6 位作为配对密钥
 *********************************************************************/
 static int auth_passkey_entry(struct bt_conn *conn)
 {
@@ -168,7 +168,7 @@ static int auth_passkey_entry(struct bt_conn *conn)
 **函数功能:  显示配对密钥回调
 **返 回 值:  无
 **功能描述:  1. 在配对过程中显示密钥
-**           2. 使用 IMEI 后 6 位作为配对密钥
+**           2. 使用 SN 后 6 位作为配对密钥
 *********************************************************************/
 static void auth_passkey_display(struct bt_conn *conn, unsigned int passkey)
 {
@@ -214,7 +214,7 @@ static struct bt_conn_auth_info_cb auth_info_cb = {
     .pairing_failed = auth_pairing_failed,
 };
 
-/* 配对回调结构体 - 设备自动输入静态密钥（IMEI后6位） */
+/* 配对回调结构体 - 设备自动输入静态密钥（SN后6位） */
 static struct bt_conn_auth_cb auth_cb = {
     .passkey_display = auth_passkey_display,
     .passkey_entry = auth_passkey_entry,
@@ -410,7 +410,7 @@ static void get_adv_data(my_adv_t adv_type,
     uint8_t name_len, name_total_len;
 
     const char *local_name = bt_get_name();
-    const gsm_imei_t *gsmImei = my_param_get_imei();
+    const gsm_sn_t *gsmSn = my_param_get_sn();
     const uint8_t *edr_addr = bt_get_mac_addr();
     uint16_t uuid_user = DEV_CUST_UUID;
 
@@ -420,7 +420,7 @@ static void get_adv_data(my_adv_t adv_type,
     name_len = strlen(local_name);
     memcpy(name_buf, local_name, name_len);
     name_buf[name_len] = '-';
-    memcpy(&name_buf[name_len + 1], &gsmImei->hex[10], 5);  // 使用IMEI后5位作为广播名字的后缀
+    memcpy(&name_buf[name_len + 1], &gsmSn->hex[GSM_SN_LENGTH - 5], 5);  // 使用SN后5位作为广播名字的后缀
     name_total_len = name_len + 1 + 5;
 
     // uuid
@@ -1124,18 +1124,18 @@ int my_ble_core_start(void)
         settings_load();
     }
 
-    /* 获取 IMEI 并设置配对密钥为后 6 位 */
+    /* 获取 SN 并设置配对密钥为后 6 位 */
     {
-        const gsm_imei_t *imei = my_param_get_imei();
+        const gsm_sn_t *sn = my_param_get_sn();
         char passkey_str[7] = {0};
 
-        /* 提取 IMEI 后 6 位 */
-        memcpy(passkey_str, &imei->hex[GSM_IMEI_LENGTH - 6], 6);
+        /* 提取 SN 后 6 位 */
+        memcpy(passkey_str, &sn->hex[GSM_SN_LENGTH - 6], 6);
         passkey_str[6] = '\0';
 
         /* 转换为数字并保存配对密钥 */
         s_ota_passkey = atoi(passkey_str);
-        LOG_INF("OTA pairing passkey set to IMEI last 6 digits: %06u", s_ota_passkey);
+        LOG_INF("OTA pairing passkey set to SN last 6 digits: %06u", s_ota_passkey);
     }
 
     /* 注册配对回调 */

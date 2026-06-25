@@ -15,6 +15,15 @@
 #define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260625"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.06.25
+** 作    者:       曹阳 (caoyang@jimiiot.com)
+** 修改内容:        1.增加蓝牙mac地址查询
+**                 2.LL320D_EM01用SN表示设备身份，不用IMEI,将代码中的IMEI全部替换为SN
+**                 3.增加远程下发TAG FF和SN的指令和相关逻辑
+***/
+
+// #define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260625"
+/* 软件版本:        V1.0
+** 完成日期:        2026.06.25
 ** 作    者:       周森达 (zhousenda@jimiiot.com)
 ** 修改内容:        1.新增常在线模式，并同步调整连续/长续航/智能模式的参数定义与返回格式。
 **                 2.完成MODESET/MODEGET/MODEPARAM指令适配，支持长续航模式GNSS ON/OFF配置、智能模式sub_mode/static_interval/moving_interval新参数配置。

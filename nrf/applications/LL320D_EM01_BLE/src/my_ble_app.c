@@ -630,16 +630,16 @@ void ble_comu_response_cmd(uint8_t cmd, uint8_t param)
 **入口参数:  data        --  收到的CID(串号)数据指针
 **           len         --  收到的CID数据长度
 **出口参数:  无
-**函数功能:  对比收到的CID与设备本地IMEI，回复对比结果响应
+**函数功能:  对比收到的CID与设备本地SN，回复对比结果响应
 **返 回 值:  无
 *********************************************************************/
 static void ble_comu_cid_data_handle(const uint8_t *data, uint16_t len)
 {
-    const gsm_imei_t *gsmImei = my_param_get_imei();
+    const gsm_sn_t *gsmSn = my_param_get_sn();
 
-    if (gsmImei->flag == FLAG_VALID)
+    if (gsmSn->flag == FLAG_VALID)
     {
-        if (memcmp(data, gsmImei->hex, GSM_IMEI_LENGTH) == 0)
+        if (memcmp(data, gsmSn->hex, GSM_SN_LENGTH) == 0)
         {
             ble_comu_response_cmd(BLE_RSP_CMD_CID, BLE_RSP_PARAM_SUCCESS);
             /* CID验证成功，确认是自己的APP，开启蓝牙日志（延迟1秒后允许发送） */
@@ -654,7 +654,7 @@ static void ble_comu_cid_data_handle(const uint8_t *data, uint16_t len)
     else
     {
         ble_comu_response_cmd(BLE_RSP_CMD_CID, BLE_RSP_PARAM_FAIL);
-        LOG_INF("invalid imei param!");
+        LOG_INF("invalid sn param!");
     }
 }
 

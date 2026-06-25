@@ -511,12 +511,12 @@ void set_reset_lte_timer(void)
 **返 回 值:  无
 **功能描述:  1. 打印软件版本信息
 **           2. 打印蓝牙 MAC 地址
-**           3. 打印 IMEI 信息
+**           3. 打印 SN 信息
 *********************************************************************/
 static void print_app_info(void)
 {
     const macaddr_t *mac_addr = my_param_get_macaddr();
-    const gsm_imei_t *imei = my_param_get_imei();
+    const gsm_sn_t *sn = my_param_get_sn();
 
     MY_LOG_INF("============================================");
     MY_LOG_INF("App Info:");
@@ -524,10 +524,10 @@ static void print_app_info(void)
     MY_LOG_INF("  BLE MAC    : %02X:%02X:%02X:%02X:%02X:%02X",
             mac_addr->hex[0], mac_addr->hex[1], mac_addr->hex[2],
             mac_addr->hex[3], mac_addr->hex[4], mac_addr->hex[5]);
-    MY_LOG_INF("  IMEI       : %c%c%c%c%c%c%c%c%c%c%c%c%c%c%c",
-            imei->hex[0], imei->hex[1], imei->hex[2], imei->hex[3], imei->hex[4],
-            imei->hex[5], imei->hex[6], imei->hex[7], imei->hex[8], imei->hex[9],
-            imei->hex[10], imei->hex[11], imei->hex[12], imei->hex[13], imei->hex[14]);
+    MY_LOG_INF("  SN         : %c%c%c%c%c%c%c%c%c%c%c%c",
+            sn->hex[0], sn->hex[1], sn->hex[2], sn->hex[3],
+            sn->hex[4], sn->hex[5], sn->hex[6], sn->hex[7],
+            sn->hex[8], sn->hex[9], sn->hex[10], sn->hex[11]);
     MY_LOG_INF("============================================");
 }
 

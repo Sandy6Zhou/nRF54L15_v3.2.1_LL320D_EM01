@@ -18,13 +18,13 @@ const adv_valid_value_t gDefaultAdvValidValue =
     .GoogleValid = 0,
 };
 
-const gsm_imei_t gDefaultImeiValue =
+const gsm_sn_t gDefaultSnValue =
 {
     .flag = 0,
-    .hex = {'1','2','3','4','5','6','7','8','9','0','1','2','3','4','5'}
+    .hex = {'0','0','0','0','0','0','0','0','0','0','0','0'}
 };
 
-const gsm_imei_t gDefaultMacAddr =
+const macaddr_t gDefaultMacAddr =
 {
     .flag = 0,
     .hex = {0x66, 0x55, 0x44, 0x33, 0x22, 0x11}
@@ -358,14 +358,14 @@ void my_param_load_config(void)
         MY_LOG_INF("ECDH G value not found. Use default:ECDH G value(0x%04x)", gConfigParam.ECDH_GValue);
     }
 
-    //--------Load IMEI Value ---------------------
-    length = sizeof(gsm_imei_t);
-    ret = my_user_data_read(ZMS_ID_IMEI, &gConfigParam.gsm_imei, length);
+    //--------Load SN Value ---------------------
+    length = sizeof(gsm_sn_t);
+    ret = my_user_data_read(ZMS_ID_SN, &gConfigParam.gsm_sn, length);
     if (ret != length)
     {
-        memcpy(&gConfigParam.gsm_imei, &gDefaultImeiValue, length);
-        memcpy(data_buff, gConfigParam.gsm_imei.hex, sizeof(gConfigParam.gsm_imei.hex));
-        MY_LOG_INF("imei not found. Use default:imei value(%s)", data_buff);
+        memcpy(&gConfigParam.gsm_sn, &gDefaultSnValue, length);
+        memcpy(data_buff, gConfigParam.gsm_sn.hex, sizeof(gConfigParam.gsm_sn.hex));
+        MY_LOG_INF("sn not found. Use default:sn value(%s)", data_buff);
     }
 
     //--------Load mac addr ---------------------
@@ -595,6 +595,65 @@ void my_param_load_config(void)
 }
 
 /********************************************************************
+**函数名称:  my_param_check_license
+**入口参数:  param: 要检查的许可证数据, len: 数据长度, id: 许可证ID
+**出口参数:  无
+**函数功能:  检查许可证数据是否有效
+**返 回 值:  true表示有效，false表示无效
+*********************************************************************/
+bool my_param_check_license(char *param, uint8_t len, my_zms_id_t id)
+{
+    switch (id)
+    {
+    case ZMS_ID_FF:
+        if (len != LICENSE_FF_STR_LEN)
+        {
+            MY_LOG_INF("my_param_set_ff len error!");
+            return false;
+        }
+        if (string_check_is_hex_str((const char *)param) != LICENSE_FF_STR_LEN)
+        {
+            MY_LOG_INF("invalid param");
+            return false;
+        }
+        break;
+
+    case ZMS_ID_GG:
+        if (len != LICENSE_GG_STR_LEN)
+        {
+            MY_LOG_INF("my_param_set_gg len error!");
+            return false;
+        }
+        if (string_check_is_hex_str((const char *)param) != LICENSE_GG_STR_LEN)
+        {
+            MY_LOG_INF("invalid param");
+            return false;
+        }
+        break;
+
+    case ZMS_ID_SN:
+        if (len != GSM_SN_LENGTH)
+        {
+            MY_LOG_INF("my_param_set_sn len error!");
+            return false;
+        }
+
+        if (string_check_is_hex_str((const char *)param) != GSM_SN_LENGTH)
+        {
+            MY_LOG_INF("invalid param");
+            return false;
+        }
+        break;
+
+    default:
+        MY_LOG_INF("invalid id");
+        return false;
+    }
+
+    return true;
+}
+
+/********************************************************************
 **函数名称:  my_param_set_ff
 **入口参数:  param: 要设置的iOS许可证数据, len: 数据长度
 **出口参数:  无
@@ -606,15 +665,8 @@ bool my_param_set_ff(char *param, uint8_t len)
     int ret;
     int lic_stuct_len = sizeof(lic_ff_t);
 
-    if (len != LICENSE_FF_STR_LEN)
+    if (!my_param_check_license(param, len, ZMS_ID_FF))
     {
-        MY_LOG_INF("my_param_set_ff len error!");
-        return false;
-    }
-
-    if (string_check_is_hex_str((const char *)param) != LICENSE_FF_STR_LEN)
-    {
-        MY_LOG_INF("invalid param");
         return false;
     }
 
@@ -659,15 +711,8 @@ bool my_param_set_gg(char *param, uint8_t len)
     int ret;
     int lic_stuct_len = sizeof(lic_gg_t);
 
-    if (len != LICENSE_GG_STR_LEN)
+    if (!my_param_check_license(param, len, ZMS_ID_GG))
     {
-        MY_LOG_INF("my_param_set_gg len error!");
-        return false;
-    }
-
-    if (string_check_is_hex_str((const char *)param) != LICENSE_GG_STR_LEN)
-    {
-        MY_LOG_INF("invalid param");
         return false;
     }
 
@@ -869,56 +914,49 @@ const uint16_t my_param_get_Gvalue(void)
 }
 
 /********************************************************************
-**函数名称:  my_param_set_imei
-**入口参数:  param: 要设置的IMEI值, len: 数据长度
+**函数名称:  my_param_set_sn
+**入口参数:  param: 要设置的设备序列号SN, len: 数据长度
 **出口参数:  无
-**函数功能:  设置IMEI值
+**函数功能:  设置设备序列号SN
 **返 回 值:  0表示成功，-1表示参数非法，-2表示写入失败
 *********************************************************************/
-int my_param_set_imei(char *param, uint8_t len)
+int my_param_set_sn(char *param, uint8_t len)
 {
     int ret;
-    int GsmImei_struct_len = sizeof(gsm_imei_t);
+    int GsmSn_struct_len = sizeof(gsm_sn_t);
 
-    if (len != GSM_IMEI_LENGTH)
+    if (!my_param_check_license(param, len, ZMS_ID_SN))
     {
-        MY_LOG_INF("my_param_set_imei len error!");
         return -1;
     }
 
-    if (string_check_is_hex_str((const char *)param) != GSM_IMEI_LENGTH)
-    {
-        MY_LOG_INF("invalid param");
-        return -1;
-    }
+    gConfigParam.gsm_sn.flag = FLAG_VALID;
+    memcpy(gConfigParam.gsm_sn.hex, param, len);
 
-    gConfigParam.gsm_imei.flag = FLAG_VALID;
-    memcpy(gConfigParam.gsm_imei.hex, param, len);
-
-    ret = my_user_data_write(ZMS_ID_IMEI, &gConfigParam.gsm_imei, GsmImei_struct_len);
-    if (ret != GsmImei_struct_len)
+    ret = my_user_data_write(ZMS_ID_SN, &gConfigParam.gsm_sn, GsmSn_struct_len);
+    if (ret != GsmSn_struct_len)
     {
-        MY_LOG_INF("zms set imei Error!!!");
+        MY_LOG_INF("zms set sn Error!!!");
         return -2;
     }
     else
     {
-        MY_LOG_INF("zms set imei OK!!!");
+        MY_LOG_INF("zms set sn OK!!!");
     }
 
     return 0;
 }
 
 /********************************************************************
-**函数名称:  my_param_get_imei
+**函数名称:  my_param_get_sn
 **入口参数:  无
 **出口参数:  无
-**函数功能:  获取IMEI配置数据
-**返 回 值:  返回IMEI结构体指针
+**函数功能:  获取SN配置数据
+**返 回 值:  返回SN结构体指针
 *********************************************************************/
-const gsm_imei_t *my_param_get_imei(void)
+const gsm_sn_t *my_param_get_sn(void)
 {
-    return &gConfigParam.gsm_imei;
+    return &gConfigParam.gsm_sn;
 }
 
 /********************************************************************
