@@ -335,6 +335,10 @@ void my_battery_show_chgled()
         g_chg_led_ctrl.time_count = 0;  // 重置充电LED控制定时器的时间计数
         // 启动充电LED控制定时器，立即执行一次，然后以 CHG_CTRL_LED_MS 为周期重复执行
         k_timer_start(g_chg_led_ctrl.timer, K_MSEC(0), K_MSEC(CHG_CTRL_LED_MS));
+        if (gConfigParam.bluetooth_config.bluetooth_flag == 1 && gConfigParam.bluetooth_config.bluetooth_sw == 1 && gConfigParam.bluetooth_config.bluetooth_a == 5)
+        {
+            my_send_msg(MOD_CTRL, MOD_BLE, MY_MSG_BLE_OPEN_ADV);     // 发送消息到BLE模块,打开广播
+        }
 
         // 停止电池状态LED控制定时器，避免与充电状态LED显示冲突
         k_timer_stop(g_batt_led_ctrl.timer);

@@ -159,6 +159,8 @@ typedef enum
     MY_TIMER_SCAN_INTERVAL,   // 周期扫描定时器
     MY_TIMER_SCAN_LENGTH,     // 单次扫描时长定时器
     MY_TIMER_UPLOAD_INTERVAL, // 上报间隔定时器
+    MY_TIMER_BLUETOOTH_KEY,   // 蓝牙按键定时器
+    MY_TIMER_BLUETOOTH_ADV,   // BLE连接广播定时器
 
     // G-Sensor 专用定时器
     MY_TIMER_GSENSOR_SAMPLE,        // G-Sensor 周期采样定时器
@@ -223,6 +225,8 @@ typedef enum
 
     /* BLE 处理程序消息 */
     MY_MSG_BLE_RX,
+    MY_MSG_BLE_OPEN_ADV,            /* 开启可连接广播 */
+    MY_MSG_BLE_CLOSE_ADV,           /* 关闭可连接广播 */
 
     // 处理4G过来LTE+CMD数据透传
     MY_MSG_LTE_CMD_RX,

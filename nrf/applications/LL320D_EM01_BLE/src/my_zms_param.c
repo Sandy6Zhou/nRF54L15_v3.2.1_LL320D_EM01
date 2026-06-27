@@ -164,6 +164,15 @@ const bt_updata_config_t gDefaultBtUpdataConfig =
     .bt_updata_updata_interval = 14400,/* 默认14400秒 */
 };
 
+const bluetooth_config_t gDefaultBluetoothConfig =
+{
+    .flag = FLAG_VALID,
+    .bluetooth_sw = 0,                   /* 默认关闭 */
+    .bluetooth_a = 5,                    /* 默认5 */
+    .bluetooth_b = 2,                    /* 默认2 min */
+    .bluetooth_flag = 0,                 /* 默认未携带参数 */
+};
+
 const tag_config_t gDefaultTagConfig =
 {
     .flag = FLAG_VALID,
@@ -526,6 +535,21 @@ void my_param_load_config(void)
         MY_LOG_INF("BTUPDATA config loaded: bt_updata_mode(%d), bt_updata_scan_interval(%d), bt_updata_scan_length(%d), bt_updata_updata_interval(%d)",
                     gConfigParam.bt_updata_config.bt_updata_mode, gConfigParam.bt_updata_config.bt_updata_scan_interval,
                     gConfigParam.bt_updata_config.bt_updata_scan_length, gConfigParam.bt_updata_config.bt_updata_updata_interval);
+    }
+
+    //--------Load Bluetooth Config ---------------------
+    length = sizeof(bluetooth_config_t);
+    ret = my_user_data_read(ZMS_ID_BLUETOOTH_CONFIG, &gConfigParam.bluetooth_config, length);
+    if (ret != length)
+    {
+        memcpy(&gConfigParam.bluetooth_config, &gDefaultBluetoothConfig, length);
+        MY_LOG_INF("Bluetooth config not found. Use default:bluetooth_sw(%d), bluetooth_a(%d), bluetooth_b(%d), bluetooth_flag(%d)",
+                    gConfigParam.bluetooth_config.bluetooth_sw, gConfigParam.bluetooth_config.bluetooth_a, gConfigParam.bluetooth_config.bluetooth_b, gConfigParam.bluetooth_config.bluetooth_flag);
+    }
+    else
+    {
+        MY_LOG_INF("Bluetooth config loaded: bluetooth_sw(%d), bluetooth_a(%d), bluetooth_b(%d), bluetooth_flag(%d)",
+                    gConfigParam.bluetooth_config.bluetooth_sw, gConfigParam.bluetooth_config.bluetooth_a, gConfigParam.bluetooth_config.bluetooth_b, gConfigParam.bluetooth_config.bluetooth_flag);
     }
 
     //--------Load Tag Config ---------------------

@@ -713,8 +713,9 @@ int main(void)
 
             case MY_MSG_CTRL_KEY_SHORT_PRESS:
                 MY_LOG_INF("KEY EVENT: Short press detected");
-                /* 短按唤醒后，显示电池状态，LED显示*/
+                /* 短按唤醒后，显示电池状态，LED显示,蓝牙广播*/
                 my_battery_show();
+                my_bluetooth_key_process();
                 break;
 
             case MY_MSG_CTRL_KEY_LONG_PRESS:

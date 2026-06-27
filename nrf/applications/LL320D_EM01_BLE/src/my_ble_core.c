@@ -45,6 +45,7 @@ static struct k_thread s_my_ble_task_data;
 #define CON_ADV_OBJ_MAX_NUM             2       // 0:GOOGLE, 1:APPLE
 #define ADV_INTERVAL                    3200    // 3200*0.625ms=2000ms
 #define BLE_NOTIFY_SEND_BUF_MAX_SIZE    1024
+#define BLE_BLUETOOTH_KEY_INTERVAL      5000    // 5000ms=5s
 
 typedef struct {
     struct bt_le_ext_adv *handle;
@@ -70,6 +71,7 @@ static uint16_t s_connect_id = 0xff;                // 连接ID
 static uint16_t s_ble_server_rx_index = 0;          // 发送缓存索引
 static bool s_ble_server_send_done = true;          // 发送完成标志
 static bool s_ble_data_send_enable[2] = {false};    // GOOGLE/APPLE发送使能
+static uint8_t s_key_state = 0;                     // 按键广播计数，5s按键3次开启广播
 static uint8_t s_uart_ble_server_buf[BLE_NOTIFY_SEND_BUF_MAX_SIZE]; // 发送缓存
 
 static void connected(struct bt_conn *conn, uint8_t err);
@@ -622,7 +624,10 @@ static void adv_work_handler(struct k_work *work)
     ARG_UNUSED(work);
 
     LOG_INF("Restart connectable advertising");
-    start_adv(&s_con_adv_obj_hdl, true);
+    if ((gConfigParam.bluetooth_config.bluetooth_flag == 0) && gConfigParam.bluetooth_config.bluetooth_sw == 1)
+    {
+        start_adv(&s_con_adv_obj_hdl, true);
+    }
 }
 
 /********************************************************************
@@ -669,6 +674,7 @@ static void connected(struct bt_conn *conn, uint8_t err)
     /* 清除蓝牙日志断开标志，允许日志发送
      * 注意：必须在连接成功后调用，确保日志可以正常发送 */
     ble_log_connect_init();
+    my_stop_timer(MY_TIMER_BLUETOOTH_ADV);
 }
 
 /********************************************************************
@@ -1195,10 +1201,69 @@ int my_ble_core_start(void)
     /* 根据ZMS参数设置蓝牙发射功率 */
     ble_set_tx_power_by_param();
 
-    start_adv(&s_con_adv_obj_hdl, true);
+    if ((gConfigParam.bluetooth_config.bluetooth_flag == 0) && gConfigParam.bluetooth_config.bluetooth_sw == 1)
+    {
+        start_adv(&s_con_adv_obj_hdl, true);
+    }
 
     LOG_INF("BLE core start success");
     return 0;
+}
+
+/********************************************************************
+**函数名称:  bluetooth_adv_timer_cb
+**入口参数:  无
+**出口参数:  无
+**函数功能:  广播定时器回调函数，用于关闭广播
+**返 回 值:  无
+*********************************************************************/
+void bluetooth_adv_timer_cb(void *param)
+{
+    my_send_msg(MOD_BLE, MOD_BLE, MY_MSG_BLE_CLOSE_ADV);
+}
+
+/********************************************************************
+**函数名称:  bluetooth_key_timer_cb
+**入口参数:  无
+**出口参数:  无
+**函数功能:  按键广播定时器回调函数，用于清零按键广播计数
+**返 回 值:  无
+*********************************************************************/
+void bluetooth_key_timer_cb(void *param)
+{
+    s_key_state = 0;
+}
+
+/********************************************************************
+**函数名称:  my_bluetooth_key_process
+**入口参数:  无
+**出口参数:  无
+**函数功能:  处理按键广播逻辑，5s按键3次开启广播
+**返 回 值:  无
+*********************************************************************/
+void my_bluetooth_key_process(void)
+{
+    if (gConfigParam.bluetooth_config.bluetooth_flag == 0 || gConfigParam.bluetooth_config.bluetooth_sw == 0 || gConfigParam.bluetooth_config.bluetooth_a != 5)
+    {
+        return;
+    }
+
+    s_key_state++;
+    LOG_INF("Bluetooth key state: %d", s_key_state);
+    if (s_key_state == 1)
+    {
+        // 开启按键广播定时器
+        my_start_timer(MY_TIMER_BLUETOOTH_KEY, BLE_BLUETOOTH_KEY_INTERVAL, false, bluetooth_key_timer_cb);
+    }
+
+    if (s_key_state >= 3)
+    {
+        my_stop_timer(MY_TIMER_BLUETOOTH_KEY);
+        s_key_state = 0;
+        // 开启可连接广播
+        LOG_INF("Bluetooth key timer expired, start connectable adv");
+        my_send_msg(MOD_BLE, MOD_BLE, MY_MSG_BLE_OPEN_ADV);
+    }
 }
 
 /********************************************************************
@@ -1296,6 +1361,22 @@ static void my_ble_task(void *p1, void *p2, void *p3)
                     MY_FREE_BUFFER(msg.pData);
                     msg.pData = NULL;
                 }
+                break;
+
+            case MY_MSG_BLE_OPEN_ADV:
+                if (s_connect_id == 0xff)
+                {
+                    start_adv(&s_con_adv_obj_hdl, true);
+                    if (gConfigParam.bluetooth_config.bluetooth_flag == 1 && gConfigParam.bluetooth_config.bluetooth_a == 5 && gConfigParam.bluetooth_config.bluetooth_b > 0)
+                    {
+                        my_start_timer(MY_TIMER_BLUETOOTH_ADV, gConfigParam.bluetooth_config.bluetooth_b *60 * 1000, false, bluetooth_adv_timer_cb);
+                    }
+                }
+                break;
+
+            case MY_MSG_BLE_CLOSE_ADV:
+                start_adv(&s_con_adv_obj_hdl, false);
+                my_stop_timer(MY_TIMER_BLUETOOTH_ADV);
                 break;
 
             default:

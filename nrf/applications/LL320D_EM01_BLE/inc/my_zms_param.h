@@ -59,6 +59,7 @@ typedef enum                           // 参数ID定义
     ZMS_ID_STARTR_CONFIG,              // 数据记录功能配置参数ID
     ZMS_ID_PWSAVE_CONFIG,              // 低功耗运输状态配置参数ID
     ZMS_ID_BT_UPDATA_CONFIG,           // 蓝牙数据上传配置参数ID
+    ZMS_ID_BLUETOOTH_CONFIG,           // 蓝牙开启配置参数ID
     ZMS_ID_TAG_CONFIG,                 // Tag定位功能配置参数ID
     ZMS_ID_LED_CONFIG,                 // LED显示配置参数ID
     ZMS_ID_LTINT_CONFIG,               // 光感过滤配置参数ID
@@ -177,6 +178,15 @@ typedef struct                              // 存储的蓝牙数据上传配置
     uint32_t bt_updata_updata_interval;     // 蓝牙唤醒间隔: 120-86400秒
 } bt_updata_config_t;
 
+typedef struct                              // 存储的蓝牙开启配置参数
+{
+    uint8_t flag;                           // 参数有效标志
+    uint8_t bluetooth_sw;                   // 蓝牙开启开关: 0-OFF, 1-ON
+    uint8_t bluetooth_a;                    // 蓝牙开启A参数: 1~5  开启广播条件 现在只能设置5
+    uint8_t bluetooth_b;                    // 蓝牙开启B参数: 0~30min 开启广播时间间隔
+    uint8_t bluetooth_flag;                 // 指令是否携带参数: 0-未携带, 1-携带
+} bluetooth_config_t;
+
 typedef struct                              // 存储的Tag定位功能配置参数
 {
     uint8_t flag;                           // 参数有效标志
@@ -228,6 +238,7 @@ typedef struct
     startr_config_t             startr_config;              // 数据记录功能配置
     pwr_save_config_t           pwsave_config;              // 低功耗运输状态配置
     bt_updata_config_t          bt_updata_config;           // 蓝牙数据上传配置
+    bluetooth_config_t          bluetooth_config;           // 蓝牙开启配置
     tag_config_t                tag_config;                 // Tag定位功能配置
     led_config_t                led_config;                 // LED显示配置
     ltint_config_t              ltint_config;               // 光感过滤配置

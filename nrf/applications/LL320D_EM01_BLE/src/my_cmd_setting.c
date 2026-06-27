@@ -51,6 +51,7 @@ static int cbmt_cmd_handler(at_cmd_t* msg);
 static int bt_mac_cmd_handler(at_cmd_t* msg);
 static int bt_crfpwr_cmd_handler(at_cmd_t* msg);
 static int bt_updata_cmd_handler(at_cmd_t* msg);
+static int bluetooth_cmd_handler(at_cmd_t* msg);
 static int tag_cmd_handler(at_cmd_t* msg);
 static int jatag_cmd_handler(at_cmd_t* msg);
 static int jgtag_cmd_handler(at_cmd_t* msg);
@@ -79,6 +80,7 @@ static const at_cmd_attr_t at_cmd_attr_table[] =
     {"BT_MAC",         bt_mac_cmd_handler},
     {"BT_CRFPWR",      bt_crfpwr_cmd_handler},
     {"BT_UPDATA",      bt_updata_cmd_handler},
+    {"BLUETOOTH",      bluetooth_cmd_handler},
     {"TAG",            tag_cmd_handler},
     {"JATAG",          jatag_cmd_handler},
     {"JGTAG",          jgtag_cmd_handler},
@@ -1691,6 +1693,144 @@ static int bt_updata_cmd_handler(at_cmd_t* msg)
                            gConfigParam.bt_updata_config.bt_updata_scan_interval,
                            gConfigParam.bt_updata_config.bt_updata_scan_length,
                            gConfigParam.bt_updata_config.bt_updata_updata_interval);
+
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
+
+param_invalid:
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
+}
+
+/********************************************************************
+**函数名称:  bluetooth_cmd_handler
+**入口参数:  msg      ---        AT指令结构体指针
+**出口参数:  msg->resp_msg  ---  响应消息
+**           msg->resp_length --- 响应长度
+**函数功能:  处理blueuetooth指令：设置蓝牙广播是否开启和开启间隔
+**指令格式:  blueuetooth,[SW],[A],[B]#
+**参数说明:  SW - 广播状态
+**              ON - 开启广播
+**              OFF - 关闭广播
+**          A - 广播模式
+**          B - 广播间隔
+**返 回 值:  BLE数据类型
+*********************************************************************/
+static int bluetooth_cmd_handler(at_cmd_t* msg)
+{
+    uint16_t remaining;
+    uint8_t no_count = 0;
+    uint8_t sw = 0;
+    uint8_t a = 0;
+    uint8_t b = 0;
+
+    remaining = RESP_STRING_LENGTH_MAX;
+
+    // 无参数即查询
+    if (msg->parm_count == 0)
+    {
+        const char* state_str = gConfigParam.bluetooth_config.bluetooth_sw ? "ON" : "OFF";
+        if (gConfigParam.bluetooth_config.bluetooth_flag)
+        {
+            msg->resp_length = snprintf(msg->resp_msg, remaining, "%s:%s,%d,%d", msg->parm[0], state_str, gConfigParam.bluetooth_config.bluetooth_a, gConfigParam.bluetooth_config.bluetooth_b);
+        }
+        else
+        {
+            msg->resp_length = snprintf(msg->resp_msg, remaining, "%s:%s", msg->parm[0], state_str);
+        }
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
+    }
+
+    //不携带参数
+    if (msg->parm_count == 1)
+    {
+        if (strcmp(msg->parm[1], "ON") == 0)
+        {
+            gConfigParam.bluetooth_config.bluetooth_sw = 1;
+        }
+        else if (strcmp(msg->parm[1], "OFF") == 0)
+        {
+            gConfigParam.bluetooth_config.bluetooth_sw = 0;
+        }
+        else
+        {
+            LOG_INF("%s=>invalid param: %s", __func__, msg->parm[1]);
+            goto param_invalid;
+        }
+
+        gConfigParam.bluetooth_config.flag = FLAG_VALID;
+        gConfigParam.bluetooth_config.bluetooth_flag = 0;
+
+        if (gConfigParam.bluetooth_config.bluetooth_sw)
+        {
+            my_send_msg(MOD_BLE, MOD_BLE, MY_MSG_BLE_OPEN_ADV);
+        }
+        else
+        {
+            my_send_msg(MOD_BLE, MOD_BLE, MY_MSG_BLE_CLOSE_ADV);
+        }
+
+        LOG_INF("%s=>%s:%s", __func__, msg->parm[0], msg->parm[1]);
+    }
+    //携带参数
+    else if (msg->parm_count == 3)
+    {
+        if (strcmp(msg->parm[1], "ON") == 0)
+        {
+            sw = 1;
+        }
+        else
+        {
+            LOG_INF("%s=>invalid param: %s", __func__, msg->parm[1]);
+            goto param_invalid;
+        }
+
+        no_count = string_check_is_number(0, msg->parm[2]);
+        if (no_count == 0 || no_count > 2)
+        {
+            LOG_INF("%s=>invalid param: %s", __func__, msg->parm[2]);
+            goto param_invalid;
+        }
+        a = atoi(msg->parm[2]);
+        if (a != 5)
+        {
+            LOG_INF("%s=>invalid param: %s", __func__, msg->parm[2]);
+            goto param_invalid;
+        }
+
+        no_count = string_check_is_number(0, msg->parm[3]);
+        if (no_count == 0 || no_count > 2)
+        {
+            LOG_INF("%s=>invalid param: %s", __func__, msg->parm[3]);
+            goto param_invalid;
+        }
+        b = atoi(msg->parm[3]);
+        if (b > 30)
+        {
+            LOG_INF("%s=>invalid param: %s", __func__, msg->parm[3]);
+            goto param_invalid;
+        }
+
+        gConfigParam.bluetooth_config.flag = FLAG_VALID;
+        gConfigParam.bluetooth_config.bluetooth_sw = sw;
+        gConfigParam.bluetooth_config.bluetooth_a = a;
+        gConfigParam.bluetooth_config.bluetooth_b = b;
+        gConfigParam.bluetooth_config.bluetooth_flag = 1;
+
+        my_send_msg(MOD_BLE, MOD_BLE, MY_MSG_BLE_CLOSE_ADV);
+
+        LOG_INF("%s=>%s:%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2], msg->parm[3]);
+    }
+    else
+    {
+        LOG_INF("%s=>param count error: %d", __func__, msg->parm_count);
+        goto param_invalid;
+    }
+
+    /* 保存配置 */
+    my_user_data_write(ZMS_ID_BLUETOOTH_CONFIG, &gConfigParam.bluetooth_config, sizeof(bluetooth_config_t));
+
+    /* 生成成功响应 */
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
 
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
