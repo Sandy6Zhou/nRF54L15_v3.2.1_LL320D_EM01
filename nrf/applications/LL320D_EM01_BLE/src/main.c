@@ -29,6 +29,8 @@ static work_mode_t s_lprunning_saved_mode = MY_MODE_SMART;  // 进入低功耗�
 static work_mode_t s_last_work_mode = MY_MODE_SHUTDOWN;
 static bool s_lprunning_hold_off = false;                   // 低功耗运行暂缓标志：需电量先回升到阈值以上再回落才允许重入
 
+bool g_shutdown_request = false; // 关机请求标志位
+
 /********************************************************************
 **函数名称:  error
 **入口参数:  无
@@ -681,6 +683,37 @@ void print_reset_reason(void)
 }
 
 /********************************************************************
+**函数名称:  go_to_shutdown
+**入口参数:  无
+**出口参数:  无
+**函数功能:  关机系统
+**返 回 值:  0 表示成功，-1 表示充电中，无法关机
+*********************************************************************/
+int go_to_shutdown(void)
+{
+    if (get_charge_state_level() == 0)
+    {
+        if (g_bLteReady == 1)
+        {
+            // 通知4G模块关机
+            g_shutdown_request = true;
+
+            #if RETRANSMIT_CHECK_ENABLED
+                lte_send_cmd_with_retry("PWROFF", "1");
+            #else
+                lte_send_command("PWROFF", "1");
+            #endif
+        }
+        else
+        {
+            my_send_msg(MOD_MAIN, MOD_MAIN, MY_MSG_CTRL_SHUTDOWN_REQUEST);
+        }
+        return 0;
+    }
+    return -1;
+}
+
+/********************************************************************
 **函数名称:  handle_lprunning_lte_sync
 **入口参数:  无
 **出口参数:  无
@@ -894,6 +927,14 @@ int main(void)
     /* 初始化电源管理子系统（必须在其他模块之前） */
     my_pm_init();
 
+    /* 初始化系统控制模块 (LED, Buzzer, Key) */
+    err = my_ctrl_init(&s_my_ctrl_task_id);
+    if (err)
+    {
+        MY_LOG_ERR("Failed to initialize Control module (err %d)", err);
+    }
+
+
     /* 初始化 Shell 模块 */
     err = my_shell_init();
     if (err)
@@ -934,13 +975,6 @@ int main(void)
         MY_LOG_ERR("Failed to initialize G-Sensor (err %d)", err);
     }
 
-    /* 初始化系统控制模块 (LED, Buzzer, Key) */
-    err = my_ctrl_init(&s_my_ctrl_task_id);
-    if (err)
-    {
-        MY_LOG_ERR("Failed to initialize Control module (err %d)", err);
-    }
-
     /* 初始化自定义任务信息 */
     custom_task_info_init();
 
@@ -975,25 +1009,19 @@ int main(void)
                 break;
 
             case MY_MSG_CTRL_KEY_LONG_PRESS:
-                if (gConfigParam.device_workmode_config.workmode_config.current_mode == MY_MODE_SHUTDOWN)
+                if (gConfigParam.pwrlimit_config.pwrlimit_sw == 0)
                 {
-                    /* 关机模式下长按唤醒 */
-                    MY_LOG_INF("KEY EVENT: Long press detected in SHUTDOWN mode, waking up...");
-                    gConfigParam.device_workmode_config.workmode_config.current_mode = MY_MODE_SMART;
-                    MY_LOG_INF("System waken up, entering SMART mode");
-                    handle_smart_mode();
+                    go_to_shutdown();
                 }
-                else
-                {
-                    MY_LOG_INF("KEY EVENT: Long press detected (2s)");
-                }
+                MY_LOG_INF("KEY EVENT: Long press detected (3s)");
                 break;
 
             case MY_MSG_CTRL_SHUTDOWN_REQUEST:
                 MY_LOG_INF("Shutdown request received, entering SHUTDOWN mode");
                 /* 切换到关机模式 */
-                gConfigParam.device_workmode_config.workmode_config.current_mode = MY_MODE_SHUTDOWN;
-                MY_LOG_INF("System shutdown complete. Press FUN_KEY for 2s to wakeup.");
+                MY_LOG_INF("sSystem hutdown complete. Press FUN_KEY for 3s to wakeup.");
+                g_shutdown_request = false;
+                switch_work_mode(MY_MODE_SHUTDOWN);
                 break;
 
             case MY_MSG_WORK_MODE_SWITCH:
@@ -1062,14 +1090,6 @@ int main(void)
 
             case MY_MSG_LPSLEEP_CLEAR_HOLD_OFF:
                 s_lprunning_hold_off = false;
-                break;
-
-            case MY_MSG_SHUTDOWN:
-                if (gConfigParam.pwsave_config.pwsave_sw == 1)
-                {
-                    gConfigParam.pwsave_config.pwsave_sw = 0; // 低功耗运输状态关闭
-                    switch_work_mode(MY_MODE_SHUTDOWN); // 切换到关机模式
-                }
                 break;
 
             default:

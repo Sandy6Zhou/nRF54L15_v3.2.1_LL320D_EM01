@@ -46,6 +46,7 @@ static int batlevel_cmd_handler(at_cmd_t* msg);
 static int chargesta_cmd_handler(at_cmd_t* msg);
 static int shockalarm_cmd_handler(at_cmd_t* msg);
 static int pwsave_cmd_handler(at_cmd_t* msg);
+static int pwrlimit_cmd_handler(at_cmd_t* msg);
 static int lprunning_cmd_handler(at_cmd_t* msg);
 static int startr_cmd_handler(at_cmd_t* msg);
 static int cbmt_cmd_handler(at_cmd_t* msg);
@@ -76,6 +77,7 @@ static const at_cmd_attr_t at_cmd_attr_table[] =
     {"CHARGESTA",      chargesta_cmd_handler},
     {"SHOCKALARM",     shockalarm_cmd_handler},
     {"PWRSAVE",        pwsave_cmd_handler},
+    {"PWRLIMIT",       pwrlimit_cmd_handler},
     {"LPSLEEP",        lprunning_cmd_handler},
     {"STARTR",         startr_cmd_handler},
     {"CBMT",           cbmt_cmd_handler},
@@ -1229,12 +1231,6 @@ param_invalid:
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
-void shutdown_timeout_timer(void *param)
-{
-    // 关机定时器到期，发送关机消息
-       my_send_msg(MOD_MAIN, MOD_MAIN, MY_MSG_SHUTDOWN);
-}
-
 /********************************************************************
 **函数名称:  pwsave_cmd_handler
 **入口参数:  msg      ---        AT指令结构体指针
@@ -1251,36 +1247,25 @@ static int pwsave_cmd_handler(at_cmd_t* msg)
 
     remaining = RESP_STRING_LENGTH_MAX;
 
-    // 无参数即查询
-    if (msg->parm_count == 0)
-    {
-        // 根据 pwsave_sw 的值选择 "ON" 或 "OFF"
-        const char* state_str = gConfigParam.pwsave_config.pwsave_sw ? "ON" : "OFF";
-        msg->resp_length = snprintf(msg->resp_msg, remaining, "%s:%s", msg->parm[0], state_str);
-        return BLE_DATA_TYPE_PACKET_MULTIPLE;
-    }
-
     /* 检查参数数量 (应为1，指令格式为PWRSAVE,ON#) */
     if (msg->parm_count == 1)
     {
         /* 解析参数 */
         if (strcmp(msg->parm[1], "ON") == 0)
         {
-            gConfigParam.pwsave_config.pwsave_sw = 1;
             LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
 
-            /* 根据指令说明，立即回复 "Poweroff OK" */
-            msg->resp_length = snprintf(msg->resp_msg, remaining, "Poweroff OK");
-
-            // 启动关机定时器，让蓝牙接收到回复，2秒后触发关机
-            my_start_timer(MY_TIMER_SHUTDOWN, 2000, false, shutdown_timeout_timer);
-
-            // 通知4G模块关机
-            #if RETRANSMIT_CHECK_ENABLED
-                lte_send_cmd_with_retry("POWOFF", "1");
-            #else
-                lte_send_command("POWOFF", "1");
-            #endif
+            // 关机系统
+            if (go_to_shutdown() == 0)
+            {
+                /* 根据指令说明，立即回复 "Poweroff OK" */
+                msg->resp_length = snprintf(msg->resp_msg, remaining, "Poweroff OK");
+            }
+            else
+            {
+                msg->resp_length = snprintf(msg->resp_msg, remaining, "Poweroff error! Device is charging.");
+                return BLE_DATA_TYPE_PACKET_MULTIPLE;
+            }
 
             LOG_INF("PWRSAVE: Device will enter low-power transport state");
         }
@@ -1295,6 +1280,72 @@ static int pwsave_cmd_handler(at_cmd_t* msg)
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
     }
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
+}
+
+/********************************************************************
+**函数名称:  pwrlimit_cmd_handler
+**入口参数:  msg      ---        AT指令结构体指针
+**出口参数:  msg->resp_msg  ---  响应消息
+**           msg->resp_length --- 响应长度
+**函数功能:  处理PWRLIMIT指令：限制按钮关机功能
+**指令格式:  PWRLIMIT,[SW]#
+**参数说明:  ON - 开启限制按钮关机功能
+**          OFF - 关闭限制按钮关机功能
+**返 回 值:  BLE数据类型
+*********************************************************************/
+static int pwrlimit_cmd_handler(at_cmd_t* msg)
+{
+    uint16_t remaining;
+
+    remaining = RESP_STRING_LENGTH_MAX;
+
+    // 无参数即查询
+    if (msg->parm_count == 0)
+    {
+        const char* state_str = gConfigParam.pwrlimit_config.pwrlimit_sw ? "ON" : "OFF";
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "%s:%s", msg->parm[0], state_str);
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
+    }
+
+    /* 检查参数数量 */
+    if (msg->parm_count != 1)
+    {
+        LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
+    }
+
+    if (strcmp(msg->parm[1], "ON") == 0)
+    {
+        gConfigParam.pwrlimit_config.pwrlimit_sw = 1;
+    }
+    else if (strcmp(msg->parm[1], "OFF") == 0)
+    {
+        gConfigParam.pwrlimit_config.pwrlimit_sw = 0;
+    }
+    else
+    {
+        LOG_INF("%s=>invalid A param: %s", __func__, msg->parm[1]);
+        goto param_invalid;
+    }
+
+    /* 所有参数验证通过,统一赋值 */
+    gConfigParam.pwrlimit_config.flag = FLAG_VALID;
+
+    /* 保存配置 */
+    my_user_data_write(ZMS_ID_PWRLIMIT_CONFIG, &gConfigParam.pwrlimit_config, sizeof(pwrlimit_config_t));
+
+    LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
+
+    /* 生成成功响应 */
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "%s set OK", msg->parm[0]);
+    LOG_INF("LED: Display=%d", gConfigParam.led_config.led_display);
+
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
+
+param_invalid:
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 

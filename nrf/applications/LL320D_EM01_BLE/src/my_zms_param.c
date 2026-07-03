@@ -149,10 +149,10 @@ const startr_config_t gDefaultStartrConfig =
     .startr_sw = 0,                    /* 默认关闭 */
 };
 
-const pwr_save_config_t gDefaultPWRsaveConfig =
+const pwrlimit_config_t gDefaultPWRlimitConfig =
 {
     .flag = FLAG_VALID,
-    .pwsave_sw = 0,                    /* 默认关闭 */
+    .pwrlimit_sw = 0,                   /* 默认允许开机 */
 };
 
 const lprunning_config_t gDefaultlprunningConfig =
@@ -515,17 +515,17 @@ void my_param_load_config(void)
         MY_LOG_INF("Startr config loaded: startr_sw(%d)", gConfigParam.startr_config.startr_sw);
     }
 
-    //--------Load PWRsave Config ---------------------
-    length = sizeof(pwr_save_config_t);
-    ret = my_user_data_read(ZMS_ID_PWSAVE_CONFIG, &gConfigParam.pwsave_config, length);
+    //--------Load PWRLimit Config ---------------------
+    length = sizeof(pwrlimit_config_t);
+    ret = my_user_data_read(ZMS_ID_PWRLIMIT_CONFIG, &gConfigParam.pwrlimit_config, length);
     if (ret != length)
     {
-        memcpy(&gConfigParam.pwsave_config, &gDefaultPWRsaveConfig, length);
-        MY_LOG_INF("PWRsave config not found. Use default:pwsave_sw(%d)", gConfigParam.pwsave_config.pwsave_sw);
+        memcpy(&gConfigParam.pwrlimit_config, &gDefaultPWRlimitConfig, length);
+        MY_LOG_INF("PWRLimit config not found. Use default:pwrlimit_sw(%d)", gConfigParam.pwrlimit_config.pwrlimit_sw);
     }
     else
     {
-        MY_LOG_INF("PWRsave config loaded: pwsave_sw(%d)", gConfigParam.pwsave_config.pwsave_sw);
+        MY_LOG_INF("PWRLimit config loaded: pwrlimit_sw(%d)", gConfigParam.pwrlimit_config.pwrlimit_sw);
     }
 
     //--------Load LPSLEEP Config ---------------------

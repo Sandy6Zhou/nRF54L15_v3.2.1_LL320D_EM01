@@ -22,8 +22,8 @@ LOG_MODULE_REGISTER(my_ctrl, LOG_LEVEL_INF);
 
 /* 循环定时器周期：50ms */
 #define KEY_POLL_PERIOD_MS   50
-/* 长按阈值：1.5秒 = 30个周期 */
-#define KEY_LONG_PRESS_COUNT (1500 / KEY_POLL_PERIOD_MS)
+/* 长按阈值：3秒 = 60个周期 */
+#define KEY_LONG_PRESS_COUNT (3000 / KEY_POLL_PERIOD_MS)
 
 /* 硬件设备树定义 */
 static const struct gpio_dt_spec fun_key = GPIO_DT_SPEC_GET(DT_ALIAS(fun_key), gpios);
@@ -204,6 +204,23 @@ void send_alarm_message_to_lte(alarm_type_t alarm_type, const char *additional_i
 /* --- 休眠唤醒功能实现 --- */
 
 /********************************************************************
+**函数名称:  peripheral_close
+**入口参数:  无
+**出口参数:  无
+**函数功能:  低功耗模式
+**返 回 值:  无
+**功能描述:  1. 关闭G-Sensor
+**           2. 启用充电使能(低电平为充电使能)
+**           3. 关闭电池 LED
+*********************************************************************/
+void peripheral_close()
+{
+    my_gsensor_pwr_on(false);
+    batt_enable(true);
+    batt_led_set_level(0);
+}
+
+/********************************************************************
 **函数名称:  enable_wakeup_pin
 **入口参数:  无
 **出口参数:  无
@@ -216,7 +233,8 @@ static void enable_wakeup_pin(void)
 {
     /*  配置 P1.9 为输入，并根据外部电路选择上拉/下拉,配置 SENSE 条件，高电平唤醒*/
     nrf_gpio_cfg_sense_input(NRF_GPIO_PIN_MAP(1, 9), NRF_GPIO_PIN_PULLDOWN, NRF_GPIO_PIN_SENSE_HIGH);
-
+    /* 配置 P0.3 为输入，并根据外部电路选择上拉/下拉,配置 SENSE 条件，低电平唤醒*/
+    nrf_gpio_cfg_sense_input(NRF_GPIO_PIN_MAP(0, 3), NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_SENSE_LOW);
 }
 
 /********************************************************************
@@ -234,11 +252,25 @@ void go_to_system_off(void)
 {
     MY_LOG_INF("Config wakeup pin and enter System OFF");
 
+    k_sleep(K_SECONDS(2));// 确保上面的日志有打印出来
+
+    peripheral_close();
+
+    k_msleep(10); // 确保电平稳定
+
     /* 清 RESETREAS，避免立即被旧的唤醒原因拉起（手册要求） */
     nrf_reset_resetreas_clear(NRF_RESET, 0xFFFFFFFF);
 
     enable_wakeup_pin();
-    k_sleep(K_SECONDS(2));// 确保上面的日志有打印出来
+
+    // 如果设备在引脚复位和上电复位后过早进入 System OFF 模式可能会造成电源异常，写入此寄存器为修复措施
+    *(volatile uint32_t *) 0x5005340C = 1;
+
+    // 关闭 GRTC 和 LF 时钟
+    sys_clock_disable();
+
+    // 关闭不需要的 RAM 段
+    NRF_MEMCONF->POWER[1].RET &= ~0xE;
 
     /* 进入 System OFF（深度睡眠） */
     sys_poweroff();
@@ -284,7 +316,7 @@ static void send_key_event(uint32_t msg_id)
 **函数功能:  50ms轮询定时器回调，检测按键状态
 **返 回 值:  无
 **功能描述:  1. 每50ms读取按键电平
-**           2. 按键按下时计数器累加，达到24次(1.2s)触发长按事件
+**           2. 按键按下时计数器累加，达到60次(3s)触发长按事件
 **           3. 按键释放时停止定时器，根据计数判断短按(>=100ms)并发送事件
 *********************************************************************/
 static void key_timer_handler(struct k_timer *timer)
@@ -304,12 +336,6 @@ static void key_timer_handler(struct k_timer *timer)
 
         /* 计数器增加 */
         key_ctrl_t.press_count++;
-
-        /* 检查是否达到长按阈值(1.2s) */
-        if (key_ctrl_t.press_count == KEY_LONG_PRESS_COUNT)
-        {
-            send_key_event(MY_MSG_CTRL_KEY_LONG_PRESS);
-        }
     }
     else
     {
@@ -319,10 +345,14 @@ static void key_timer_handler(struct k_timer *timer)
             key_ctrl_t.pressed = false;
             k_timer_stop(&key_ctrl_t.timer);
 
-            /* 短按判断：大于等于100ms且小于1.2s */
+            /* 短按判断：大于等于100ms且小于3s */
             if (key_ctrl_t.press_count < KEY_LONG_PRESS_COUNT && key_ctrl_t.press_count >= 2)
             {
                 send_key_event(MY_MSG_CTRL_KEY_SHORT_PRESS);
+            }
+            else if (key_ctrl_t.press_count >= KEY_LONG_PRESS_COUNT)
+            {
+                send_key_event(MY_MSG_CTRL_KEY_LONG_PRESS);
             }
             key_ctrl_t.press_count = 0;
         }
@@ -519,6 +549,7 @@ static int misc_io_init(void)
 {
     int ret;
     int light_initial_level;
+    uint32_t fun_key_count = 0;
 
     if (!device_is_ready(fun_key.port) ||
         !device_is_ready(light_tamper_det.port))
@@ -532,6 +563,20 @@ static int misc_io_init(void)
     {
         MY_LOG_ERR("Failed to configure fun_key: %d", ret);
         return ret;
+    }
+
+    if (get_charge_state_level() == 0)
+    {
+        while (gpio_pin_get(fun_key.port, fun_key.pin))
+        {
+            fun_key_count++;
+            k_msleep(KEY_POLL_PERIOD_MS);
+        }
+
+        if (fun_key_count < KEY_LONG_PRESS_COUNT)
+        {
+            go_to_system_off();
+        }
     }
 
     /* 配置为输入（light_tamper_det 配置为输入） */
@@ -1109,11 +1154,11 @@ int my_ctrl_init(k_tid_t *tid)
     k_thread_name_set(*tid, "MY_CTRL");
 
     //  初始化按键、光感、LED GPIO、batt
+    batt_gpio_init();
     misc_io_init();
     leds_init();
     // 注：初始化中会立即开启定时器触发batt_update_timer_handler回调，会向ctrl发送消息（由于未初始化会丢消息），需放在ctrl初始化之后
     batt_adc_init();
-    batt_gpio_init();
 
     ret = my_battery_pm_register();
     if (ret < 0)

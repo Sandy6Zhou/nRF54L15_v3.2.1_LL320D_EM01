@@ -15,6 +15,17 @@
 #define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260629"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.06.29
+** 作    者:       曹阳 (caoyang@jimiiot.com)
+** 修改内容:        1.增加资产机开机/关机功能
+**                 2.增加限制按钮关机指令
+**                 3.增加远程指令关机
+**                 4.增加资产机充电自动开机和按键开机功能
+**                 5.增加sys_poweroff（）前关闭外设电源（G-sensor,LED,充电使能）的功能
+***/
+
+// #define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260629"
+/* 软件版本:        V1.0
+** 完成日期:        2026.06.29
 ** 作    者:       周森达 (zhousenda@jimiiot.com)
 ** 修改内容:        1.新增低功耗运行LPSLEEP机制及参数配置
 **                 2.增加LPSLEEP指令、参数存储及电量联动控制

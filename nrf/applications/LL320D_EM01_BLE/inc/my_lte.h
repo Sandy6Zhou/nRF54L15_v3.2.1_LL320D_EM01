@@ -35,7 +35,7 @@ typedef enum
     BLE_RSP_INFO,     // BLE+INFO=OK
     BLE_RSP_MACINFO,  // BLE+MACINFO=OK,START/END/seq
     BLE_RSP_WMODE,    // BLE+WMODE=OK
-    BLE_RSP_POWOFF,   // BLE+POWOFF=OK
+    BLE_RSP_PWROFF,   // BLE+PWROFF=OK
     BLE_RSP_PULSE,    // BLE+PULSE=OK,<持续时间(分钟)>
     BLE_RSP_MAX
 } ble_rsp_t;

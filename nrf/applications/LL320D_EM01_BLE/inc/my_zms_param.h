@@ -57,7 +57,7 @@ typedef enum                           // 参数ID定义
     ZMS_ID_BAT_LEVEL_CONFIG,           // 电池状态和充电状态报警配置参数ID
     ZMS_ID_SHOCK_ALARM_CONFIG,         // 撞击报警配置参数ID
     ZMS_ID_STARTR_CONFIG,              // 数据记录功能配置参数ID
-    ZMS_ID_PWSAVE_CONFIG,              // 低功耗运输状态配置参数ID
+    ZMS_ID_PWRLIMIT_CONFIG,            // 限制按键关机配置参数ID
     ZMS_ID_BT_UPDATA_CONFIG,           // 蓝牙数据上传配置参数ID
     ZMS_ID_BLUETOOTH_CONFIG,           // 蓝牙开启配置参数ID
     ZMS_ID_TAG_CONFIG,                 // Tag定位功能配置参数ID
@@ -164,11 +164,11 @@ typedef struct                              // 存储的数据记录功能配置
     uint8_t startr_sw;                      // 数据记录功能开关: 0-OFF, 1-ON
 } startr_config_t;
 
-typedef struct                              // 存储的低功耗运输状态配置参数
+typedef struct                              // 存储的限制按键关机配置参数
 {
     uint8_t flag;                           // 参数有效标志
-    uint8_t pwsave_sw;                      // 低功耗运输状态开关: 0-OFF, 1-ON
-} pwr_save_config_t;
+    uint8_t pwrlimit_sw;                    // 限制按键关机开关: 0-OFF, 1-ON
+} pwrlimit_config_t;
 
 typedef struct                              // 存储的低功耗运行配置参数
 {
@@ -245,7 +245,7 @@ typedef struct
     bat_level_config_t          batlevel_config;            // 电池状态和充电状态报警配置
     shock_alarm_config_t        shockalarm_config;          // 撞击报警配置
     startr_config_t             startr_config;              // 数据记录功能配置
-    pwr_save_config_t           pwsave_config;              // 低功耗运输状态配置
+    pwrlimit_config_t           pwrlimit_config;            // 限制按键关机配置
     lprunning_config_t          lprunning_config;           // 低功耗运行配置
     bt_updata_config_t          bt_updata_config;           // 蓝牙数据上传配置
     bluetooth_config_t          bluetooth_config;           // 蓝牙开启配置

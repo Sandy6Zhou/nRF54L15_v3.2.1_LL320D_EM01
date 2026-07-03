@@ -1369,7 +1369,7 @@ static void my_ble_task(void *p1, void *p2, void *p3)
                     start_adv(&s_con_adv_obj_hdl, true);
                     if (gConfigParam.bluetooth_config.bluetooth_flag == 1 && gConfigParam.bluetooth_config.bluetooth_a == 5 && gConfigParam.bluetooth_config.bluetooth_b > 0)
                     {
-                        my_start_timer(MY_TIMER_BLUETOOTH_ADV, gConfigParam.bluetooth_config.bluetooth_b *60 * 1000, false, bluetooth_adv_timer_cb);
+                        my_start_timer(MY_TIMER_BLUETOOTH_ADV, gConfigParam.bluetooth_config.bluetooth_b * 60 * 1000, false, bluetooth_adv_timer_cb);
                     }
                 }
                 break;

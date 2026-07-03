@@ -106,6 +106,8 @@ typedef enum
     EMPTY_TRIGGER_CHANGE,           /* 2-状态变化触发 */
 } empty_trigger_mode_t;
 
+extern bool g_shutdown_request;
+
 /*********************************************************************
 **函数名称:  my_system_reset
 **入口参数:  无
@@ -253,5 +255,14 @@ void awaken_lte_timer_callback(void *timer);
 **函数功能:  发送工作模式给LTE模块
 *********************************************************************/
 void send_work_mode_command(work_mode_t mode);
+
+/********************************************************************
+**函数名称:  go_to_shutdown
+**入口参数:  无
+**出口参数:  无
+**函数功能:  关机系统
+**返 回 值:  无
+*********************************************************************/
+int go_to_shutdown(void);
 
 #endif /* _MY_MAIN_H_ */

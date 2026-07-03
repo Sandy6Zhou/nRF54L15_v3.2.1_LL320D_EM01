@@ -28,6 +28,7 @@
 
 // 串口协议报文头定义清单
 char LTE_PWRON[] = "LTE+PWRON=";
+char LTE_PWROFF[] = "LTE+PWROFF=";
 char LTE_BTSET[] = "LTE+BTSET=";
 char LTE_NTCSET[] = "LTE+NTCSET=";
 char LTE_TIME[] = "LTE+TIME=";
@@ -120,7 +121,7 @@ static const ble_rsp_cmd_map_t ble_rsp_cmd_table[] = {
     {"INFO",     BLE_RSP_INFO    },
     {"MACINFO",  BLE_RSP_MACINFO },
     {"WMODE",    BLE_RSP_WMODE },
-    {"POWOFF",   BLE_RSP_POWOFF },
+    {"PWROFF",   BLE_RSP_PWROFF },
     {"PULSE",    BLE_RSP_PULSE },
     {NULL,       BLE_RSP_UNKNOWN }
 };
@@ -1962,6 +1963,34 @@ static int my_lte_handle_power_on(char *data)
     return 0;
 }
 
+static int my_lte_handle_power_off(char *data)
+{
+    char result[16] = {0};
+    uint8_t pwroff_val = 0;
+
+    // 解析查询标志参数
+    my_get_str_at_pos(data, 0, ',', result, sizeof(result));
+    pwroff_val = atoi(result);
+
+    // 校验参数有效性，必须为1
+    if (pwroff_val != 1)
+    {
+        MY_LOG_ERR("Invalid pwroff flag: %d", pwroff_val);
+        return -1;
+    }
+
+    my_send_msg(MOD_LTE, MOD_LTE, MY_MSG_LTE_PWROFF);
+
+    my_lte_uart_send("LTE+PWROFF=OK\r\n", strlen("LTE+PWROFF=OK\r\n"));
+
+    if (g_shutdown_request == true)
+    {
+        my_send_msg(MOD_LTE, MOD_MAIN, MY_MSG_CTRL_SHUTDOWN_REQUEST);
+    }
+
+    return 0;
+}
+
 /*
 LTE+BTSET=ADVINT,<TC>,<TA>,< TF >
 LTE+BTSET=ADVNME,<广播名称>
@@ -2717,6 +2746,11 @@ int my_lte_parse_cmd(char *cmd, int cmd_len)
         ret = my_lte_handle_power_on(p + strlen(LTE_PWRON));
         goto END;
     }
+    else if (CMD_MATCHED(cmd, LTE_PWROFF))
+    {
+        ret = my_lte_handle_power_off(p + strlen(LTE_PWROFF));
+        goto END;
+    }
     else if (CMD_MATCHED(cmd, LTE_BTSET))
     {
         ret = my_lte_handle_bt_set(p + strlen(LTE_BTSET));
@@ -3094,7 +3128,6 @@ int my_lte_init(k_tid_t *tid)
         MY_LOG_ERR("LTE PM registration failed: %d", err);
         return err;
     }
-
     /* 初始化消息队列 */
     my_init_msg_handler(MOD_LTE, &my_lte_msgq);
 
