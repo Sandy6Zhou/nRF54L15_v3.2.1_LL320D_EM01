@@ -672,7 +672,7 @@ uint16_t at_recv_cmd_handler(at_cmd_t *at_cmd_msg)
     // 遍历 AT 命令表，查找匹配的命令
     for (index = 0; index < AT_CMD_TABLE_TOTAL; index++)
     {
-        if (strcmp(at_cmd_attr_table[index].cmd_str, at_cmd_msg->parm[PARM_1]) == 0)
+        if (my_strcasecmp(at_cmd_attr_table[index].cmd_str, at_cmd_msg->parm[PARM_1]) == 0)
         {
             if (at_cmd_attr_table[index].cmd_func != NULL)
             {
@@ -685,7 +685,7 @@ uint16_t at_recv_cmd_handler(at_cmd_t *at_cmd_msg)
     // 遍历 LTE 命令表，查找匹配的命令
     for (index = 0; index < LTE_CMD_TABLE_TOTAL; index++)
     {
-        if (strcmp(lte_cmd_attr_table[index], at_cmd_msg->parm[PARM_1]) == 0)
+        if (my_strcasecmp(lte_cmd_attr_table[index], at_cmd_msg->parm[PARM_1]) == 0)
         {
             cmd_type = lte_cmd_handler(at_cmd_msg);
             return cmd_type;
@@ -693,7 +693,7 @@ uint16_t at_recv_cmd_handler(at_cmd_t *at_cmd_msg)
     }
 
     // 未匹配指令，返回错误回复
-    at_cmd_msg->resp_length = snprintf(at_cmd_msg->resp_msg, RESP_STRING_LENGTH_MAX, "CMD Error");
+    at_cmd_msg->resp_length = snprintf(at_cmd_msg->resp_msg, RESP_STRING_LENGTH_MAX, "Set Fail! UnknownCmd");
 
     return cmd_type;
 }
@@ -768,16 +768,15 @@ static int remalm_cmd_handler(at_cmd_t* msg)
     if (msg->parm_count != 2)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
-        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-        return BLE_DATA_TYPE_PACKET_MULTIPLE;
+        goto param_invalid;
     }
 
     /* 解析SW参数 */
-    if (strcmp(msg->parm[1], "ON") == 0)
+    if (my_strcasecmp(msg->parm[1], "ON") == 0)
     {
         sw_value = 1;
     }
-    else if (strcmp(msg->parm[1], "OFF") == 0)
+    else if (my_strcasecmp(msg->parm[1], "OFF") == 0)
     {
         sw_value = 0;
     }
@@ -813,15 +812,13 @@ static int remalm_cmd_handler(at_cmd_t* msg)
     LOG_INF("%s=>%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2]);
 
     /* 生成成功响应 */
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK", msg->parm[0]);
     LOG_INF("REMALM: SW=%d, M=%d", gConfigParam.remalm_config.remalm_sw, gConfigParam.remalm_config.remalm_mode);
-
-    //TODO 具体逻辑处理
 
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam", msg->parm[0]);
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
@@ -862,8 +859,7 @@ static int motdet_cmd_handler(at_cmd_t* msg)
     if (msg->parm_count != 3)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
-        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-        return BLE_DATA_TYPE_PACKET_MULTIPLE;
+        goto param_invalid;
     }
 
     no_count = string_check_is_number(0, msg->parm[1]);
@@ -921,7 +917,7 @@ static int motdet_cmd_handler(at_cmd_t* msg)
            msg->parm[2], msg->parm[3], msg->parm[4], msg->parm[5]);
 
     /* 生成成功响应 */
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK", msg->parm[0]);
     LOG_INF("MOTDET: TransitionCount=%d, DetectionInterval=%d, ReportType=%d",
            gConfigParam.motdet_config.motdet_transition_count,
            gConfigParam.motdet_config.motdet_detection_interval,
@@ -932,7 +928,7 @@ static int motdet_cmd_handler(at_cmd_t* msg)
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam", msg->parm[0]);
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
@@ -1008,7 +1004,7 @@ static int batlevel_cmd_handler(at_cmd_t* msg)
     my_user_data_write(ZMS_ID_BAT_LEVEL_CONFIG, &gConfigParam.batlevel_config, sizeof(bat_level_config_t));
 
     /* 生成成功响应 */
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK", msg->parm[0]);
     LOG_INF("BATLEVEL: Empty RPT=%d, Low RPT=%d, Normal RPT=%d, Fair RPT=%d, High RPT=%d, Full RPT=%d",
            gConfigParam.batlevel_config.batlevel_empty_rpt, gConfigParam.batlevel_config.batlevel_low_rpt,
            gConfigParam.batlevel_config.batlevel_normal_rpt, gConfigParam.batlevel_config.batlevel_fair_rpt,
@@ -1019,7 +1015,7 @@ static int batlevel_cmd_handler(at_cmd_t* msg)
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam", msg->parm[0]);
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
@@ -1054,8 +1050,7 @@ static int chargesta_cmd_handler(at_cmd_t* msg)
     if (msg->parm_count != 1)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
-        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-        return BLE_DATA_TYPE_PACKET_MULTIPLE;
+        goto param_invalid;
     }
 
     no_count = string_check_is_number(0, msg->parm[1]);
@@ -1082,7 +1077,7 @@ static int chargesta_cmd_handler(at_cmd_t* msg)
     LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
 
     /* 所有参数验证通过,生成成功响应 */
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK", msg->parm[0]);
     LOG_INF("CHARGESTA: Report=%d", gConfigParam.batlevel_config.chargesta_report);
 
     //TODO 具体逻辑处理
@@ -1090,7 +1085,7 @@ static int chargesta_cmd_handler(at_cmd_t* msg)
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam", msg->parm[0]);
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
@@ -1137,16 +1132,15 @@ static int shockalarm_cmd_handler(at_cmd_t* msg)
     if (msg->parm_count != 4)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
-        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-        return BLE_DATA_TYPE_PACKET_MULTIPLE;
+        goto param_invalid;
     }
 
     /* 解析SW参数 */
-    if (strcmp(msg->parm[1], "ON") == 0)
+    if (my_strcasecmp(msg->parm[1], "ON") == 0)
     {
         sw_value = 1;
     }
-    else if (strcmp(msg->parm[1], "OFF") == 0)
+    else if (my_strcasecmp(msg->parm[1], "OFF") == 0)
     {
         sw_value = 0;
     }
@@ -1214,7 +1208,7 @@ static int shockalarm_cmd_handler(at_cmd_t* msg)
     LOG_INF("%s=>%s,%s,%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2], msg->parm[3], msg->parm[4]);
 
     /* 生成成功响应 */
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK", msg->parm[0]);
     LOG_INF("SHOCKALARM: SW=%d, Level=%d, Type=%d, Silence=%d ",
            gConfigParam.shockalarm_config.shockalarm_sw,
            gConfigParam.shockalarm_config.shockalarm_level,
@@ -1227,7 +1221,7 @@ static int shockalarm_cmd_handler(at_cmd_t* msg)
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam", msg->parm[0]);
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
@@ -1251,7 +1245,7 @@ static int pwsave_cmd_handler(at_cmd_t* msg)
     if (msg->parm_count == 1)
     {
         /* 解析参数 */
-        if (strcmp(msg->parm[1], "ON") == 0)
+        if (my_strcasecmp(msg->parm[1], "ON") == 0)
         {
             LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
 
@@ -1272,13 +1266,13 @@ static int pwsave_cmd_handler(at_cmd_t* msg)
         else
         {
             LOG_INF("%s=>invalid param: %s", __func__, msg->parm[1]);
-            msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+            msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
         }
     }
     else
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
-        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
     }
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
@@ -1312,15 +1306,14 @@ static int pwrlimit_cmd_handler(at_cmd_t* msg)
     if (msg->parm_count != 1)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
-        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-        return BLE_DATA_TYPE_PACKET_MULTIPLE;
+        goto param_invalid;
     }
 
-    if (strcmp(msg->parm[1], "ON") == 0)
+    if (my_strcasecmp(msg->parm[1], "ON") == 0)
     {
         gConfigParam.pwrlimit_config.pwrlimit_sw = 1;
     }
-    else if (strcmp(msg->parm[1], "OFF") == 0)
+    else if (my_strcasecmp(msg->parm[1], "OFF") == 0)
     {
         gConfigParam.pwrlimit_config.pwrlimit_sw = 0;
     }
@@ -1339,13 +1332,13 @@ static int pwrlimit_cmd_handler(at_cmd_t* msg)
     LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
 
     /* 生成成功响应 */
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "%s set OK", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "set OK");
     LOG_INF("LED: Display=%d", gConfigParam.led_config.led_display);
 
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
@@ -1384,7 +1377,7 @@ static int lprunning_cmd_handler(at_cmd_t* msg)
     }
 
     // 关闭指令: LPSLEEP,OFF#
-    if ((msg->parm_count == 1) && (strcmp(msg->parm[1], "OFF") == 0))
+    if ((msg->parm_count == 1) && (my_strcasecmp(msg->parm[1], "OFF") == 0))
     {
         gConfigParam.lprunning_config.lprunning_sw = 0;
         gConfigParam.lprunning_config.flag = FLAG_VALID;
@@ -1394,11 +1387,11 @@ static int lprunning_cmd_handler(at_cmd_t* msg)
         my_send_msg(MOD_MAIN, MOD_MAIN, MY_MSG_LPSLEEP_EXIT);
 
         LOG_INF("%s=>%s,OFF", __func__, msg->parm[0]);
-        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK");
         return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
     // 缺省开启指令: LPSLEEP,ON# （使用已存储的阈值和间隔参数）
-    else if (msg->parm_count == 1 && strcmp(msg->parm[1], "ON") == 0)
+    else if (msg->parm_count == 1 && my_strcasecmp(msg->parm[1], "ON") == 0)
     {
         gConfigParam.lprunning_config.lprunning_sw = 1;
         gConfigParam.lprunning_config.flag = FLAG_VALID;
@@ -1410,11 +1403,11 @@ static int lprunning_cmd_handler(at_cmd_t* msg)
         LOG_INF("%s=>%s,ON (threshold=%d, interval=%d)", __func__, msg->parm[0],
                 gConfigParam.lprunning_config.lprunning_threshold,
                 gConfigParam.lprunning_config.lprunning_interval);
-        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK");
         return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
     // 设置指令: LPSLEEP,ON,B,T#
-    else if (msg->parm_count == 3 && strcmp(msg->parm[1], "ON") == 0)
+    else if (msg->parm_count == 3 && my_strcasecmp(msg->parm[1], "ON") == 0)
     {
         // 校验参数是否为纯数字
         no_count = string_check_is_number(0, msg->parm[2]);
@@ -1438,15 +1431,13 @@ static int lprunning_cmd_handler(at_cmd_t* msg)
         if (threshold < 10 || threshold > 50)
         {
             LOG_INF("%s=>threshold out of range: %d", __func__, threshold);
-            msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-            return BLE_DATA_TYPE_PACKET_MULTIPLE;
+            goto param_invalid;
         }
 
         if (interval < 1 || interval > 48)
         {
             LOG_INF("%s=>interval out of range: %d", __func__, interval);
-            msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-            return BLE_DATA_TYPE_PACKET_MULTIPLE;
+            goto param_invalid;
         }
 
         gConfigParam.lprunning_config.lprunning_sw = 1;
@@ -1459,13 +1450,13 @@ static int lprunning_cmd_handler(at_cmd_t* msg)
         my_send_msg(MOD_MAIN, MOD_MAIN, MY_MSG_LPSLEEP_CLEAR_HOLD_OFF);
 
         LOG_INF("%s=>%s,ON,%d,%d", __func__, msg->parm[0], threshold, interval);
-        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK");
         return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 param_invalid:
     // 参数格式错误
     LOG_INF("%s=>%s, param error: count=%d", __func__, msg->parm[0], msg->parm_count);
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
@@ -1505,19 +1496,18 @@ static int startr_cmd_handler(at_cmd_t* msg)
     if (msg->parm_count != 1)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
-        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-        return BLE_DATA_TYPE_PACKET_MULTIPLE;
+        goto param_invalid;
     }
 
     /* 设置指令 */
     LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
 
     /* 解析A参数 */
-    if (strcmp(msg->parm[1], "ON") == 0)
+    if (my_strcasecmp(msg->parm[1], "ON") == 0)
     {
         gConfigParam.startr_config.startr_sw = 1;
     }
-    else if (strcmp(msg->parm[1], "OFF") == 0)
+    else if (my_strcasecmp(msg->parm[1], "OFF") == 0)
     {
         gConfigParam.startr_config.startr_sw = 0;
     }
@@ -1532,7 +1522,7 @@ static int startr_cmd_handler(at_cmd_t* msg)
     /* 保存配置 */
     my_user_data_write(ZMS_ID_STARTR_CONFIG, &gConfigParam.startr_config, sizeof(startr_config_t));
 
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK");
     LOG_INF("STARTR: SW=%d", gConfigParam.startr_config.startr_sw);
 
     //TODO 具体逻辑处理
@@ -1540,7 +1530,7 @@ static int startr_cmd_handler(at_cmd_t* msg)
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
@@ -1592,13 +1582,13 @@ static int cbmt_cmd_handler(at_cmd_t* msg)
         }
         else
         {
-            msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+            msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
         }
     }
     else
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
-        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
     }
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
@@ -1635,7 +1625,7 @@ static int bt_mac_cmd_handler(at_cmd_t* msg)
         else  // 响应消息生成失败
         {
             // 生成失败响应消息
-            msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+            msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
         }
     }
     else
@@ -1647,7 +1637,7 @@ static int bt_mac_cmd_handler(at_cmd_t* msg)
     return BLE_DATA_TYPE_PACKET_MULTIPLE;  // 返回 BLE 数据类型
 
 param_invalid:
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
@@ -1681,8 +1671,7 @@ static int bt_crfpwr_cmd_handler(at_cmd_t* msg)
     if (msg->parm_count != 1)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
-        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-        return BLE_DATA_TYPE_PACKET_MULTIPLE;
+        goto param_invalid;
     }
 
     no_count = string_check_is_number(1, msg->parm[1]);
@@ -1711,13 +1700,13 @@ static int bt_crfpwr_cmd_handler(at_cmd_t* msg)
     LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
 
     /* 所有参数验证通过,生成成功响应 */
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK!");
     LOG_INF("BT_CRFPWR: A=%d",gConfigParam.ble_tx_power.tx_power);
 
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
@@ -1765,8 +1754,7 @@ static int bt_updata_cmd_handler(at_cmd_t* msg)
     if (msg->parm_count != 4)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
-        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-        return BLE_DATA_TYPE_PACKET_MULTIPLE;
+        goto param_invalid;
     }
 
     no_count = string_check_is_number(0, msg->parm[1]);
@@ -1854,7 +1842,7 @@ static int bt_updata_cmd_handler(at_cmd_t* msg)
            msg->parm[2], msg->parm[3], msg->parm[4]);
 
     /* 生成成功响应 */
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK!");
     LOG_INF("BT_UPDATA: Mode=%d, ScanInterval=%u, ScanLength=%u, UpdataInterval=%u",
            gConfigParam.bt_updata_config.bt_updata_mode,
            gConfigParam.bt_updata_config.bt_updata_scan_interval,
@@ -1870,7 +1858,7 @@ static int bt_updata_cmd_handler(at_cmd_t* msg)
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
@@ -1916,11 +1904,11 @@ static int bluetooth_cmd_handler(at_cmd_t* msg)
     //不携带参数
     if (msg->parm_count == 1)
     {
-        if (strcmp(msg->parm[1], "ON") == 0)
+        if (my_strcasecmp(msg->parm[1], "ON") == 0)
         {
             gConfigParam.bluetooth_config.bluetooth_sw = 1;
         }
-        else if (strcmp(msg->parm[1], "OFF") == 0)
+        else if (my_strcasecmp(msg->parm[1], "OFF") == 0)
         {
             gConfigParam.bluetooth_config.bluetooth_sw = 0;
         }
@@ -1947,7 +1935,7 @@ static int bluetooth_cmd_handler(at_cmd_t* msg)
     //携带参数
     else if (msg->parm_count == 3)
     {
-        if (strcmp(msg->parm[1], "ON") == 0)
+        if (my_strcasecmp(msg->parm[1], "ON") == 0)
         {
             sw = 1;
         }
@@ -2003,12 +1991,12 @@ static int bluetooth_cmd_handler(at_cmd_t* msg)
     my_user_data_write(ZMS_ID_BLUETOOTH_CONFIG, &gConfigParam.bluetooth_config, sizeof(bluetooth_config_t));
 
     /* 生成成功响应 */
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK!");
 
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
@@ -2053,16 +2041,15 @@ static int tag_cmd_handler(at_cmd_t* msg)
     if (msg->parm_count != 1 && msg->parm_count != 2)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
-        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-        return BLE_DATA_TYPE_PACKET_MULTIPLE;
+        goto param_invalid;
     }
 
     /* 解析SW参数 */
-    if (strcmp(msg->parm[1], "ON") == 0)
+    if (my_strcasecmp(msg->parm[1], "ON") == 0)
     {
         sw_value = 1;
     }
-    else if (strcmp(msg->parm[1], "OFF") == 0)
+    else if (my_strcasecmp(msg->parm[1], "OFF") == 0)
     {
         sw_value = 0;
     }
@@ -2107,7 +2094,7 @@ static int tag_cmd_handler(at_cmd_t* msg)
     }
 
     /* 生成成功响应 */
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK!");
     LOG_INF("TAG: SW=%d, Interval=%u", gConfigParam.tag_config.tag_sw, gConfigParam.tag_config.tag_interval);
 
     //更新非连接广播参数，里面会按配置打开或关闭广播，根据tag_sw的值
@@ -2116,7 +2103,7 @@ static int tag_cmd_handler(at_cmd_t* msg)
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
@@ -2155,16 +2142,15 @@ static int jatag_cmd_handler(at_cmd_t* msg)
     if (msg->parm_count != 1)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
-        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-        return BLE_DATA_TYPE_PACKET_MULTIPLE;
+        goto param_invalid;
     }
 
     /* 解析SW参数 */
-    if (strcmp(msg->parm[1], "ON") == 0)
+    if (my_strcasecmp(msg->parm[1], "ON") == 0)
     {
         sw_value = 1;
     }
-    else if (strcmp(msg->parm[1], "OFF") == 0)
+    else if (my_strcasecmp(msg->parm[1], "OFF") == 0)
     {
         sw_value = 0;
     }
@@ -2191,13 +2177,13 @@ static int jatag_cmd_handler(at_cmd_t* msg)
     LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
 
     /* 生成成功响应 */
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK!");
     LOG_INF("JATAG: SW=%d, Interval=%u", gConfigParam.adv_valid_value.AppleValid, gConfigParam.tag_config.tag_interval);
 
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
@@ -2236,16 +2222,15 @@ static int jgtag_cmd_handler(at_cmd_t* msg)
     if (msg->parm_count != 1)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
-        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-        return BLE_DATA_TYPE_PACKET_MULTIPLE;
+        goto param_invalid;
     }
 
     /* 解析SW参数 */
-    if (strcmp(msg->parm[1], "ON") == 0)
+    if (my_strcasecmp(msg->parm[1], "ON") == 0)
     {
         sw_value = 1;
     }
-    else if (strcmp(msg->parm[1], "OFF") == 0)
+    else if (my_strcasecmp(msg->parm[1], "OFF") == 0)
     {
         sw_value = 0;
     }
@@ -2272,13 +2257,13 @@ static int jgtag_cmd_handler(at_cmd_t* msg)
     LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
 
     /* 生成成功响应 */
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK!");
     LOG_INF("JGTAG: SW=%d, Interval=%u", gConfigParam.adv_valid_value.GoogleValid, gConfigParam.tag_config.tag_interval);
 
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
@@ -2315,8 +2300,7 @@ static int taginit_param_cmd_handler(at_cmd_t* msg)
     if (msg->parm_count != 2)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
-        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-        return BLE_DATA_TYPE_PACKET_MULTIPLE;
+        goto param_invalid;
     }
 
     if (!my_param_check_license(msg->parm[1], strlen(msg->parm[1]), ZMS_ID_FF))
@@ -2341,12 +2325,12 @@ static int taginit_param_cmd_handler(at_cmd_t* msg)
     LOG_INF("%s=>%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2]);
 
     /* 生成成功响应 */
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK!");
 
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
@@ -2382,16 +2366,15 @@ static int led_cmd_handler(at_cmd_t* msg)
     if (msg->parm_count != 1)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
-        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-        return BLE_DATA_TYPE_PACKET_MULTIPLE;
+        goto param_invalid;
     }
 
     /* 解析A参数 */
-    if (strcmp(msg->parm[1], "ON") == 0)
+    if (my_strcasecmp(msg->parm[1], "ON") == 0)
     {
         display_value = 1;
     }
-    else if (strcmp(msg->parm[1], "OFF") == 0)
+    else if (my_strcasecmp(msg->parm[1], "OFF") == 0)
     {
         display_value = 0;
     }
@@ -2417,13 +2400,13 @@ static int led_cmd_handler(at_cmd_t* msg)
     LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
 
     /* 生成成功响应 */
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK!");
     LOG_INF("LED: Display=%d", gConfigParam.led_config.led_display);
 
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
@@ -2495,13 +2478,13 @@ static int ltint_cmd_handler(at_cmd_t* msg)
     LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
 
     /* 生成成功响应 */
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK!");
     LOG_INF("LTINT: T1=%d,T2=%d", gConfigParam.ltint_config.T1,gConfigParam.ltint_config.T2);
 
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
@@ -2543,8 +2526,7 @@ static int buzzer_cmd_handler(at_cmd_t* msg)
     if (msg->parm_count != 1)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
-        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
-        return BLE_DATA_TYPE_PACKET_MULTIPLE;
+        goto param_invalid;
     }
 
     no_count = string_check_is_number(0, msg->parm[1]);
@@ -2571,7 +2553,7 @@ static int buzzer_cmd_handler(at_cmd_t* msg)
     LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
 
     /* 生成成功响应 */
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK!");
     LOG_INF("BUZZER: Operator=%d", gConfigParam.buzzer_config.buzzer_operator);
 
     //TODO 具体逻辑处理
@@ -2580,7 +2562,7 @@ static int buzzer_cmd_handler(at_cmd_t* msg)
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
@@ -2617,31 +2599,31 @@ static int btlog_cmd_handler(at_cmd_t* msg)
     /* 有参数 - 设置状态 */
     if (msg->parm_count == 1)
     {
-        if (strcmp(msg->parm[1], "ON") == 0)
+        if (my_strcasecmp(msg->parm[1], "ON") == 0)
         {
             config->global_en = 1;
             if (my_param_set_ble_log_config(config) == 0)
             {
-                msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_BTLOG_ON_OK");
+                msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK!");
                 LOG_INF("BTLOG enabled");
             }
             else
             {
-                msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_BTLOG_ON_FAIL");
+                msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! Unauthorized");
             }
             return BLE_DATA_TYPE_PACKET_MULTIPLE;
         }
-        else if (strcmp(msg->parm[1], "OFF") == 0)
+        else if (my_strcasecmp(msg->parm[1], "OFF") == 0)
         {
             config->global_en = 0;
             if (my_param_set_ble_log_config(config) == 0)
             {
-                msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_BTLOG_OFF_OK");
+                msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK!");
                 LOG_INF("BTLOG disabled");
             }
             else
             {
-                msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_BTLOG_OFF_FAIL");
+                msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! Unauthorized");
             }
             return BLE_DATA_TYPE_PACKET_MULTIPLE;
         }
@@ -2656,7 +2638,7 @@ static int btlog_cmd_handler(at_cmd_t* msg)
     LOG_INF("BTLOG param count error: %d", msg->parm_count);
 
 param_invalid:
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_BTLOG_FAIL");
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
@@ -2692,7 +2674,7 @@ static int version_cmd_handler(at_cmd_t* msg)
         else  // 响应消息生成失败
         {
             // 生成失败响应消息
-            msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+            msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
         }
     }
     else  // 参数数量错误
@@ -2700,7 +2682,7 @@ static int version_cmd_handler(at_cmd_t* msg)
         // 输出参数数量错误信息
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
         // 生成失败响应消息
-        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
     }
     return BLE_DATA_TYPE_PACKET_MULTIPLE;  // 返回 BLE 数据类型
 }
@@ -2760,7 +2742,7 @@ static int modeset_cmd_handler(at_cmd_t* msg)
         my_user_data_write(ZMS_ID_WORK_MODE_CONFIG, &gConfigParam.device_workmode_config, sizeof(device_work_mode_config_t));
 
         /* 生成成功响应 */
-        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK!");
         LOG_INF("MODESET: current_mode:%d", param_work_mode_config.current_mode);
 
         return BLE_DATA_TYPE_PACKET_MULTIPLE;
@@ -2838,11 +2820,11 @@ static int modeset_cmd_handler(at_cmd_t* msg)
         }
 
         // 解析GNSS SW参数（ON/OFF字符串）
-        if (strcmp(msg->parm[4], "ON") == 0)
+        if (my_strcasecmp(msg->parm[4], "ON") == 0)
         {
             gnss_sw = 1;
         }
-        else if (strcmp(msg->parm[4], "OFF") == 0)
+        else if (my_strcasecmp(msg->parm[4], "OFF") == 0)
         {
             gnss_sw = 0;
         }
@@ -2950,14 +2932,14 @@ static int modeset_cmd_handler(at_cmd_t* msg)
     }
 
     /* 生成成功响应 */
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK!");
     LOG_INF("MODESET: current_mode:%d", param_work_mode_config.current_mode);
 
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
     // 生成失败响应
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
@@ -3023,7 +3005,7 @@ static int modeget_cmd_handler(at_cmd_t* msg)
         else  // 响应消息生成失败
         {
             // 生成失败响应消息
-            msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+            msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
         }
     }
     else  // 参数数量错误
@@ -3031,7 +3013,7 @@ static int modeget_cmd_handler(at_cmd_t* msg)
         // 输出参数数量错误信息
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
         // 生成失败响应消息
-        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
     }
     return BLE_DATA_TYPE_PACKET_MULTIPLE;  // 返回 BLE 数据类型
 }
@@ -3079,7 +3061,7 @@ static int modeparam_cmd_handler(at_cmd_t* msg)
         else  // 响应消息生成失败
         {
             // 生成失败响应消息
-            msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+            msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
         }
     }
     else  // 参数数量错误
@@ -3087,7 +3069,7 @@ static int modeparam_cmd_handler(at_cmd_t* msg)
         // 输出参数数量错误信息
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
         // 生成失败响应消息
-        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
     }
     return BLE_DATA_TYPE_PACKET_MULTIPLE;  // 返回 BLE 数据类型
 }
@@ -3124,7 +3106,7 @@ static int bt_parmac_cmd_handler(at_cmd_t* msg)
     }
 
     // BT_PARMAC,ADD,[MAC1],[MAC2]...[MAC6]#
-    if (strcmp(msg->parm[1], "ADD") == 0)
+    if (my_strcasecmp(msg->parm[1], "ADD") == 0)
     {
         add_count = msg->parm_count - 1;  // 减去"ADD"自身
         if (add_count < 1 || add_count > 6)
@@ -3166,10 +3148,10 @@ static int bt_parmac_cmd_handler(at_cmd_t* msg)
         my_user_data_write(ZMS_ID_BT_PARMAC_CONFIG, &gConfigParam.bparmac_config, sizeof(bparmac_config_t));
 
         LOG_INF("ADD %d MACs, total: %d", add_count, gConfigParam.bparmac_config.bt_parmac_mac_count);
-        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_ADD_OK", msg->parm[0]);
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK!");
         return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
-    else if (strcmp(msg->parm[1], "DEL") == 0)
+    else if (my_strcasecmp(msg->parm[1], "DEL") == 0)
     {
         if (msg->parm_count != 2)
         {
@@ -3177,11 +3159,11 @@ static int bt_parmac_cmd_handler(at_cmd_t* msg)
         }
 
         // BT_PARMAC,DEL,ALL#
-        if (strcmp(msg->parm[2], "ALL") == 0)
+        if (my_strcasecmp(msg->parm[2], "ALL") == 0)
         {
             my_tran_mac_del_all();
             LOG_INF("DEL ALL");
-            msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_DEL_ALL_OK", msg->parm[0]);
+            msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK!");
             // 更新配置参数
             gConfigParam.bparmac_config.flag = FLAG_VALID;
             // 保存配置参数到flash
@@ -3203,7 +3185,7 @@ static int bt_parmac_cmd_handler(at_cmd_t* msg)
             if (my_tran_mac_del(&temp_addr) == 0)
             {
                 LOG_INF("DEL MAC success");
-                msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_DEL_OK", msg->parm[0]);
+                msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK!");
                 return BLE_DATA_TYPE_PACKET_MULTIPLE;
             }
             else
@@ -3217,7 +3199,7 @@ static int bt_parmac_cmd_handler(at_cmd_t* msg)
             my_user_data_write(ZMS_ID_BT_PARMAC_CONFIG, &gConfigParam.bparmac_config, sizeof(bparmac_config_t));
         }
     }
-    else if (strcmp(msg->parm[1], "CHECK") == 0)
+    else if (my_strcasecmp(msg->parm[1], "CHECK") == 0)
     {
         // BT_PARMAC,CHECK#
         if (msg->parm_count != 1)
@@ -3249,7 +3231,7 @@ static int bt_parmac_cmd_handler(at_cmd_t* msg)
 
         if (i == 0)
         {
-            msg->resp_length = snprintf(msg->resp_msg, remaining, "check not find any mac.");
+            msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! Unauthorized.");
         }
 
         LOG_INF("CHECK, count=%d", gConfigParam.bparmac_config.bt_parmac_mac_count);
@@ -3262,7 +3244,7 @@ static int bt_parmac_cmd_handler(at_cmd_t* msg)
 
 param_invalid:
     LOG_INF("%s=>%s, param error or set fail", __func__, msg->parm[0]);
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
@@ -3363,7 +3345,7 @@ static int status_cmd_handler(at_cmd_t* msg)
         else  // 响应消息生成失败
         {
             // 生成失败响应消息
-            msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+            msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
         }
     }
     else  // 参数数量错误
@@ -3371,7 +3353,8 @@ static int status_cmd_handler(at_cmd_t* msg)
         // 输出参数数量错误信息
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
         // 生成失败响应消息
-        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
     return BLE_DATA_TYPE_PACKET_MULTIPLE;  // 返回 BLE 数据类型
 }

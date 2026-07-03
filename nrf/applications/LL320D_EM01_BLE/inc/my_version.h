@@ -12,7 +12,15 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260629"
+#define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260630"
+/* 软件版本:        V1.0
+** 完成日期:        2026.06.30
+** 作    者:       曹阳 (caoyang@jimiiot.com)
+** 修改内容:        1.增加指令支持不区分大小写
+**                 2.统一指令回复格式
+***/
+
+// #define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260629"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.06.29
 ** 作    者:       曹阳 (caoyang@jimiiot.com)

@@ -1082,3 +1082,56 @@ bool is_point_in_circle(int32_t lat, int32_t lon,
     // 判断是否在圆内（距离 <= 半径）
     return (distance <= radius);
 }
+
+/********************************************************************
+**函数名称:  is_all_upper_or_lower
+**入口参数:  s 字符串指针
+**出口参数:  无
+**函数功能:  判断字符串是否全大写或全小写（只检查字母字符）
+**返 回 值:  true 表示全大写或全小写，false 表示包含其他字符
+*********************************************************************/
+bool is_all_upper_or_lower(const char *s)
+{
+    int i = 0;
+    bool has_upper = false;
+    bool has_lower = false;
+
+    for (i = 0; s[i] != '\0'; i++)
+    {
+        if (isalpha((unsigned char)s[i]))
+        {
+            if (isupper((unsigned char)s[i]))
+            {
+                has_upper = true;
+            }
+            if (islower((unsigned char)s[i]))
+            {
+                has_lower = true;
+            }
+            if (has_upper && has_lower)
+            {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+/********************************************************************
+**函数名称:  my_strcasecmp
+**入口参数:  s1 字符串指针1
+            s2 字符串指针2
+**出口参数:  无
+**函数功能:  比较两个字符串（忽略大小写）
+**返 回 值:  0 表示相等, 负数表示 s1 小于 s2, 正数表示 s1 大于 s2, 0xff 表示字符串非全大写或全小写
+*********************************************************************/
+int my_strcasecmp(const char *s1, const char *s2)
+{
+    if (!is_all_upper_or_lower(s1) || !is_all_upper_or_lower(s2))
+    {
+        LOG_INF("my_strcasecmp: strings are not all uppercase or all lowercase");
+        return 0xff;
+    }
+
+    return strcasecmp(s1, s2);
+}

@@ -243,8 +243,18 @@ int custom_timestamp_formatter(const struct log_output *output, const log_timest
 **函数功能:  判断点是否在圆内
 **返 回 值:  true 表示在圆内，false 表示在圆外
 *********************************************************************/
-bool is_point_in_circle(int32_t lat, int32_t lon, 
-                        int32_t center_lat, int32_t center_lon, 
+bool is_point_in_circle(int32_t lat, int32_t lon,
+                        int32_t center_lat, int32_t center_lon,
                         uint32_t radius);
+
+/********************************************************************
+**函数名称:  my_strcasecmp
+**入口参数:  s1 字符串指针1
+            s2 字符串指针2
+**出口参数:  无
+**函数功能:  比较两个字符串（忽略大小写）
+**返 回 值:  0 表示相等, 负数表示 s1 小于 s2, 正数表示 s1 大于 s2, 0xff 表示字符串非全大写或全小写
+*********************************************************************/
+int my_strcasecmp(const char *s1, const char *s2);
 
 #endif
