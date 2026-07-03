@@ -155,6 +155,14 @@ const pwr_save_config_t gDefaultPWRsaveConfig =
     .pwsave_sw = 0,                    /* 默认关闭 */
 };
 
+const lprunning_config_t gDefaultlprunningConfig =
+{
+    .flag = FLAG_VALID,
+    .lprunning_sw = 0,                   /* 默认关闭 */
+    .lprunning_threshold = 20,           /* 默认20%电量阈值 */
+    .lprunning_interval = 24,            /* 默认24小时唤醒间隔 */
+};
+
 const bt_updata_config_t gDefaultBtUpdataConfig =
 {
     .flag = FLAG_VALID,
@@ -518,6 +526,25 @@ void my_param_load_config(void)
     else
     {
         MY_LOG_INF("PWRsave config loaded: pwsave_sw(%d)", gConfigParam.pwsave_config.pwsave_sw);
+    }
+
+    //--------Load LPSLEEP Config ---------------------
+    length = sizeof(lprunning_config_t);
+    ret = my_user_data_read(ZMS_ID_LPSLEEP_CONFIG, &gConfigParam.lprunning_config, length);
+    if (ret != length)
+    {
+        memcpy(&gConfigParam.lprunning_config, &gDefaultlprunningConfig, length);
+        MY_LOG_INF("LPSLEEP config not found. Use default:sw(%d),threshold(%d),interval(%d)",
+                    gConfigParam.lprunning_config.lprunning_sw,
+                    gConfigParam.lprunning_config.lprunning_threshold,
+                    gConfigParam.lprunning_config.lprunning_interval);
+    }
+    else
+    {
+        MY_LOG_INF("LPSLEEP config loaded: sw(%d),threshold(%d),interval(%d)",
+                    gConfigParam.lprunning_config.lprunning_sw,
+                    gConfigParam.lprunning_config.lprunning_threshold,
+                    gConfigParam.lprunning_config.lprunning_interval);
     }
 
     //--------Load BTUPDATA Config ---------------------

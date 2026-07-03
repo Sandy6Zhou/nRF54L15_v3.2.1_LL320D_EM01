@@ -65,6 +65,7 @@ typedef enum                           // 参数ID定义
     ZMS_ID_LTINT_CONFIG,               // 光感过滤配置参数ID
     ZMS_ID_BUZZER_CONFIG,              // 蜂鸣器配置参数ID
     ZMS_ID_BT_PARMAC_CONFIG,           // 透传MAC地址配置参数ID
+    ZMS_ID_LPSLEEP_CONFIG,             // 低功耗运行配置参数ID
     ZMS_ID_BLE_TAG_STORE_META,         // BLE TAG扫描数据循环存储区元数据ID
     ZMS_ID_BLE_MAC_STORE_META,         // BLE 透传MAC扫描数据循环存储区元数据ID
 } my_zms_id_t;
@@ -169,6 +170,14 @@ typedef struct                              // 存储的低功耗运输状态配
     uint8_t pwsave_sw;                      // 低功耗运输状态开关: 0-OFF, 1-ON
 } pwr_save_config_t;
 
+typedef struct                              // 存储的低功耗运行配置参数
+{
+    uint8_t flag;                           // 参数有效标志
+    uint8_t lprunning_sw;                   // 功能开关: 0-OFF, 1-ON
+    uint8_t lprunning_threshold;            // 进入低功耗运行的电量百分比阈值 (10~50, 默认20)
+    uint8_t lprunning_interval;             // 定时唤醒间隔T (1~48小时, 默认24)
+} lprunning_config_t;
+
 typedef struct                              // 存储的蓝牙数据上传配置参数
 {
     uint8_t flag;                           // 参数有效标志
@@ -237,6 +246,7 @@ typedef struct
     shock_alarm_config_t        shockalarm_config;          // 撞击报警配置
     startr_config_t             startr_config;              // 数据记录功能配置
     pwr_save_config_t           pwsave_config;              // 低功耗运输状态配置
+    lprunning_config_t          lprunning_config;           // 低功耗运行配置
     bt_updata_config_t          bt_updata_config;           // 蓝牙数据上传配置
     bluetooth_config_t          bluetooth_config;           // 蓝牙开启配置
     tag_config_t                tag_config;                 // Tag定位功能配置

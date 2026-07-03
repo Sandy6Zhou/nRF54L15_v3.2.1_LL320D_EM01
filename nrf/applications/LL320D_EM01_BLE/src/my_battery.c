@@ -828,6 +828,12 @@ void my_battery_update_state()
         LOG_INF("charge class:%d", g_chg_led_ctrl.state);  // 输出充电状态等级
     }
 
+    // 低功耗运行(LPSLEEP)状态检查统一交由main线程串行判定
+    if (gConfigParam.lprunning_config.lprunning_sw == 1)
+    {
+        my_send_msg(MOD_MAIN, MOD_MAIN, MY_MSG_LPSLEEP_BATTERY_CHECK);
+    }
+
     // 读取完ADC，挂起ADC设备
     ret = my_pm_device_suspend(MY_PM_DEV_BATTERY);
     if (ret < 0)

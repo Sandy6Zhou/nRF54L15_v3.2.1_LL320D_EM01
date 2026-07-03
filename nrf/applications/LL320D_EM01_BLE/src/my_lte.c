@@ -208,7 +208,7 @@ cmd_struct_t AT_CMD_INNER[] = {
 static void send_lte_pulse(void);
 
 // 脉冲消息计数器
-static uint16_t s_lte_pulse_count = 0;
+static uint32_t s_lte_pulse_count = 0;
 
 // 网络状态
 uint8_t g_lte_net_flag = 0;
@@ -1163,128 +1163,6 @@ lte_boot_reason_t get_lte_boot_reason(void)
 }
 
 /********************************************************************
-**函数名称:  my_lte_task
-**入口参数:  无
-**出口参数:  无
-**函数功能:  LTE 模块主线程，处理来自消息队列的任务
-**返 回 值:  无
-*********************************************************************/
-static void my_lte_task(void *p1, void *p2, void *p3)
-{
-    ARG_UNUSED(p1);
-    ARG_UNUSED(p2);
-    ARG_UNUSED(p3);
-
-    msg_t msg;
-
-    MY_LOG_INF("LTE thread started");
-
-    // 初始化时间指令,从4G网络获取时间同步
-    #if RETRANSMIT_CHECK_ENABLED
-        lte_send_cmd_with_retry("TIME", "1");
-    #else
-        lte_send_command("TIME", "1");
-    #endif
-
-    for (;;)
-    {
-        my_recv_msg(&my_lte_msgq, (void *)&msg, sizeof(msg_t), K_FOREVER);
-
-        switch (msg.msgID)
-        {
-            /* TODO: 添加 LTE 相关的消息处理逻辑 */
-            case MY_MSG_LTE_TX_DONE:
-            case MY_MSG_LTE_TX_ABORTED:
-                s_lte_uart_ctx.tx_busy = false;
-                lte_uart_activity_kick();
-                break;
-
-            case MY_MSG_LTE_UART_IDLE:
-                if (s_lte_uart_ctx.active && lte_uart_can_suspend())
-                {
-                    my_pm_device_suspend(MY_PM_DEV_LTE);
-                }
-                break;
-
-            case MY_MSG_LTE_PWRON:
-                my_lte_pwr_on(true);
-                break;
-
-            case MY_MSG_LTE_PWROFF:
-                my_lte_pwroff_handle();
-                //2s延时，防止断电后立马上电，导致模块没法真正复位
-                k_sleep(K_MSEC(2000));
-
-                break;
-
-            // 收到4G发送的消息,例如返回UTC时间,在里面进行数据解析
-            case MY_MSG_LTE_REV:
-            {
-                static uint8_t read_buf[128];
-                int len = 0;
-
-                while (1)
-                {
-                    memset(read_buf, 0, sizeof(read_buf));
-
-                    // 读取数据（无锁安全）
-                    len = my_rb_read(&s_lte_rb, read_buf, sizeof(read_buf));
-                    if (len > 0)
-                    {
-                        my_lte_handle_recv(read_buf, len);
-                    }
-                    else
-                    {
-                        break;
-                    }
-                }
-                lte_uart_activity_kick();
-            }
-                break;
-
-            case MY_MSG_LTE_BLE_DATA:
-                // 使用统一的消息发送接口
-                my_lte_send_msg((const char*)msg.pData, msg.DataLen);
-                // 释放动态分配的内存
-                if(msg.pData != NULL)
-                {
-                    MY_FREE_BUFFER(msg.pData);
-                    msg.pData = NULL;
-                }
-                break;
-
-            case MY_MSG_RETRANS_CHECK:
-                retransmission_poll();
-                break;
-
-            case MY_MSG_ADD_RETRANS_QUEUE:
-                add_to_retrans_queue((char*)msg.pData);
-
-                // 释放动态分配的内存
-                if(msg.pData != NULL)
-                {
-                    MY_FREE_BUFFER(msg.pData);
-                    msg.pData = NULL;
-                }
-                break;
-
-            case MY_MSG_LTE_PULSE:
-                // 脉冲消息处理
-                send_lte_pulse();
-                break;
-
-            case MY_MSG_LTE_WAKEUP:
-                MY_LOG_INF("LTE wakeup pin triggered, resuming UART");
-                lte_uart_ensure_active();
-                break;
-
-            default:
-                break;
-        }
-    }
-}
-
-/********************************************************************
 **函数名称:  lte_uart_cb
 **入口参数:  dev      ---        UART 设备句柄
 **            evt      ---        UART 事件结构体
@@ -1940,7 +1818,7 @@ static void send_lte_pulse(void)
     // 脉冲计数器增加
     s_lte_pulse_count++;
     // 构造脉冲消息: LTE+PULSE=<脉冲计数器>
-    snprintf(buf, sizeof(buf), "%d", s_lte_pulse_count);
+    snprintf(buf, sizeof(buf), "%u", s_lte_pulse_count);
 
     #if RETRANSMIT_CHECK_ENABLED
         lte_send_cmd_with_retry("PULSE", buf);
@@ -2069,6 +1947,9 @@ static int my_lte_handle_power_on(char *data)
     // 发送当前工作模式给LTE模块
     send_work_mode_command(gConfigParam.device_workmode_config.workmode_config.current_mode);
 
+    // 低功耗运行状态同步统一交由main线程串行处理
+    my_send_msg(MOD_LTE, MOD_MAIN, MY_MSG_LPSLEEP_LTE_SYNC);
+
     // 发送蓝牙信息给LTE模块
     send_bt_info_command();
 
@@ -2077,10 +1958,6 @@ static int my_lte_handle_power_on(char *data)
 
     // 处理排队的消息
     my_lte_process_queued_msgs();
-
-    // 启动心跳定时器
-    s_lte_pulse_count = 0;
-    my_start_timer(MY_TIMER_LTE_PULSE, 60 * 1000, true, lte_pulse_timer_handler);
 
     return 0;
 }
@@ -3001,6 +2878,136 @@ void my_lte_handle_recv(uint8_t *pData, uint32_t iLen)
         {
             command[index++] = pData[i];
             command[index] = '\0';
+        }
+    }
+}
+
+/********************************************************************
+**函数名称:  my_lte_task
+**入口参数:  无
+**出口参数:  无
+**函数功能:  LTE 模块主线程，处理来自消息队列的任务
+**返 回 值:  无
+*********************************************************************/
+static void my_lte_task(void *p1, void *p2, void *p3)
+{
+    ARG_UNUSED(p1);
+    ARG_UNUSED(p2);
+    ARG_UNUSED(p3);
+
+    msg_t msg;
+
+    MY_LOG_INF("LTE thread started");
+
+    // 初始化时间指令,从4G网络获取时间同步
+    #if RETRANSMIT_CHECK_ENABLED
+        lte_send_cmd_with_retry("TIME", "1");
+    #else
+        lte_send_command("TIME", "1");
+    #endif
+
+    for (;;)
+    {
+        my_recv_msg(&my_lte_msgq, (void *)&msg, sizeof(msg_t), K_FOREVER);
+
+        switch (msg.msgID)
+        {
+            /* TODO: 添加 LTE 相关的消息处理逻辑 */
+            case MY_MSG_LTE_TX_DONE:
+            case MY_MSG_LTE_TX_ABORTED:
+                s_lte_uart_ctx.tx_busy = false;
+                lte_uart_activity_kick();
+                break;
+
+            case MY_MSG_LTE_UART_IDLE:
+                if (s_lte_uart_ctx.active && lte_uart_can_suspend())
+                {
+                    my_pm_device_suspend(MY_PM_DEV_LTE);
+                }
+                break;
+
+            case MY_MSG_LTE_PWRON:
+                my_lte_pwr_on(true);
+                break;
+
+            case MY_MSG_LTE_PWROFF:
+                my_lte_pwroff_handle();
+                //2s延时，防止断电后立马上电，导致模块没法真正复位
+                k_sleep(K_MSEC(2000));
+
+                break;
+
+            // 收到4G发送的消息,例如返回UTC时间,在里面进行数据解析
+            case MY_MSG_LTE_REV:
+            {
+                static uint8_t read_buf[128];
+                int len = 0;
+
+                while (1)
+                {
+                    memset(read_buf, 0, sizeof(read_buf));
+
+                    // 读取数据（无锁安全）
+                    len = my_rb_read(&s_lte_rb, read_buf, sizeof(read_buf));
+                    if (len > 0)
+                    {
+                        my_lte_handle_recv(read_buf, len);
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+                lte_uart_activity_kick();
+            }
+                break;
+
+            case MY_MSG_LTE_BLE_DATA:
+                // 使用统一的消息发送接口
+                my_lte_send_msg((const char*)msg.pData, msg.DataLen);
+                // 释放动态分配的内存
+                if(msg.pData != NULL)
+                {
+                    MY_FREE_BUFFER(msg.pData);
+                    msg.pData = NULL;
+                }
+                break;
+
+            case MY_MSG_RETRANS_CHECK:
+                retransmission_poll();
+                break;
+
+            case MY_MSG_ADD_RETRANS_QUEUE:
+                add_to_retrans_queue((char*)msg.pData);
+
+                // 释放动态分配的内存
+                if(msg.pData != NULL)
+                {
+                    MY_FREE_BUFFER(msg.pData);
+                    msg.pData = NULL;
+                }
+                break;
+
+            case MY_MSG_LTE_PULSE:
+                // 脉冲消息处理
+                send_lte_pulse();
+                break;
+
+            case MY_MSG_LTE_PULSE_START:
+                my_start_timer(MY_TIMER_LTE_PULSE, 60 * 1000, true, lte_pulse_timer_handler);
+                break;
+
+            case MY_MSG_LTE_PULSE_STOP:
+                my_stop_timer(MY_TIMER_LTE_PULSE);
+                break;
+
+            case MY_MSG_LTE_WAKEUP:
+                MY_LOG_INF("LTE wakeup pin triggered, resuming UART");
+                lte_uart_ensure_active();
+                break;
+
+            default:
+                break;
         }
     }
 }

@@ -46,6 +46,7 @@ static int batlevel_cmd_handler(at_cmd_t* msg);
 static int chargesta_cmd_handler(at_cmd_t* msg);
 static int shockalarm_cmd_handler(at_cmd_t* msg);
 static int pwsave_cmd_handler(at_cmd_t* msg);
+static int lprunning_cmd_handler(at_cmd_t* msg);
 static int startr_cmd_handler(at_cmd_t* msg);
 static int cbmt_cmd_handler(at_cmd_t* msg);
 static int bt_mac_cmd_handler(at_cmd_t* msg);
@@ -75,6 +76,7 @@ static const at_cmd_attr_t at_cmd_attr_table[] =
     {"CHARGESTA",      chargesta_cmd_handler},
     {"SHOCKALARM",     shockalarm_cmd_handler},
     {"PWRSAVE",        pwsave_cmd_handler},
+    {"LPSLEEP",        lprunning_cmd_handler},
     {"STARTR",         startr_cmd_handler},
     {"CBMT",           cbmt_cmd_handler},
     {"BT_MAC",         bt_mac_cmd_handler},
@@ -1293,6 +1295,126 @@ static int pwsave_cmd_handler(at_cmd_t* msg)
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
         msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
     }
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
+}
+
+/********************************************************************
+**函数名称:  lprunning_cmd_handler
+**入口参数:  msg      ---        AT指令结构体指针（输入）
+**出口参数:  msg->resp_msg  ---  响应消息（输出）
+**           msg->resp_length --- 响应长度（输出）
+**函数功能:  处理LPSLEEP指令：低功耗运行功能配置
+**指令格式:  查询指令: LPSLEEP#
+**           设置指令: LPSLEEP,SW,B,T#
+**           关闭指令: LPSLEEP,OFF#
+**参数说明:  SW  - ON/OFF 功能总开关
+**           B   - 进入低功耗运行的电量百分比阈值 (10~50, 默认20)
+**           T   - 低功耗运行下定时唤醒间隔 (1~48小时, 默认24)
+**返 回 值:  BLE数据类型
+*********************************************************************/
+static int lprunning_cmd_handler(at_cmd_t* msg)
+{
+    uint16_t remaining;
+    uint8_t threshold;
+    uint8_t interval;
+    uint8_t no_count = 0;
+
+    remaining = RESP_STRING_LENGTH_MAX;
+
+    // 无参数即查询
+    if (msg->parm_count == 0)
+    {
+        const char *state_str = gConfigParam.lprunning_config.lprunning_sw ? "ON" : "OFF";
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "LPSLEEP:%s,%d,%d",
+                                    state_str,
+                                    gConfigParam.lprunning_config.lprunning_threshold,
+                                    gConfigParam.lprunning_config.lprunning_interval);
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
+    }
+
+    // 关闭指令: LPSLEEP,OFF#
+    if ((msg->parm_count == 1) && (strcmp(msg->parm[1], "OFF") == 0))
+    {
+        gConfigParam.lprunning_config.lprunning_sw = 0;
+        gConfigParam.lprunning_config.flag = FLAG_VALID;
+        my_user_data_write(ZMS_ID_LPSLEEP_CONFIG, &gConfigParam.lprunning_config, sizeof(lprunning_config_t));
+
+        // 退出请求统一交由main线程串行判断处理
+        my_send_msg(MOD_MAIN, MOD_MAIN, MY_MSG_LPSLEEP_EXIT);
+
+        LOG_INF("%s=>%s,OFF", __func__, msg->parm[0]);
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
+    }
+    // 缺省开启指令: LPSLEEP,ON# （使用已存储的阈值和间隔参数）
+    else if (msg->parm_count == 1 && strcmp(msg->parm[1], "ON") == 0)
+    {
+        gConfigParam.lprunning_config.lprunning_sw = 1;
+        gConfigParam.lprunning_config.flag = FLAG_VALID;
+        my_user_data_write(ZMS_ID_LPSLEEP_CONFIG, &gConfigParam.lprunning_config, sizeof(lprunning_config_t));
+
+        // 清除暂缓标志，允许下次电量低于阈值时立即进入低功耗运行
+        my_send_msg(MOD_MAIN, MOD_MAIN, MY_MSG_LPSLEEP_CLEAR_HOLD_OFF);
+
+        LOG_INF("%s=>%s,ON (threshold=%d, interval=%d)", __func__, msg->parm[0],
+                gConfigParam.lprunning_config.lprunning_threshold,
+                gConfigParam.lprunning_config.lprunning_interval);
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
+    }
+    // 设置指令: LPSLEEP,ON,B,T#
+    else if (msg->parm_count == 3 && strcmp(msg->parm[1], "ON") == 0)
+    {
+        // 校验参数是否为纯数字
+        no_count = string_check_is_number(0, msg->parm[2]);
+        if (no_count == 0 || no_count > 3)
+        {
+            LOG_INF("%s=>threshold is not a number: %s", __func__, msg->parm[2]);
+            goto param_invalid;
+        }
+
+        no_count = string_check_is_number(0, msg->parm[3]);
+        if (no_count == 0 || no_count > 3)
+        {
+            LOG_INF("%s=>interval is not a number: %s", __func__, msg->parm[3]);
+            goto param_invalid;
+        }
+
+        threshold = (uint8_t)atoi(msg->parm[2]);
+        interval = (uint8_t)atoi(msg->parm[3]);
+
+        // 参数范围校验
+        if (threshold < 10 || threshold > 50)
+        {
+            LOG_INF("%s=>threshold out of range: %d", __func__, threshold);
+            msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+            return BLE_DATA_TYPE_PACKET_MULTIPLE;
+        }
+
+        if (interval < 1 || interval > 48)
+        {
+            LOG_INF("%s=>interval out of range: %d", __func__, interval);
+            msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
+            return BLE_DATA_TYPE_PACKET_MULTIPLE;
+        }
+
+        gConfigParam.lprunning_config.lprunning_sw = 1;
+        gConfigParam.lprunning_config.lprunning_threshold = threshold;
+        gConfigParam.lprunning_config.lprunning_interval = interval;
+        gConfigParam.lprunning_config.flag = FLAG_VALID;
+        my_user_data_write(ZMS_ID_LPSLEEP_CONFIG, &gConfigParam.lprunning_config, sizeof(lprunning_config_t));
+
+        // 清除暂缓标志，允许下次电量低于阈值时立即进入低功耗运行
+        my_send_msg(MOD_MAIN, MOD_MAIN, MY_MSG_LPSLEEP_CLEAR_HOLD_OFF);
+
+        LOG_INF("%s=>%s,ON,%d,%d", __func__, msg->parm[0], threshold, interval);
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_OK", msg->parm[0]);
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
+    }
+param_invalid:
+    // 参数格式错误
+    LOG_INF("%s=>%s, param error: count=%d", __func__, msg->parm[0], msg->parm_count);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "RETURN_%s_FAIL", msg->parm[0]);
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 

@@ -23,6 +23,12 @@ static struct k_msgq *s_my_msg_info[MAX_MY_MOD_TYPE] = {NULL};
 static struct k_timer s_my_timer_info[MY_TIMER_MAX_ID];
 static bool s_my_timer_init_status[MY_TIMER_MAX_ID] = {false};
 
+/* 低功耗运行状态管理 */
+static bool s_lprunning_active = false;                     // 低功耗运行模式是否激活
+static work_mode_t s_lprunning_saved_mode = MY_MODE_SMART;  // 进入低功耗运行前保存的工作模式
+static work_mode_t s_last_work_mode = MY_MODE_SHUTDOWN;
+static bool s_lprunning_hold_off = false;                   // 低功耗运行暂缓标志：需电量先回升到阈值以上再回落才允许重入
+
 /********************************************************************
 **函数名称:  error
 **入口参数:  无
@@ -301,23 +307,61 @@ void send_work_mode_command(work_mode_t mode)
 **函数名称:  switch_work_mode
 **入口参数:  mode     --  要切换到的工作模式
 **出口参数:  无
-**函数功能:  切换工作模式，通过消息机制通知主线程
+**函数功能:  线程安全的工作模式切换接口，通过消息机制发送到main线程处理
+**注意事项:  任何线程均可调用，实际切换逻辑在main线程消息循环中执行
 *********************************************************************/
 void switch_work_mode(work_mode_t mode)
 {
-    lte_boot_reason_t boot_reason;
-    static work_mode_t last_mode = MY_MODE_SHUTDOWN;
+    work_mode_t *p_mode = NULL;
+    msg_t msg;
 
-    MY_LOG_INF("switch_work_mode request: last=%d, target=%d, current=%d", last_mode, mode,
+    MY_MALLOC_BUFFER(p_mode, sizeof(work_mode_t));
+    if (p_mode == NULL)
+    {
+        MY_LOG_ERR("switch_work_mode: malloc failed");
+        return;
+    }
+
+    *p_mode = mode;
+
+    msg.msgID = MY_MSG_WORK_MODE_SWITCH;
+    msg.pData = p_mode;
+    msg.DataLen = sizeof(work_mode_t);
+    my_send_msg_data(MOD_MAIN, MOD_MAIN, &msg);
+}
+
+/*********************************************************************
+**函数名称:  switch_work_mode_internal
+**入口参数:  mode     --  要切换到的工作模式
+**出口参数:  无
+**函数功能:  工作模式切换内部实现，仅在main线程消息循环中调用
+**注意事项:  不可在非main线程中直接调用
+*********************************************************************/
+static void switch_work_mode_internal(work_mode_t mode)
+{
+    lte_boot_reason_t boot_reason;
+
+    MY_LOG_INF("switch_work_mode request: last=%d, target=%d, current=%d", s_last_work_mode, mode,
         gConfigParam.device_workmode_config.workmode_config.current_mode);
 
+    // 低功耗运行状态下手动切换模式，退出LPSLEEP
+    if (s_lprunning_active)
+    {
+        my_stop_timer(MY_TIMER_LPSLEEP);
+        s_lprunning_active = false;
+        s_lprunning_hold_off = true;   // 暂缓重入：需电量先回升到阈值以上再回落才允许重入
+        // 重置工作模式状态，避免s_last_work_mode与switch_work_mode_internal中的mode相同导致切换模式被跳过
+        s_last_work_mode = MY_MODE_MAX;
+        MY_LOG_INF("LPSLEEP: exited due to manual mode switch, hold off until recharge");
+    }
+
     // 当前模式与目标模式相同，无需切换
-    if (last_mode == mode)
+    if (s_last_work_mode == mode)
     {
         return;
     }
 
-    last_mode = mode;
+    s_last_work_mode = mode;
 
     // 关机模式独立处理
     if (mode == MY_MODE_SHUTDOWN)
@@ -344,7 +388,6 @@ void switch_work_mode(work_mode_t mode)
 
     /* 切换工作模式 */
     gConfigParam.device_workmode_config.workmode_config.current_mode = mode;
-    my_send_msg(MOD_MAIN, MOD_MAIN, MY_MSG_WORK_MODE_SWITCH);
 
     if (g_bLteReady == true)
     {
@@ -359,7 +402,35 @@ void switch_work_mode(work_mode_t mode)
     // 工作模式切换时根据配置的扫描模式决定是否上报扫描数据
     my_scan_upload_on_lte_wakeup();
 
-    MY_LOG_INF("Work mode switch request sent: %d", gConfigParam.device_workmode_config.workmode_config.current_mode);
+    // 根据当前切换的模式处理对应的逻辑
+    switch (mode)
+    {
+        case MY_MODE_LONG_LIFE:
+            MY_LOG_INF("Switched to LONG_LIFE mode");
+            handle_long_life_mode();
+            break;
+
+        case MY_MODE_SMART:
+            MY_LOG_INF("Switched to SMART mode");
+            handle_smart_mode();
+            break;
+
+        case MY_MODE_CONTINUOUS:
+            MY_LOG_INF("Switched to CONTINUOUS mode");
+            handle_continuous_mode();
+            break;
+
+        case MY_MODE_ALWAYS_ONLINE:
+            MY_LOG_INF("Switched to ALWAYS_ONLINE mode");
+            handle_always_online_mode();
+            break;
+
+        default:
+            MY_LOG_INF("Switched to unknown mode %d", mode);
+            break;
+    }
+
+    MY_LOG_INF("Work mode switch complete: %d", mode);
 }
 
 /*********************************************************************
@@ -610,6 +681,191 @@ void print_reset_reason(void)
 }
 
 /********************************************************************
+**函数名称:  handle_lprunning_lte_sync
+**入口参数:  无
+**出口参数:  无
+**函数功能:  在main线程中根据低功耗运行状态同步LTE侧行为
+**返 回 值:  无
+*********************************************************************/
+static void handle_lprunning_lte_sync(void)
+{
+    // 当前处于低功耗运行时，同步通知LTE线程停止心跳，并通知4G进入低功耗运行
+    if (s_lprunning_active)
+    {
+        // 停止LTE心跳定时器，避免LPSLEEP期间继续发送PULSE消息
+        my_send_msg(MOD_MAIN, MOD_LTE, MY_MSG_LTE_PULSE_STOP);
+
+        // LTE上电完成后，如果系统仍处于LPSLEEP，则再次同步LPSLEEP状态给4G模块
+        lte_send_command("LPSLEEP", "1");
+    }
+    // 当前未处于低功耗运行，且LTE已经就绪时，恢复LTE心跳发送
+    else if (g_bLteReady == true)
+    {
+        // 通知LTE线程启动心跳定时器，恢复正常工作状态下的PULSE上报
+        my_send_msg(MOD_MAIN, MOD_LTE, MY_MSG_LTE_PULSE_START);
+    }
+}
+
+/********************************************************************
+**函数名称:  lprunning_wakeup_timer_callback
+**入口参数:  timer    ---        定时器指针（输入）
+**出口参数:  无
+**函数功能:  低功耗运行模式下定时唤醒LTE的回调函数
+**返 回 值:  无
+*********************************************************************/
+static void lprunning_wakeup_timer_callback(void *timer)
+{
+    ARG_UNUSED(timer);
+
+    if (get_lte_power_state())
+    {
+        return;
+    }
+
+    // 设置LTE开机原因为间隔唤醒
+    set_lte_boot_reason(LTE_BOOT_REASON_INTERVAL);
+    // 开启LTE
+    my_send_msg(MOD_MAIN, MOD_LTE, MY_MSG_LTE_PWRON);
+}
+
+/********************************************************************
+**函数名称:  handle_lprunning_enter
+**入口参数:  无
+**出口参数:  无
+**函数功能:  处理进入低功耗运行状态
+**返 回 值:  无
+*********************************************************************/
+static void handle_lprunning_enter(void)
+{
+    uint32_t interval_ms;
+
+    // 已处于低功耗运行时，不重复执行进入流程
+    if (s_lprunning_active)
+    {
+        MY_LOG_INF("LPSLEEP: already active, ignore duplicate enter request");
+        return;
+    }
+
+    // 1. 保存当前工作模式
+    s_lprunning_saved_mode = gConfigParam.device_workmode_config.workmode_config.current_mode;
+
+    // 2. 设置低功耗运行激活标志
+    s_lprunning_active = true;
+
+    // 3. 停止扫描相关定时器
+    my_stop_timer(MY_TIMER_SCAN_INTERVAL);
+    my_stop_timer(MY_TIMER_SCAN_LENGTH);
+    my_stop_timer(MY_TIMER_UPLOAD_INTERVAL);
+
+    // 4. 停止正常工作模式的LTE唤醒定时器
+    my_stop_timer(MY_TIMER_LTE_POWER);
+
+    // 5. 关闭G-Sensor
+    my_send_msg(MOD_MAIN, MOD_GSENSOR, MY_MSG_GSENSOR_LOW_POWER);
+
+    // 6. 停止心跳并通知4G进入低功耗运行
+    handle_lprunning_lte_sync();
+
+    // 7. 启动低功耗运行专用定时唤醒定时器（T小时周期）
+    interval_ms = (uint32_t)gConfigParam.lprunning_config.lprunning_interval * 3600U * 1000U;
+    my_start_timer(MY_TIMER_LPSLEEP, interval_ms, true, lprunning_wakeup_timer_callback);
+
+    MY_LOG_INF("LPSLEEP: Entered low-battery deep sleep mode (threshold=%d%%, interval=%dh)",
+                gConfigParam.lprunning_config.lprunning_threshold,
+                gConfigParam.lprunning_config.lprunning_interval);
+}
+
+/********************************************************************
+**函数名称:  handle_lprunning_exit
+**入口参数:  无
+**出口参数:  无
+**函数功能:  处理退出低功耗运行状态
+**返 回 值:  无
+*********************************************************************/
+static void handle_lprunning_exit(void)
+{
+    if (!s_lprunning_active)
+    {
+        MY_LOG_INF("LPSLEEP: exit ignored, not active");
+        return;
+    }
+
+    // 1. 停止低功耗运行定时器
+    my_stop_timer(MY_TIMER_LPSLEEP);
+
+    // 2. 清除低功耗运行激活标志
+    s_lprunning_active = false;
+
+    MY_LOG_INF("LPSLEEP: Exiting low-battery deep sleep, restoring mode %d", s_lprunning_saved_mode);
+
+    // 3. 重置工作模式状态，避免s_last_work_mode与switch_work_mode_internal中的mode相同导致切换模式被跳过
+    s_last_work_mode = MY_MODE_MAX;
+
+    // 4. 恢复低功耗运行前的工作模式（已在main线程中，直接调用内部接口）
+    switch_work_mode_internal(s_lprunning_saved_mode);
+
+    if (g_bLteReady == true)
+    {
+        my_send_msg(MOD_MAIN, MOD_LTE, MY_MSG_LTE_PULSE_START);
+    }
+}
+
+/********************************************************************
+**函数名称:  handle_lprunning_battery_check
+**入口参数:  无
+**出口参数:  无
+**函数功能:  在main线程中根据最新电量串行检查低功耗运行状态
+**返 回 值:  无
+*********************************************************************/
+static void handle_lprunning_battery_check(void)
+{
+    int8_t show_percent;
+    uint8_t threshold;
+
+    // 低功耗运行功能关闭时，不进行任何状态检查
+    if (gConfigParam.lprunning_config.lprunning_sw != 1)
+    {
+        return;
+    }
+
+    // 获取当前平滑后的显示电量和配置的低功耗运行阈值
+    show_percent = get_show_percent();
+    threshold = gConfigParam.lprunning_config.lprunning_threshold;
+
+    // 当前未处于低功耗运行，且电量低于阈值时，检查是否允许进入低功耗运行
+    if ((!s_lprunning_active) && (show_percent < threshold))
+    {
+        // hold_off 置位期间禁止重入，必须先等电量回升到阈值以上
+        if (!s_lprunning_hold_off)
+        {
+            MY_LOG_INF("LPSLEEP: Battery %d%% < threshold %d%%, entering deep sleep",
+                        show_percent, threshold);
+            // 满足进入条件后，直接在main线程中执行进入低功耗运行流程
+            handle_lprunning_enter();
+        }
+    }
+    // 当前未处于低功耗运行，且电量已经回升到阈值以上时，可清除暂缓标志
+    else if ((!s_lprunning_active) && (show_percent >= threshold))
+    {
+        if (s_lprunning_hold_off)
+        {
+            MY_LOG_INF("LPSLEEP: Battery %d%% >= threshold %d%%, hold off cleared",
+                        show_percent, threshold);
+            // 电量已回升到阈值以上，允许后续再次低电时重新进入低功耗运行
+            s_lprunning_hold_off = false;
+        }
+    }
+    // 当前已处于低功耗运行，且电量恢复到阈值+5%时，退出低功耗运行
+    else if (s_lprunning_active && (show_percent >= (threshold + 5U)))
+    {
+        MY_LOG_INF("LPSLEEP: Battery %d%% >= threshold+5%% (%d%%), exiting deep sleep",
+                    show_percent, threshold + 5U);
+        // 满足退出条件后，直接在main线程中执行退出低功耗运行流程
+        handle_lprunning_exit();
+    }
+}
+
+/********************************************************************
 **函数名称:  main
 **入口参数:  无
 **出口参数:  无
@@ -741,38 +997,10 @@ int main(void)
                 break;
 
             case MY_MSG_WORK_MODE_SWITCH:
-                /* 根据当前切换的模式处理对应的逻辑 */
-                switch (gConfigParam.device_workmode_config.workmode_config.current_mode)
+                if (msg.pData != NULL)
                 {
-                    case MY_MODE_LONG_LIFE:
-                        MY_LOG_INF("Switched to LONG_LIFE mode");
-                        handle_long_life_mode();
-                        break;
-
-                    case MY_MODE_SMART:
-                        MY_LOG_INF("Switched to SMART mode");
-                        handle_smart_mode();
-                        break;
-
-                    case MY_MODE_CONTINUOUS:
-                        MY_LOG_INF("Switched to CONTINUOUS mode");
-                        handle_continuous_mode();
-                        break;
-
-                    case MY_MODE_ALWAYS_ONLINE:
-                        MY_LOG_INF("Switched to ALWAYS_ONLINE mode");
-                        // TODO 没有真正启用 G-Sensor 常采样，后续需完善
-                        handle_always_online_mode();
-                        break;
-
-                    case MY_MODE_SHUTDOWN:
-                        MY_LOG_INF("System is in SHUTDOWN mode (ultra-low power)");
-                        /* 关机模式下不执行任何操作 */
-                        break;
-
-                    default:
-                        MY_LOG_INF("Switched to NORMAL mode");
-                        break;
+                    switch_work_mode_internal(*(work_mode_t *)msg.pData);
+                    MY_FREE_BUFFER(msg.pData);
                 }
                 break;
 
@@ -814,6 +1042,26 @@ int main(void)
                     lte_send_command("OTA", "FAIL");
                 #endif
                 MY_LOG_INF("DFU fail received");
+                break;
+
+            case MY_MSG_LPSLEEP_ENTER:
+                handle_lprunning_enter();
+                break;
+
+            case MY_MSG_LPSLEEP_EXIT:
+                handle_lprunning_exit();
+                break;
+
+            case MY_MSG_LPSLEEP_BATTERY_CHECK:
+                handle_lprunning_battery_check();
+                break;
+
+            case MY_MSG_LPSLEEP_LTE_SYNC:
+                handle_lprunning_lte_sync();
+                break;
+
+            case MY_MSG_LPSLEEP_CLEAR_HOLD_OFF:
+                s_lprunning_hold_off = false;
                 break;
 
             case MY_MSG_SHUTDOWN:

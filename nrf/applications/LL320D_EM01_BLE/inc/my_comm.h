@@ -167,6 +167,9 @@ typedef enum
     MY_TIMER_GSENSOR_BURST,         // G-Sensor 批量采样定时器
     MY_TIMER_GSENSOR_SHOCK_ALARM,   // G-Sensor 撞击告警定时器
 
+    // 低功耗运行专用定时器
+    MY_TIMER_LPSLEEP,               // 低功耗运行定时唤醒定时器
+
     MY_TIMER_MAX_ID,
 } MY_E_TIMER;
 
@@ -204,6 +207,8 @@ typedef enum
     MY_MSG_LTE_REV,
     MY_MSG_RETRANS_CHECK,
     MY_MSG_ADD_RETRANS_QUEUE,
+    MY_MSG_LTE_PULSE_START,
+    MY_MSG_LTE_PULSE_STOP,
 
     /* G-Sensor处理程序消息 */
     MY_MSG_GSENSOR_LOW_POWER,       /* G-Sensor 模式切换进入低功耗模式 */
@@ -257,6 +262,13 @@ typedef enum
     MY_MSG_SCAN_UPLOAD,         /* 上报间隔定时器消息 */
     MY_MSG_UPLOAD_WAKEUP,       /* 扫描数据在LTE唤醒时顺便上报消息 */
     MY_MSG_LTE_WAKEUP,          /* LTE唤醒引脚中断触发的UART恢复消息 */
+
+    /* 低功耗运行处理程序消息 */
+    MY_MSG_LPSLEEP_ENTER,            /* 进入低功耗运行消息 */
+    MY_MSG_LPSLEEP_EXIT,             /* 退出低功耗运行消息 */
+    MY_MSG_LPSLEEP_BATTERY_CHECK,    /* 电量变化触发的低功耗运行状态检查消息 */
+    MY_MSG_LPSLEEP_LTE_SYNC,         /* LTE上电完成后的低功耗运行状态同步消息 */
+    MY_MSG_LPSLEEP_CLEAR_HOLD_OFF,   /* 清除低功耗运行暂缓标志消息 */
 } MY_MAIN_TASK_MSG;
 
 /* ========== 集中引用所有模块头文件 ========== */
