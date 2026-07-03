@@ -12,7 +12,18 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260702"
+#define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260703"
+/* 软件版本:        V1.0
+** 完成日期:        2026.07.03
+** 作    者:       周森达 (zhousenda@jimiiot.com)
+** 修改内容:        1.完成BMI325 IMU模块目录与基础框架搭建，新增ext_module/imu目录，划分驱动层、API 层
+**                 2.移植BMI325原厂驱动到现有项目对应文件夹中，完成底层I2C驱动封装，梳理寄存器地址、基础读写流程和初始化流程
+**                 3.新增imu_api统一接口层封装，对上提供标准化IMU操作接口，屏蔽BMI325底层驱动差异
+**                 4.完成IMU基础配置功能，支持初始化配置、电源模式切换、采样参数设置
+**                 5.完成功能特性接口开发，支持FIFO配置与读取、中断引脚配置、中断源映射、轴映射、计步器
+***/
+
+// #define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260702"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.07.02
 ** 作    者:       曹阳 (caoyang@jimiiot.com)
