@@ -12,7 +12,18 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260703"
+#define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260706"
+/* 软件版本:        V1.0
+** 完成日期:        2026.07.06
+** 作    者:       周森达 (zhousenda@jimiiot.com)
+** 修改内容:        1.新增ext_module/accelerometer模块，集成DA213三轴加速度传感器支持
+**                 2.新增DA213底层驱动寄存器访问封装，支持量程、分辨率、输出数据率、低功耗带宽等基础配置，并实现三轴原始数据采集
+**                 3.新增API层对外提供统一接口，完成初始化、芯片ID读取、量程/ODR/电源模式配置、三轴加速度数据读取读取功能
+**                 4.新增DA213运动检测、单击/双击、自由落体、方向识别、新数据就绪等中断功能配置，同时支持中断状态读取、方向状态读取
+**                 5.新增DA213模块使用示例文档，便于后续联调和功能验收
+***/
+
+// #define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260703"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.07.03
 ** 作    者:       周森达 (zhousenda@jimiiot.com)
