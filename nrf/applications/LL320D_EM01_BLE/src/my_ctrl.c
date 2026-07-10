@@ -64,11 +64,15 @@ static light_sensor_t light_tamper_sensor;
 static light_sensor_t light_pull_sensor;
 
 static buzzer_ctrl_t s_buzzer_ctrl = { 0 };
+fs_temp_humi_record_t g_temp_humi_sample = { 0 };
+fs_barometer_record_t g_barometer_sample = { 0 };
 
 /* 定时器回调前向声明 */
 static void key_timer_handler(struct k_timer *timer);
 static void light_tamper_sensor_timer_handler(struct k_timer *timer);
 static void light_pull_sensor_timer_handler(struct k_timer *timer);
+static void patm_upload_timer_handler(struct k_timer *timer);
+static void temp_upload_timer_handler(struct k_timer *timer);
 
 /* 消息队列定义 */
 K_MSGQ_DEFINE(my_ctrl_msgq, sizeof(msg_t), 10, 4);
@@ -199,6 +203,216 @@ void send_alarm_message_to_lte(alarm_type_t alarm_type, const char *additional_i
         // 告警唤醒4G时,根据配置的扫描模式决定是否上报扫描数据
         my_scan_upload_on_lte_wakeup();
     }
+}
+
+/********************************************************************
+**函数名称:  patm_upload_timer_handler
+**入口参数:  timer     ---        定时器指针（输入）
+**出口参数:  无
+**函数功能:  气压定时上传定时器回调，仅投递CTRL消息
+**返 回 值:  无
+*********************************************************************/
+static void patm_upload_timer_handler(struct k_timer *timer)
+{
+    ARG_UNUSED(timer);
+
+    my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_CTRL_PATM_TIMER);
+}
+
+/********************************************************************
+**函数名称:  temp_upload_timer_handler
+**入口参数:  timer     ---        定时器指针（输入）
+**出口参数:  无
+**函数功能:  温湿度定时上传定时器回调，仅投递CTRL消息
+**返 回 值:  无
+*********************************************************************/
+static void temp_upload_timer_handler(struct k_timer *timer)
+{
+    ARG_UNUSED(timer);
+
+    my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_CTRL_TEMP_TIMER);
+}
+
+/********************************************************************
+**函数名称:  sensor_timer_reload
+**入口参数:  timer_id     ---      定时器ID（输入）
+**           interval_min ---      定时间隔，单位分钟（输入）
+**           timer_fun    ---      定时器回调函数（输入）
+**出口参数:  无
+**函数功能:  按分钟配置重装传感器上传定时器
+**返 回 值:  无
+*********************************************************************/
+static void sensor_timer_reload(int timer_id, uint16_t interval_min, TIMER_FUN timer_fun)
+{
+    uint32_t interval_ms;
+
+    my_stop_timer(timer_id);
+    if (interval_min == 0)
+    {
+        return;
+    }
+
+    interval_ms = (uint32_t)interval_min * 60U * 1000U;
+    my_start_timer(timer_id, interval_ms, true, timer_fun);
+}
+
+/********************************************************************
+**函数名称:  sensor_patm_timer_reload
+**入口参数:  无
+**出口参数:  无
+**函数功能:  根据当前配置重装气压上传定时器
+**返 回 值:  无
+*********************************************************************/
+static void sensor_patm_timer_reload(void)
+{
+    sensor_timer_reload(MY_TIMER_PATM_UPLOAD,
+                        gConfigParam.patm_timer_config.interval_min,
+                        (TIMER_FUN)patm_upload_timer_handler);
+}
+
+/********************************************************************
+**函数名称:  sensor_temp_timer_reload
+**入口参数:  无
+**出口参数:  无
+**函数功能:  根据当前配置重装温湿度上传定时器
+**返 回 值:  无
+*********************************************************************/
+static void sensor_temp_timer_reload(void)
+{
+    sensor_timer_reload(MY_TIMER_TEMP_UPLOAD,
+                        gConfigParam.temp_timer_config.interval_min,
+                        (TIMER_FUN)temp_upload_timer_handler);
+}
+
+/********************************************************************
+**函数名称:  sensor_sample_send_to_ble
+**入口参数:  msg_id     ---        目标消息ID（输入）
+**           data_ptr   ---        数据指针（输入）
+**           data_len   ---        数据长度（输入）
+**出口参数:  无
+**函数功能:  将采样结果发送到BLE线程处理缓存与上传
+**返 回 值:  无
+*********************************************************************/
+static void sensor_sample_send_to_ble(uint32_t msg_id, const void *data_ptr, uint32_t data_len)
+{
+    if (data_ptr == NULL || data_len == 0)
+    {
+        return;
+    }
+
+    if (msg_id == MY_MSG_BLE_SENSOR_TH_SAMPLE)
+    {
+        memcpy(&g_temp_humi_sample, data_ptr, MIN(data_len, sizeof(g_temp_humi_sample)));
+    }
+    else if (msg_id == MY_MSG_BLE_SENSOR_BP_SAMPLE)
+    {
+        memcpy(&g_barometer_sample, data_ptr, MIN(data_len, sizeof(g_barometer_sample)));
+    }
+
+    my_send_msg(MOD_CTRL, MOD_BLE, msg_id);
+}
+
+/********************************************************************
+**函数名称:  sensor_collect_barometer
+**入口参数:  无
+**出口参数:  无
+**函数功能:  采集一次气压并执行业务处理
+**返 回 值:  无
+*********************************************************************/
+static void sensor_collect_barometer(void)
+{
+    struct barometer_data data;
+    fs_barometer_record_t record;
+    barometer_result_t ret;
+
+    memset(&data, 0, sizeof(data));
+    memset(&record, 0, sizeof(record));
+
+    ret = barometer_set_work_mode(BARO_MODE_SINGLE_PRESSURE);
+    if (ret != BARO_SUCCESS)
+    {
+        MY_LOG_ERR("barometer set mode fail:%d", ret);
+        return;
+    }
+
+    ret = barometer_read(&data);
+    if (ret != BARO_SUCCESS)
+    {
+        MY_LOG_ERR("barometer read fail:%d", ret);
+        return;
+    }
+
+    record.timestamp = (uint32_t)my_get_system_time_sec();
+    record.pressure_pa = (uint32_t)data.pressure_pa;
+    sensor_sample_send_to_ble(MY_MSG_BLE_SENSOR_BP_SAMPLE, &record, sizeof(record));
+}
+
+/********************************************************************
+**函数名称:  sensor_collect_temp_humi
+**入口参数:  无
+**出口参数:  无
+**函数功能:  采集一次温湿度并执行业务处理
+**返 回 值:  无
+*********************************************************************/
+static void sensor_collect_temp_humi(void)
+{
+    temp_humi_data_t data;
+    fs_temp_humi_record_t record;
+    temp_humi_result_t ret;
+
+    memset(&data, 0, sizeof(data));
+    memset(&record, 0, sizeof(record));
+
+    ret = temp_humi_api_read(&data);
+    if (ret != TEMP_HUMI_SUCCESS)
+    {
+        MY_LOG_ERR("temp_humi read fail:%d", ret);
+        return;
+    }
+
+    record.timestamp = (uint32_t)my_get_system_time_sec();
+    record.temperature_x10 = data.temperature / 10;
+    record.humidity_x10 = (uint16_t)(data.humidity / 10);
+    sensor_sample_send_to_ble(MY_MSG_BLE_SENSOR_TH_SAMPLE, &record, sizeof(record));
+}
+
+
+/********************************************************************
+**函数名称:  sensor_module_init
+**入口参数:  无
+**出口参数:  无
+**函数功能:  初始化气压与温湿度传感器模块，并按配置启动各自定时器
+**返 回 值:  无
+*********************************************************************/
+static void sensor_module_init(void)
+{
+    struct barometer_config barometer_cfg;
+    barometer_result_t barometer_ret;
+    temp_humi_result_t temp_humi_ret;
+
+    memset(&barometer_cfg, 0, sizeof(barometer_cfg));
+    // 初始化气压传感器采样参数
+    barometer_cfg.pressure_sample_rate_hz = 32;
+    barometer_cfg.pressure_oversampling = 8;
+    barometer_cfg.temperature_sample_rate_hz = 32;
+    barometer_cfg.temperature_oversampling = 8;
+
+    // 初始化气压传感器
+    barometer_ret = barometer_init(&barometer_cfg);
+    if (barometer_ret != BARO_SUCCESS)
+    {
+        MY_LOG_ERR("barometer init fail:%d", barometer_ret);
+    }
+
+    // 初始化温湿度传感器
+    temp_humi_ret = temp_humi_api_init();
+    if (temp_humi_ret != TEMP_HUMI_SUCCESS)
+    {
+        MY_LOG_ERR("temp_humi init fail:%d", temp_humi_ret);
+    }
+
+    sensor_patm_timer_reload();
+    sensor_temp_timer_reload();
 }
 
 /* --- 休眠唤醒功能实现 --- */
@@ -1117,6 +1331,22 @@ static void my_ctrl_task(void *p1, void *p2, void *p3)
                 MY_LOG_INF("Light pull sensor detected: DARK");
                 break;
 
+            case MY_MSG_CTRL_PATM_TIMER:
+                sensor_collect_barometer();
+                break;
+
+            case MY_MSG_CTRL_TEMP_TIMER:
+                sensor_collect_temp_humi();
+                break;
+
+            case MY_MSG_CTRL_PATM_RELOAD:
+                sensor_patm_timer_reload();
+                break;
+
+            case MY_MSG_CTRL_TEMP_RELOAD:
+                sensor_temp_timer_reload();
+                break;
+
             default:
                 break;
         }
@@ -1173,6 +1403,8 @@ int my_ctrl_init(k_tid_t *tid)
         MY_LOG_ERR("PWM PM registration failed: %d", ret);
         return ret;
     }
+
+    sensor_module_init();
 
     /* 启动时响一声提示音 */
     my_ctrl_buzzer_play_tone(2000, 100);

@@ -12,7 +12,19 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260706"
+#define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260710"
+/* 软件版本:        V1.0
+** 完成日期:        2026.07.10
+** 作    者:       周森达 (zhousenda@jimiiot.com)
+** 修改内容:        1.新增气压/温湿度传感器定时采集与上传功能
+**                 2.新增传感器数据FLASH循环存储区(TH/BP)(扩展FLASH存储区为四区)
+**                 3.新增CDATA协议补传机制
+**                 4.实现传感器上传状态机与TAG/MAC互斥调度
+**                 5.LTE上电后统一调度缓存上报
+**                 6.新增shell测试指令
+***/
+
+// #define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260706"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.07.06
 ** 作    者:       周森达 (zhousenda@jimiiot.com)

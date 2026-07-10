@@ -150,4 +150,7 @@ void go_to_system_off(void);
 *********************************************************************/
 bool get_light_tamper_state(void);
 
+extern fs_temp_humi_record_t g_temp_humi_sample;
+extern fs_barometer_record_t g_barometer_sample;
+
 #endif /* _MY_CTRL_H_ */

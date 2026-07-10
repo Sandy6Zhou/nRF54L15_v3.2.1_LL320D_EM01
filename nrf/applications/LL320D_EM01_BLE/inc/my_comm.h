@@ -155,6 +155,8 @@ typedef enum
     // MY_TIMER_WDT_FEED,       /* 看门狗喂狗定时器 */
     MY_TIMER_LTE_POWER,      // LTE电源控制定时器
     MY_TIMER_LTE_PULSE,       // LTE脉冲定时器
+    MY_TIMER_PATM_UPLOAD,     // 气压定时上传定时器
+    MY_TIMER_TEMP_UPLOAD,     // 温湿度定时上传定时器
 
     /* 扫描定时器 */
     MY_TIMER_SCAN_INTERVAL,   // 周期扫描定时器
@@ -228,11 +230,18 @@ typedef enum
     MY_MSG_CTRL_LIGHT_PULL_SENSOR_BRIGHT,   /* 拆卸光传感器检测到光明环境 */
     MY_MSG_CTRL_LIGHT_PULL_SENSOR_DARK,     /* 拆卸光传感器检测到黑暗环境 */
     MY_MSG_CTRL_SHUTDOWN_REQUEST,      /* 关机请求 */
+    MY_MSG_CTRL_PATM_TIMER,            /* 气压定时上传触发消息 */
+    MY_MSG_CTRL_TEMP_TIMER,            /* 温湿度定时上传触发消息 */
+    MY_MSG_CTRL_PATM_RELOAD,           /* 气压定时器配置更新消息 */
+    MY_MSG_CTRL_TEMP_RELOAD,           /* 温湿度定时器配置更新消息 */
 
     /* BLE 处理程序消息 */
     MY_MSG_BLE_RX,
     MY_MSG_BLE_OPEN_ADV,            /* 开启可连接广播 */
     MY_MSG_BLE_CLOSE_ADV,           /* 关闭可连接广播 */
+    MY_MSG_BLE_SENSOR_TH_SAMPLE,    /* 温湿度采样结果消息 */
+    MY_MSG_BLE_SENSOR_BP_SAMPLE,    /* 气压采样结果消息 */
+    MY_MSG_BLE_SENSOR_LTE_ACK,      /* LTE异步应答转发给BLE */
 
     // 处理4G过来LTE+CMD数据透传
     MY_MSG_LTE_CMD_RX,
@@ -259,7 +268,7 @@ typedef enum
     MY_MSG_SCAN_INTERVAL,       /* 周期扫描定时器消息 */
     MY_MSG_SCAN_LENGTH,         /* 单次扫描时长定时器消息 */
     MY_MSG_SCAN_UPLOAD,         /* 上报间隔定时器消息 */
-    MY_MSG_UPLOAD_WAKEUP,       /* 扫描数据在LTE唤醒时顺便上报消息 */
+    MY_MSG_UPLOAD_WAKEUP,       /* LTE就绪后触发BLE统一调度扫描与传感器缓存上报 */
     MY_MSG_LTE_WAKEUP,          /* LTE唤醒引脚中断触发的UART恢复消息 */
 
     /* 低功耗运行处理程序消息 */
@@ -276,7 +285,6 @@ typedef enum
 #include "my_main.h"
 #include "my_ble_core.h"
 #include "my_shell.h"
-#include "my_ctrl.h"
 #include "my_lte.h"
 #include "my_gsensor.h"
 #include "my_gsensor_algorithm.h"
@@ -289,7 +297,10 @@ typedef enum
 #include "my_ble_log.h"
 #include "my_pm.h"
 #include "my_ble_scan.h"
+#include "barometer_api.h"
+#include "temp_humi_api.h"
 #include "my_flash_store.h"
+#include "my_ctrl.h"
 #include "my_zms_param.h"
 
 #endif /* _MY_COMMON_H_ */

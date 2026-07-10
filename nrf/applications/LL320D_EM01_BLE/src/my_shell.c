@@ -1075,10 +1075,176 @@ static int cmd_hardware_test(const struct shell *sh, size_t argc, char **argv)
     return 0;
 }
 
+/********************************************************************
+**函数名称:  cmd_sensor_test
+**入口参数:  sh      ---        Shell实例指针
+**           argc    ---        参数数量
+**           argv    ---        参数数组
+**出口参数:  无
+**函数功能:  传感器上传功能Shell测试命令，支持配置指令验证、样本注入、应答注入和状态查看
+**返 回 值:  0表示成功，负值表示失败
+*********************************************************************/
+static int cmd_sensor_test(const struct shell *sh, size_t argc, char **argv)
+{
+    fs_temp_humi_record_t th_record;
+    fs_barometer_record_t bp_record;
+    char *end_ptr;
+    unsigned long timestamp_ul;
+    long value1;
+    long value2;
+
+    if (argc < 2)
+    {
+        shell_print(sh, "Usage: app sensor_test <subcmd> [args]");
+        shell_print(sh, "  cfg show");
+        shell_print(sh, "  cfg cmd use: app ble_test \"PATMTIMER#\"");
+        shell_print(sh, "  sample th <timestamp> <temp_x10> <humi_x10>");
+        shell_print(sh, "  sample bp <timestamp> <pressure_pa>");
+        shell_print(sh, "  ack <BLE+TH=OK|BLE+BP=OK|BLE+CDATA=OK,...>");
+        shell_print(sh, "  latest");
+        return -EINVAL;
+    }
+
+    if (strcmp(argv[1], "cfg") == 0)
+    {
+        if (argc < 3)
+        {
+            shell_error(sh, "Usage: app sensor_test cfg show");
+            return -EINVAL;
+        }
+
+        if (strcmp(argv[2], "show") == 0)
+        {
+            shell_print(sh, "PATMTIMER: interval=%u min, wakeup=%s",
+                        gConfigParam.patm_timer_config.interval_min,
+                        gConfigParam.patm_timer_config.wakeup_cell_sw ? "ON" : "OFF");
+            shell_print(sh, "TEMPTIMER: interval=%u min, wakeup=%s",
+                        gConfigParam.temp_timer_config.interval_min,
+                        gConfigParam.temp_timer_config.wakeup_cell_sw ? "ON" : "OFF");
+            return 0;
+        }
+        shell_error(sh, "unknown cfg subcmd: %s, use 'app sensor_test cfg show' or 'app ble_test \"PATMTIMER#\"'");
+        return -EINVAL;
+    }
+    else if (strcmp(argv[1], "sample") == 0)
+    {
+        if (argc < 3)
+        {
+            shell_error(sh, "Usage: app sensor_test sample <th|bp> ...");
+            return -EINVAL;
+        }
+
+        if (strcmp(argv[2], "th") == 0)
+        {
+            if (argc != 6)
+            {
+                shell_error(sh, "Usage: app sensor_test sample th <timestamp> <temp_x10> <humi_x10>");
+                return -EINVAL;
+            }
+
+            timestamp_ul = strtoul(argv[3], &end_ptr, 10);
+            if (*end_ptr != '\0')
+            {
+                shell_error(sh, "invalid timestamp: %s", argv[3]);
+                return -EINVAL;
+            }
+
+            value1 = strtol(argv[4], &end_ptr, 10);
+            if (*end_ptr != '\0')
+            {
+                shell_error(sh, "invalid temp_x10: %s", argv[4]);
+                return -EINVAL;
+            }
+
+            value2 = strtol(argv[5], &end_ptr, 10);
+            if (*end_ptr != '\0')
+            {
+                shell_error(sh, "invalid humi_x10: %s", argv[5]);
+                return -EINVAL;
+            }
+
+            memset(&th_record, 0, sizeof(th_record));
+            th_record.timestamp = (uint32_t)timestamp_ul;
+            th_record.temperature_x10 = (int16_t)value1;
+            th_record.humidity_x10 = (int16_t)value2;
+            memcpy(&g_temp_humi_sample, &th_record, sizeof(th_record));
+            my_send_msg(MOD_MAIN, MOD_BLE, MY_MSG_BLE_SENSOR_TH_SAMPLE);
+
+            shell_print(sh, "inject TH sample: ts=%u temp_x10=%d humi_x10=%d",
+                        th_record.timestamp,
+                        th_record.temperature_x10,
+                        th_record.humidity_x10);
+            return 0;
+        }
+        else if (strcmp(argv[2], "bp") == 0)
+        {
+            if (argc != 5)
+            {
+                shell_error(sh, "Usage: app sensor_test sample bp <timestamp> <pressure_pa>");
+                return -EINVAL;
+            }
+
+            timestamp_ul = strtoul(argv[3], &end_ptr, 10);
+            if (*end_ptr != '\0')
+            {
+                shell_error(sh, "invalid timestamp: %s", argv[3]);
+                return -EINVAL;
+            }
+
+            value1 = strtol(argv[4], &end_ptr, 10);
+            if (*end_ptr != '\0')
+            {
+                shell_error(sh, "invalid pressure_pa: %s", argv[4]);
+                return -EINVAL;
+            }
+
+            memset(&bp_record, 0, sizeof(bp_record));
+            bp_record.timestamp = (uint32_t)timestamp_ul;
+            bp_record.pressure_pa = (uint32_t)value1;
+            memcpy(&g_barometer_sample, &bp_record, sizeof(bp_record));
+            my_send_msg(MOD_MAIN, MOD_BLE, MY_MSG_BLE_SENSOR_BP_SAMPLE);
+
+            shell_print(sh, "inject BP sample: ts=%u pressure_pa=%u",
+                        bp_record.timestamp,
+                        bp_record.pressure_pa);
+            return 0;
+        }
+
+        shell_error(sh, "unknown sample type: %s", argv[2]);
+        return -EINVAL;
+    }
+    else if (strcmp(argv[1], "ack") == 0)
+    {
+        if (argc != 3)
+        {
+            shell_error(sh, "Usage: app sensor_test ack <BLE+TH=OK|BLE+BP=OK|BLE+CDATA=OK,...>");
+            return -EINVAL;
+        }
+
+        my_lte_parse_cmd(argv[2], strlen(argv[2]));
+        shell_print(sh, "ack injected: %s", argv[2]);
+        return 0;
+    }
+    else if (strcmp(argv[1], "latest") == 0)
+    {
+        shell_print(sh, "Latest TH: ts=%u temp_x10=%d humi_x10=%d",
+                    g_temp_humi_sample.timestamp,
+                    g_temp_humi_sample.temperature_x10,
+                    g_temp_humi_sample.humidity_x10);
+        shell_print(sh, "Latest BP: ts=%u pressure_pa=%u",
+                    g_barometer_sample.timestamp,
+                    g_barometer_sample.pressure_pa);
+        return 0;
+    }
+
+    shell_error(sh, "unknown subcmd: %s", argv[1]);
+    return -EINVAL;
+}
+
 #if FS_STORE_TEST_ENABLE
 /********************************************************************
 **函数名称:  fs_test_parse_type
-**入口参数:  str       ---        类型字符串("tag"或"mac")（输入）
+**入口参数:  str       ---        类型字符串("tag"、"mac"、"th"或"bp")（输入）
 **           type_ptr  ---        接收解析结果的指针（输出）
 **出口参数:  type_ptr  ---        存储解析出的数据类型
 **函数功能:  将shell输入的类型字符串解析为fs_data_type_t枚举
@@ -1094,6 +1260,16 @@ static int fs_test_parse_type(const char *str, fs_data_type_t *type_ptr)
     else if (strcmp(str, "mac") == 0)
     {
         *type_ptr = FS_TYPE_MAC;
+        return 0;
+    }
+    else if (strcmp(str, "th") == 0)
+    {
+        *type_ptr = FS_TYPE_TH;
+        return 0;
+    }
+    else if (strcmp(str, "bp") == 0)
+    {
+        *type_ptr = FS_TYPE_BP;
         return 0;
     }
 
@@ -1154,6 +1330,39 @@ static void fs_test_make_mac(tran_mac_result_item_t *rec_ptr, uint32_t seq)
 }
 
 /********************************************************************
+**函数名称:  fs_test_make_th
+**入口参数:  rec_ptr   ---        待填充的温湿度记录指针（输出）
+**           seq       ---        测试序号（输入）
+**出口参数:  rec_ptr   ---        存储构造好的温湿度测试记录
+**函数功能:  构造一条带唯一序号的温湿度记录，便于回读校验
+**返 回 值:  无
+*********************************************************************/
+static void fs_test_make_th(fs_temp_humi_record_t *rec_ptr, uint32_t seq)
+{
+    memset(rec_ptr, 0, sizeof(fs_temp_humi_record_t));
+
+    rec_ptr->timestamp = 1700000000U + seq;
+    rec_ptr->temperature_x10 = (int16_t)(200 + (seq % 150U));
+    rec_ptr->humidity_x10 = (int16_t)(500 + (seq % 300U));
+}
+
+/********************************************************************
+**函数名称:  fs_test_make_bp
+**入口参数:  rec_ptr   ---        待填充的气压记录指针（输出）
+**           seq       ---        测试序号（输入）
+**出口参数:  rec_ptr   ---        存储构造好的气压测试记录
+**函数功能:  构造一条带唯一序号的气压记录，便于回读校验
+**返 回 值:  无
+*********************************************************************/
+static void fs_test_make_bp(fs_barometer_record_t *rec_ptr, uint32_t seq)
+{
+    memset(rec_ptr, 0, sizeof(fs_barometer_record_t));
+
+    rec_ptr->timestamp = 1700000000U + seq;
+    rec_ptr->pressure_pa = 100000U + seq;
+}
+
+/********************************************************************
 **函数名称:  fs_test_decode_seq
 **入口参数:  val_ptr   ---        MAC地址字节数组指针（输入）
 **出口参数:  无
@@ -1164,6 +1373,91 @@ static uint32_t fs_test_decode_seq(const uint8_t *val_ptr)
 {
     return (uint32_t)val_ptr[0] | ((uint32_t)val_ptr[1] << 8) |
            ((uint32_t)val_ptr[2] << 16) | ((uint32_t)val_ptr[3] << 24);
+}
+
+/********************************************************************
+**函数名称:  fs_test_push_record_by_seq
+**入口参数:  type      ---        数据类型（输入）
+**           seq       ---        测试序号（输入）
+**出口参数:  无
+**函数功能:  按指定序号构造并写入一条测试记录
+**返 回 值:  0表示成功，负值表示失败
+*********************************************************************/
+static int fs_test_push_record_by_seq(fs_data_type_t type, uint32_t seq)
+{
+    tag_scan_result_t tag_rec;
+    tran_mac_result_item_t mac_rec;
+    fs_temp_humi_record_t th_rec;
+    fs_barometer_record_t bp_rec;
+
+    switch (type)
+    {
+        case FS_TYPE_TAG:
+            fs_test_make_tag(&tag_rec, seq);
+            return my_flash_store_push_tag(&tag_rec);
+
+        case FS_TYPE_MAC:
+            fs_test_make_mac(&mac_rec, seq);
+            return my_flash_store_push_mac(&mac_rec);
+
+        case FS_TYPE_TH:
+            fs_test_make_th(&th_rec, seq);
+            return my_flash_store_push_th(&th_rec);
+
+        case FS_TYPE_BP:
+            fs_test_make_bp(&bp_rec, seq);
+            return my_flash_store_push_bp(&bp_rec);
+
+        default:
+            return -EINVAL;
+    }
+}
+
+/********************************************************************
+**函数名称:  fs_test_record_seq_get
+**入口参数:  type      ---        数据类型（输入）
+**           rec_ptr   ---        记录缓冲区指针（输入）
+**出口参数:  无
+**函数功能:  从测试记录中提取序号，供Shell自动验证使用
+**返 回 值:  提取出的序号，失败返回0xFFFFFFFF
+*********************************************************************/
+static uint32_t fs_test_record_seq_get(fs_data_type_t type, const void *rec_ptr)
+{
+    const fs_temp_humi_record_t *th_ptr;
+    const fs_barometer_record_t *bp_ptr;
+
+    if (rec_ptr == NULL)
+    {
+        return 0xFFFFFFFFU;
+    }
+
+    switch (type)
+    {
+        case FS_TYPE_TAG:
+            return fs_test_decode_seq(((const tag_scan_result_t *)rec_ptr)->addr.a.val);
+
+        case FS_TYPE_MAC:
+            return fs_test_decode_seq(((const tran_mac_result_item_t *)rec_ptr)->addr.a.val);
+
+        case FS_TYPE_TH:
+            th_ptr = (const fs_temp_humi_record_t *)rec_ptr;
+            if (th_ptr->timestamp < 1700000000U)
+            {
+                return 0xFFFFFFFFU;
+            }
+            return th_ptr->timestamp - 1700000000U;
+
+        case FS_TYPE_BP:
+            bp_ptr = (const fs_barometer_record_t *)rec_ptr;
+            if (bp_ptr->pressure_pa < 100000U)
+            {
+                return 0xFFFFFFFFU;
+            }
+            return bp_ptr->pressure_pa - 100000U;
+
+        default:
+            return 0xFFFFFFFFU;
+    }
 }
 
 /********************************************************************
@@ -1183,6 +1477,8 @@ static int cmd_fs_test(const struct shell *sh, size_t argc, char **argv)
     fs_debug_info_t info;
     tag_scan_result_t tag_rec;
     tran_mac_result_item_t mac_rec;
+    fs_temp_humi_record_t th_rec;
+    fs_barometer_record_t bp_rec;
     uint8_t read_buf[128];      // 读取缓冲(取两类记录中较大者)
     uint32_t count;
     uint32_t i;
@@ -1192,21 +1488,32 @@ static int cmd_fs_test(const struct shell *sh, size_t argc, char **argv)
     int ret;
     int read_cnt;
     int rd;
+    uint32_t expected_seq;
+    uint32_t start_seq;
+    uint32_t total_push;
+    uint32_t commit_cnt;
+    uint32_t region_capacity;
+    uint32_t extra_sectors;
+    int push_ret;
+    bool pass;
 
     if (argc < 2)
     {
         shell_print(sh, "Usage: app fs <subcmd> [args]");
         shell_print(sh, "  init                     - Init flash store module");
-        shell_print(sh, "  info  <tag|mac>          - Show region internal state");
-        shell_print(sh, "  count <tag|mac>          - Show pending record count");
-        shell_print(sh, "  push  <tag|mac> <n>      - Push n test records");
-        shell_print(sh, "  fill  <tag|mac> <secs>   - Push records to fill <secs> sectors");
-        shell_print(sh, "  begin <tag|mac>          - Begin an upload session");
-        shell_print(sh, "  read  <tag|mac> [n]      - Read n records (0=read all), no commit");
-        shell_print(sh, "  commit <tag|mac>         - Commit current read batch");
-        shell_print(sh, "  rewind <tag|mac>         - Rewind read cursor to last commit");
-        shell_print(sh, "  clear <tag|mac>          - Clear region (wipe pointers)");
+        shell_print(sh, "  info  <tag|mac|th|bp>    - Show region internal state");
+        shell_print(sh, "  count <tag|mac|th|bp>    - Show pending record count");
+        shell_print(sh, "  push  <tag|mac|th|bp> <n>  - Push n test records");
+        shell_print(sh, "  fill  <tag|mac|th|bp> <secs> - Push records to fill <secs> sectors");
+        shell_print(sh, "  begin <tag|mac|th|bp>    - Begin an upload session");
+        shell_print(sh, "  read  <tag|mac|th|bp> [n] - Read n records (0=read all), no commit");
+        shell_print(sh, "  commit <tag|mac|th|bp>   - Commit current read batch");
+        shell_print(sh, "  rewind <tag|mac|th|bp>   - Rewind read cursor to last commit");
+        shell_print(sh, "  clear <tag|mac|th|bp>    - Clear region (wipe pointers)");
         shell_print(sh, "  sorttest <tag|mac> <n>   - Verify timestamp asc sort on flush");
+        shell_print(sh, "  covertest <tag|mac|th|bp> [extra_secs] - Verify overwrite oldest data");
+        shell_print(sh, "  partialtest <tag|mac|th|bp> [commit_n] - Verify partial commit + mixed read");
+        shell_print(sh, "  busytest <tag|mac|th|bp> - Verify upload-active staging-full drop");
         return -EINVAL;
     }
 
@@ -1221,7 +1528,7 @@ static int cmd_fs_test(const struct shell *sh, size_t argc, char **argv)
     /* 其余子命令均需type参数 */
     if (argc < 3 || fs_test_parse_type(argv[2], &type) != 0)
     {
-        shell_error(sh, "need type arg: tag | mac");
+        shell_error(sh, "need type arg: tag | mac | th | bp");
         return -EINVAL;
     }
 
@@ -1258,7 +1565,7 @@ static int cmd_fs_test(const struct shell *sh, size_t argc, char **argv)
     {
         if (argc < 4)
         {
-            shell_error(sh, "Usage: app fs push <tag|mac> <n>");
+            shell_error(sh, "Usage: app fs push <tag|mac|th|bp> <n>");
             return -EINVAL;
         }
 
@@ -1274,10 +1581,20 @@ static int cmd_fs_test(const struct shell *sh, size_t argc, char **argv)
                 fs_test_make_tag(&tag_rec, seq + i);
                 ret = my_flash_store_push_tag(&tag_rec);
             }
-            else
+            else if (type == FS_TYPE_MAC)
             {
                 fs_test_make_mac(&mac_rec, seq + i);
                 ret = my_flash_store_push_mac(&mac_rec);
+            }
+            else if (type == FS_TYPE_TH)
+            {
+                fs_test_make_th(&th_rec, seq + i);
+                ret = my_flash_store_push_th(&th_rec);
+            }
+            else
+            {
+                fs_test_make_bp(&bp_rec, seq + i);
+                ret = my_flash_store_push_bp(&bp_rec);
             }
 
             if (ret != 0)
@@ -1294,7 +1611,7 @@ static int cmd_fs_test(const struct shell *sh, size_t argc, char **argv)
     {
         if (argc < 4)
         {
-            shell_error(sh, "Usage: app fs fill <tag|mac> <sectors>");
+            shell_error(sh, "Usage: app fs fill <tag|mac|th|bp> <sectors>");
             return -EINVAL;
         }
 
@@ -1310,10 +1627,20 @@ static int cmd_fs_test(const struct shell *sh, size_t argc, char **argv)
                 fs_test_make_tag(&tag_rec, seq + i);
                 ret = my_flash_store_push_tag(&tag_rec);
             }
-            else
+            else if (type == FS_TYPE_MAC)
             {
                 fs_test_make_mac(&mac_rec, seq + i);
                 ret = my_flash_store_push_mac(&mac_rec);
+            }
+            else if (type == FS_TYPE_TH)
+            {
+                fs_test_make_th(&th_rec, seq + i);
+                ret = my_flash_store_push_th(&th_rec);
+            }
+            else
+            {
+                fs_test_make_bp(&bp_rec, seq + i);
+                ret = my_flash_store_push_bp(&bp_rec);
             }
 
             if (ret != 0)
@@ -1361,12 +1688,27 @@ static int cmd_fs_test(const struct shell *sh, size_t argc, char **argv)
                             ((tag_scan_result_t *)read_buf)->rssi,
                             ((tag_scan_result_t *)read_buf)->battery_percent);
             }
-            else
+            else if (type == FS_TYPE_MAC)
             {
                 seq = fs_test_decode_seq(((tran_mac_result_item_t *)read_buf)->addr.a.val);
                 shell_print(sh, "  [%d] MAC seq=%u adv_len=%u",
                             read_cnt, seq,
                             ((tran_mac_result_item_t *)read_buf)->adv_data_len);
+            }
+            else if (type == FS_TYPE_TH)
+            {
+                shell_print(sh, "  [%d] TH ts=%u temp_x10=%d humi_x10=%d",
+                            read_cnt,
+                            ((fs_temp_humi_record_t *)read_buf)->timestamp,
+                            ((fs_temp_humi_record_t *)read_buf)->temperature_x10,
+                            ((fs_temp_humi_record_t *)read_buf)->humidity_x10);
+            }
+            else
+            {
+                shell_print(sh, "  [%d] BP ts=%u pressure_pa=%u",
+                            read_cnt,
+                            ((fs_barometer_record_t *)read_buf)->timestamp,
+                            ((fs_barometer_record_t *)read_buf)->pressure_pa);
             }
 
             read_cnt++;
@@ -1399,6 +1741,12 @@ static int cmd_fs_test(const struct shell *sh, size_t argc, char **argv)
         if (argc < 4)
         {
             shell_error(sh, "Usage: app fs sorttest <tag|mac> <n>");
+            return -EINVAL;
+        }
+
+        if (type != FS_TYPE_TAG && type != FS_TYPE_MAC)
+        {
+            shell_error(sh, "sorttest only supports tag | mac");
             return -EINVAL;
         }
 
@@ -1460,6 +1808,226 @@ static int cmd_fs_test(const struct shell *sh, size_t argc, char **argv)
                     argv[2], ret, read_cnt, sorted_ok ? "PASS" : "FAIL");
         return sorted_ok ? 0 : -EIO;
     }
+    else if (strcmp(argv[1], "covertest") == 0)
+    {
+        extra_sectors = (argc >= 4) ? strtoul(argv[3], NULL, 10) : 1U;
+        if (extra_sectors == 0U)
+        {
+            extra_sectors = 1U;
+        }
+
+        my_flash_store_clear(type);
+        ret = my_flash_store_get_debug_info(type, &info);
+        if (ret != 0)
+        {
+            shell_error(sh, "get debug info fail ret=%d", ret);
+            return ret;
+        }
+
+        region_capacity = (uint32_t)info.region_sectors * info.rec_per_sector;
+        total_push = ((uint32_t)info.region_sectors + extra_sectors) * info.rec_per_sector;
+        for (i = 0; i < total_push; i++)
+        {
+            ret = fs_test_push_record_by_seq(type, i);
+            if (ret != 0)
+            {
+                shell_error(sh, "covertest push #%u ret=%d", i, ret);
+                return ret;
+            }
+        }
+
+        ret = my_flash_store_get_debug_info(type, &info);
+        if (ret != 0)
+        {
+            shell_error(sh, "get debug info fail ret=%d", ret);
+            return ret;
+        }
+
+        pass = true;
+        if (info.valid_sectors != info.region_sectors)
+        {
+            pass = false;
+        }
+        if (my_flash_store_pending_count(type) != region_capacity)
+        {
+            pass = false;
+        }
+
+        start_seq = extra_sectors * info.rec_per_sector;
+        my_flash_store_upload_begin(type);
+        read_cnt = 0;
+        while (1)
+        {
+            rd = my_flash_store_read_next(type, read_buf);
+            if (rd <= 0)
+            {
+                break;
+            }
+
+            expected_seq = start_seq + (uint32_t)read_cnt;
+            seq = fs_test_record_seq_get(type, read_buf);
+            if (seq != expected_seq)
+            {
+                pass = false;
+                shell_warn(sh, "covertest mismatch idx=%d exp=%u got=%u",
+                           read_cnt, expected_seq, seq);
+                break;
+            }
+            read_cnt++;
+        }
+        my_flash_store_rewind(type);
+
+        if ((uint32_t)read_cnt != region_capacity)
+        {
+            pass = false;
+        }
+
+        shell_print(sh, "covertest %s: capacity=%u start_seq=%u read=%d result=%s",
+                    argv[2], region_capacity, start_seq, read_cnt, pass ? "PASS" : "FAIL");
+        return pass ? 0 : -EIO;
+    }
+    else if (strcmp(argv[1], "partialtest") == 0)
+    {
+        my_flash_store_clear(type);
+        ret = my_flash_store_get_debug_info(type, &info);
+        if (ret != 0)
+        {
+            shell_error(sh, "get debug info fail ret=%d", ret);
+            return ret;
+        }
+
+        commit_cnt = (argc >= 4) ? strtoul(argv[3], NULL, 10) : 2U;
+        if (commit_cnt == 0U || commit_cnt >= info.rec_per_sector)
+        {
+            shell_error(sh, "commit_n must be 1..%u", info.rec_per_sector - 1U);
+            return -EINVAL;
+        }
+
+        total_push = info.rec_per_sector + 3U;
+        for (i = 0; i < total_push; i++)
+        {
+            ret = fs_test_push_record_by_seq(type, i);
+            if (ret != 0)
+            {
+                shell_error(sh, "partialtest push #%u ret=%d", i, ret);
+                return ret;
+            }
+        }
+
+        my_flash_store_upload_begin(type);
+        pass = true;
+        for (i = 0; i < commit_cnt; i++)
+        {
+            rd = my_flash_store_read_next(type, read_buf);
+            if (rd <= 0)
+            {
+                pass = false;
+                break;
+            }
+
+            seq = fs_test_record_seq_get(type, read_buf);
+            if (seq != i)
+            {
+                pass = false;
+                shell_warn(sh, "partialtest pre-commit idx=%u exp=%u got=%u", i, i, seq);
+                break;
+            }
+        }
+
+        ret = my_flash_store_commit(type);
+        if (ret != 0)
+        {
+            shell_error(sh, "partialtest commit ret=%d", ret);
+            return ret;
+        }
+
+        if (my_flash_store_pending_count(type) != (total_push - commit_cnt))
+        {
+            pass = false;
+        }
+
+        my_flash_store_upload_begin(type);
+        read_cnt = 0;
+        while (1)
+        {
+            rd = my_flash_store_read_next(type, read_buf);
+            if (rd <= 0)
+            {
+                break;
+            }
+
+            expected_seq = commit_cnt + (uint32_t)read_cnt;
+            seq = fs_test_record_seq_get(type, read_buf);
+            if (seq != expected_seq)
+            {
+                pass = false;
+                shell_warn(sh, "partialtest remain idx=%d exp=%u got=%u",
+                           read_cnt, expected_seq, seq);
+                break;
+            }
+            read_cnt++;
+        }
+        my_flash_store_rewind(type);
+
+        if ((uint32_t)read_cnt != (total_push - commit_cnt))
+        {
+            pass = false;
+        }
+
+        shell_print(sh, "partialtest %s: total=%u commit=%u remain=%d result=%s",
+                    argv[2], total_push, commit_cnt, read_cnt, pass ? "PASS" : "FAIL");
+        return pass ? 0 : -EIO;
+    }
+    else if (strcmp(argv[1], "busytest") == 0)
+    {
+        my_flash_store_clear(type);
+        ret = my_flash_store_get_debug_info(type, &info);
+        if (ret != 0)
+        {
+            shell_error(sh, "get debug info fail ret=%d", ret);
+            return ret;
+        }
+
+        my_flash_store_upload_begin(type);
+        pass = true;
+        for (i = 0; i < info.rec_per_sector; i++)
+        {
+            ret = fs_test_push_record_by_seq(type, i);
+            if (ret != 0)
+            {
+                pass = false;
+                shell_warn(sh, "busytest push #%u ret=%d", i, ret);
+                break;
+            }
+        }
+
+        push_ret = fs_test_push_record_by_seq(type, info.rec_per_sector);
+        if (push_ret != -EBUSY)
+        {
+            pass = false;
+        }
+
+        my_flash_store_rewind(type);
+        ret = my_flash_store_get_debug_info(type, &info);
+        if (ret != 0)
+        {
+            shell_error(sh, "get debug info fail ret=%d", ret);
+            return ret;
+        }
+
+        if (info.staging_count != info.rec_per_sector)
+        {
+            pass = false;
+        }
+        if (info.valid_sectors != 0U)
+        {
+            pass = false;
+        }
+
+        shell_print(sh, "busytest %s: rec_per_sector=%u extra_push_ret=%d result=%s",
+                    argv[2], info.rec_per_sector, push_ret, pass ? "PASS" : "FAIL");
+        return pass ? 0 : -EIO;
+    }
 
     shell_error(sh, "unknown subcmd: %s", argv[1]);
     return -EINVAL;
@@ -1482,12 +2050,13 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_app,
     SHELL_CMD(blogcfg, NULL, "BLE log config: app blogcfg <global|mod|level|show>", cmd_ble_log_config),
     SHELL_CMD(ble_test, NULL, "test", cmd_ble_test),
     SHELL_CMD(buzzer_test, NULL, "Run Buzzer test", cmd_buzzer_test),
+    SHELL_CMD(sensor_test, NULL, "Sensor upload test: app sensor_test <cfg|sample|ack|latest>, cfg cmd use app ble_test", cmd_sensor_test),
     SHELL_CMD(tagscan, NULL, "Set tag scan config: app tagscan <mode> <scan_interval> <scan_length> <upload_interval>", cmd_tag_scan_set_config),
     SHELL_CMD(alarmtest, NULL, "Test alarm message: app alarmtest <type> [info]", cmd_alarm_test),
     SHELL_CMD(retransmit_check_test, NULL, "Run retransmit_check_test test", cmd_retransmit_check_test),
     SHELL_CMD(hardware_test, NULL, "Run hardware test", cmd_hardware_test),
 #if FS_STORE_TEST_ENABLE
-    SHELL_CMD(fs, NULL, "Flash store test: app fs <init|info|count|push|fill|begin|read|commit|rewind|clear|sorttest>", cmd_fs_test),
+    SHELL_CMD(fs, NULL, "Flash store test: app fs <init|info|count|push|fill|begin|read|commit|rewind|clear|sorttest|covertest|partialtest|busytest>", cmd_fs_test),
 #endif
     SHELL_SUBCMD_SET_END
 );

@@ -214,6 +214,20 @@ const bparmac_config_t gDefaultBparmacConfig =
     .bt_parmac_macs = {0},           /* 默认0个MAC地址 */
 };
 
+const patm_timer_config_t gDefaultPatmTimerConfig =
+{
+    .flag = FLAG_VALID,         // 默认配置有效
+    .interval_min = 20,         // 默认每20分钟采集/上报一次气压
+    .wakeup_cell_sw = 0,        // 默认不因气压缓存主动拉起LTE
+};
+
+const temp_timer_config_t gDefaultTempTimerConfig =
+{
+    .flag = FLAG_VALID,         // 默认配置有效
+    .interval_min = 20,         // 默认每20分钟采集/上报一次温湿度
+    .wakeup_cell_sw = 0,        // 默认不因温湿度缓存主动拉起LTE
+};
+
 /**
 /********************************************************************
 **函数名称:  my_user_data_storage_init
@@ -642,6 +656,40 @@ void my_param_load_config(void)
     else
     {
         MY_LOG_INF("Bparmac config loaded");
+    }
+
+    //--------Load Patm Timer Config ---------------------
+    length = sizeof(patm_timer_config_t);
+    ret = my_user_data_read(ZMS_ID_PATM_TIMER_CONFIG, &gConfigParam.patm_timer_config, length);
+    if (ret != length)
+    {
+        memcpy(&gConfigParam.patm_timer_config, &gDefaultPatmTimerConfig, length);
+        MY_LOG_INF("Patm timer config not found. Use default:T(%d), C(%d)",
+                   gConfigParam.patm_timer_config.interval_min,
+                   gConfigParam.patm_timer_config.wakeup_cell_sw);
+    }
+    else
+    {
+        MY_LOG_INF("Patm timer config loaded:T(%d), C(%d)",
+                   gConfigParam.patm_timer_config.interval_min,
+                   gConfigParam.patm_timer_config.wakeup_cell_sw);
+    }
+
+    //--------Load Temp Timer Config ---------------------
+    length = sizeof(temp_timer_config_t);
+    ret = my_user_data_read(ZMS_ID_TEMP_TIMER_CONFIG, &gConfigParam.temp_timer_config, length);
+    if (ret != length)
+    {
+        memcpy(&gConfigParam.temp_timer_config, &gDefaultTempTimerConfig, length);
+        MY_LOG_INF("Temp timer config not found. Use default:T(%d), C(%d)",
+                   gConfigParam.temp_timer_config.interval_min,
+                   gConfigParam.temp_timer_config.wakeup_cell_sw);
+    }
+    else
+    {
+        MY_LOG_INF("Temp timer config loaded:T(%d), C(%d)",
+                   gConfigParam.temp_timer_config.interval_min,
+                   gConfigParam.temp_timer_config.wakeup_cell_sw);
     }
 }
 

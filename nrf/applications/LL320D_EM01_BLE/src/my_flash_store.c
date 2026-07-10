@@ -7,7 +7,7 @@
 **完成日期:        2026.06.12
 *********************************************************************
 ** 功能描述:        BLE扫描数据FLASH循环存储模块实现
-**                 1. TAG/MAC两个独立环形区，定长记录，整扇区批量写入
+**                 1. TAG/MAC/TH/BP四个独立环形区，定长记录，整扇区批量写入
 **                 2. RAM暂存缓冲攒满一整扇区(4096字节)才批量写入FLASH，不满一扇区的剩余记录不主动写
 **                 3. FLASH写满后环形覆盖最旧的扇区
 **                 4. 读取只移动内存里的读取位置，整批应答确认后commit才正式推进读指针并写ZMS
@@ -21,23 +21,32 @@ LOG_MODULE_REGISTER(my_flash_store, LOG_LEVEL_INF);
 /* ========== 分区与扇区布局常量 ========== */
 #define FS_SECTOR_SIZE          4096U                   // FLASH扇区大小(RRAM擦除块)
 #define FS_TOTAL_SECTORS        50U                     // 数据区总扇区数(200KB/4KB)
-#define FS_REGION_SECTORS       25U                     // 每个环形区扇区数(TAG/MAC各占一半)
+#define FS_TAG_REGION_SECTORS   12U                     // TAG区扇区数(48KB)
+#define FS_MAC_REGION_SECTORS   13U                     // MAC区扇区数(52KB)
+#define FS_TH_REGION_SECTORS    12U                     // 温湿度区扇区数(48KB)
+#define FS_BP_REGION_SECTORS    13U                     // 气压区扇区数(52KB)
 #define FS_SECTOR_HEADER_SIZE   16U                     // 扇区头大小
 #define FS_SECTOR_MAGIC         0x424C4453U             // 扇区头魔数 'BLDS':BLE Data Store（BLE数据存储）的缩写
 #define FS_REC_MAGIC            0xA5U                   // 记录有效标记
 #define FS_META_MAGIC           0x46535431U             // 元数据魔数+版本 'FST1':Flash STore（FLASH存储），最后的'1'是版本号
 
-/* TAG区扇区基址=0，MAC区扇区基址=25(分区内相对扇区索引) */
+/* 各区扇区基址(分区内相对扇区索引) */
 #define FS_TAG_SECTOR_BASE      0U
-#define FS_MAC_SECTOR_BASE      FS_REGION_SECTORS
+#define FS_MAC_SECTOR_BASE      (FS_TAG_SECTOR_BASE + FS_TAG_REGION_SECTORS)
+#define FS_TH_SECTOR_BASE       (FS_MAC_SECTOR_BASE + FS_MAC_REGION_SECTORS)
+#define FS_BP_SECTOR_BASE       (FS_TH_SECTOR_BASE + FS_TH_REGION_SECTORS)
 
-/* 记录槽大小(对齐到16字节写块)：TAG=92+4=96，MAC=1+3+44=48 */
+/* 记录槽大小：TAG=92+4=96，MAC=1+3+44=48，TH/BP=8+4=12 */
 #define FS_TAG_REC_SIZE         96U
 #define FS_MAC_REC_SIZE         48U
+#define FS_TH_REC_SIZE          12U
+#define FS_BP_REC_SIZE          12U
 
-/* 每扇区记录条数：(4096-16)/96=42，(4096-16)/48=85 */
+/* 每扇区记录条数 */
 #define FS_TAG_REC_PER_SECTOR   ((FS_SECTOR_SIZE - FS_SECTOR_HEADER_SIZE) / FS_TAG_REC_SIZE)
 #define FS_MAC_REC_PER_SECTOR   ((FS_SECTOR_SIZE - FS_SECTOR_HEADER_SIZE) / FS_MAC_REC_SIZE)
+#define FS_TH_REC_PER_SECTOR    ((FS_SECTOR_SIZE - FS_SECTOR_HEADER_SIZE) / FS_TH_REC_SIZE)
+#define FS_BP_REC_PER_SECTOR    ((FS_SECTOR_SIZE - FS_SECTOR_HEADER_SIZE) / FS_BP_REC_SIZE)
 
 /* ========== 磁盘结构定义 ========== */
 /* 16字节扇区头，用于断电后校验与重建 */
@@ -65,6 +74,20 @@ typedef struct
     uint8_t pad[3];             // 填充对齐(使data落在4字节边界，满足timestamp等4字节成员对齐)
     tran_mac_result_item_t data;// 透传MAC结果(44字节)
 } fs_mac_record_t;
+
+typedef struct
+{
+    uint8_t magic;                  // 记录有效标记 FS_REC_MAGIC
+    uint8_t pad[3];                 // 填充对齐，使data按4字节边界存放
+    fs_temp_humi_record_t data;     // 温湿度记录数据
+} fs_th_record_t;
+
+typedef struct
+{
+    uint8_t magic;                  // 记录有效标记 FS_REC_MAGIC
+    uint8_t pad[3];                 // 填充对齐，使data按4字节边界存放
+    fs_barometer_record_t data;     // 气压记录数据
+} fs_bp_record_t;
 
 /* ZMS持久化元数据结构 */
 typedef struct
@@ -95,9 +118,10 @@ typedef struct
     bool upload_active;           // 上报进行中标志，期间不落盘也不动读写指针，防止打乱正在发送的数据
 
     /* 类型相关常量(初始化时按类型填充) */
-    uint16_t sector_base;         // 区扇区基址(0或25)
+    uint16_t sector_base;         // 区扇区基址(分区内相对扇区索引)
     uint16_t rec_size;            // 记录槽大小
     uint16_t rec_per_sector;      // 每扇区记录数
+    uint16_t region_sectors;      // 区扇区总数
     uint32_t zms_id;              // 元数据ZMS ID
 
     /* RAM暂存缓冲 */
@@ -109,14 +133,16 @@ typedef struct
 static const struct flash_area *s_fa;           // 数据分区句柄
 static bool s_inited;                           // 初始化标志
 
-/* 两区RAM暂存缓冲(各容纳一扇区可装的记录数，不含扇区头) */
+/* 四区RAM暂存缓冲(各容纳一扇区可装的记录数，不含扇区头) */
 static fs_tag_record_t s_tag_staging[FS_TAG_REC_PER_SECTOR];
 static fs_mac_record_t s_mac_staging[FS_MAC_REC_PER_SECTOR];
+static fs_th_record_t s_th_staging[FS_TH_REC_PER_SECTOR];
+static fs_bp_record_t s_bp_staging[FS_BP_REC_PER_SECTOR];
 
 /* 整扇区落盘组装缓冲(BLE线程串行调用，静态共用以避免BLE线程栈占用) */
 static uint8_t s_sector_buf[FS_SECTOR_SIZE];
 
-/* 两区运行时上下文 */
+/* 四区运行时上下文 */
 static fs_region_t s_region[FS_TYPE_MAX];
 
 /********************************************************************
@@ -208,9 +234,9 @@ static void fs_region_load(fs_region_t *rg_ptr)
     }
 
     // 边界校验，防止元数据异常导致越界
-    if (meta.wr_sector >= FS_REGION_SECTORS ||
-        meta.rd_sector >= FS_REGION_SECTORS ||
-        meta.valid_sectors > FS_REGION_SECTORS ||
+    if (meta.wr_sector >= rg_ptr->region_sectors ||
+        meta.rd_sector >= rg_ptr->region_sectors ||
+        meta.valid_sectors > rg_ptr->region_sectors ||
         meta.rd_rec_idx > rg_ptr->rec_per_sector)
     {
         LOG_WRN("meta out of range(id=0x%08x), reset region", rg_ptr->zms_id);
@@ -290,7 +316,7 @@ static int fs_flush_staging(fs_region_t *rg_ptr)
     }
 
     // 更新有效扇区数 / 写满后覆盖最旧扇区
-    if (rg_ptr->valid_sectors < FS_REGION_SECTORS)
+    if (rg_ptr->valid_sectors < rg_ptr->region_sectors)
     {
         rg_ptr->valid_sectors++;
     }
@@ -299,12 +325,12 @@ static int fs_flush_staging(fs_region_t *rg_ptr)
         // 已写满：丢弃最旧的整个扇区，读指针往后移一个
         LOG_WRN("region full(base=%d), overwrite oldest sector %d",
                 rg_ptr->sector_base, rg_ptr->rd_sector);
-        rg_ptr->rd_sector = (rg_ptr->rd_sector + 1) % FS_REGION_SECTORS;
+        rg_ptr->rd_sector = (rg_ptr->rd_sector + 1) % rg_ptr->region_sectors;
         rg_ptr->rd_rec_idx = 0;
     }
 
     // 写指针往后移一个
-    rg_ptr->wr_sector = (rg_ptr->wr_sector + 1) % FS_REGION_SECTORS;
+    rg_ptr->wr_sector = (rg_ptr->wr_sector + 1) % rg_ptr->region_sectors;
     rg_ptr->staging_count = 0;
 
     // 新扇区写入后立即把元数据存入ZMS，保证掉电不丢已写入的数据
@@ -420,6 +446,8 @@ int my_flash_store_init(void)
 {
     fs_region_t *tag_rg;
     fs_region_t *mac_rg;
+    fs_region_t *th_rg;
+    fs_region_t *bp_rg;
     int err;
 
     if (s_inited)
@@ -430,9 +458,13 @@ int my_flash_store_init(void)
     // 编译期保证记录槽大小与每扇区记录数符合预期
     BUILD_ASSERT(sizeof(fs_tag_record_t) == FS_TAG_REC_SIZE, "TAG record size mismatch");
     BUILD_ASSERT(sizeof(fs_mac_record_t) == FS_MAC_REC_SIZE, "MAC record size mismatch");
+    BUILD_ASSERT(sizeof(fs_th_record_t) == FS_TH_REC_SIZE, "TH record size mismatch");
+    BUILD_ASSERT(sizeof(fs_bp_record_t) == FS_BP_REC_SIZE, "BP record size mismatch");
     BUILD_ASSERT(sizeof(fs_sector_header_t) == FS_SECTOR_HEADER_SIZE, "sector header size mismatch");
-    BUILD_ASSERT(FS_TAG_SECTOR_BASE + FS_REGION_SECTORS == FS_MAC_SECTOR_BASE, "TAG region overlaps MAC");
-    BUILD_ASSERT(FS_MAC_SECTOR_BASE + FS_REGION_SECTORS == FS_TOTAL_SECTORS, "region layout overflow");
+    BUILD_ASSERT(FS_TAG_SECTOR_BASE + FS_TAG_REGION_SECTORS == FS_MAC_SECTOR_BASE, "TAG region overlaps MAC");
+    BUILD_ASSERT(FS_MAC_SECTOR_BASE + FS_MAC_REGION_SECTORS == FS_TH_SECTOR_BASE, "MAC region overlaps TH");
+    BUILD_ASSERT(FS_TH_SECTOR_BASE + FS_TH_REGION_SECTORS == FS_BP_SECTOR_BASE, "TH region overlaps BP");
+    BUILD_ASSERT(FS_BP_SECTOR_BASE + FS_BP_REGION_SECTORS == FS_TOTAL_SECTORS, "region layout overflow");
 
     // 打开数据分区
     err = flash_area_open(FLASH_AREA_ID(ble_data_storage), &s_fa);
@@ -456,6 +488,7 @@ int my_flash_store_init(void)
     tag_rg->sector_base = FS_TAG_SECTOR_BASE;
     tag_rg->rec_size = FS_TAG_REC_SIZE;
     tag_rg->rec_per_sector = FS_TAG_REC_PER_SECTOR;
+    tag_rg->region_sectors = FS_TAG_REGION_SECTORS;
     tag_rg->zms_id = ZMS_ID_BLE_TAG_STORE_META;
     tag_rg->staging_buf = (uint8_t *)s_tag_staging;
 
@@ -465,16 +498,38 @@ int my_flash_store_init(void)
     mac_rg->sector_base = FS_MAC_SECTOR_BASE;
     mac_rg->rec_size = FS_MAC_REC_SIZE;
     mac_rg->rec_per_sector = FS_MAC_REC_PER_SECTOR;
+    mac_rg->region_sectors = FS_MAC_REGION_SECTORS;
     mac_rg->zms_id = ZMS_ID_BLE_MAC_STORE_META;
     mac_rg->staging_buf = (uint8_t *)s_mac_staging;
 
-    // 从ZMS加载并恢复两区的读写指针
+    th_rg = &s_region[FS_TYPE_TH];
+    memset(th_rg, 0, sizeof(fs_region_t));
+    th_rg->sector_base = FS_TH_SECTOR_BASE;
+    th_rg->rec_size = FS_TH_REC_SIZE;
+    th_rg->rec_per_sector = FS_TH_REC_PER_SECTOR;
+    th_rg->region_sectors = FS_TH_REGION_SECTORS;
+    th_rg->zms_id = ZMS_ID_BLE_TH_STORE_META;
+    th_rg->staging_buf = (uint8_t *)s_th_staging;
+
+    bp_rg = &s_region[FS_TYPE_BP];
+    memset(bp_rg, 0, sizeof(fs_region_t));
+    bp_rg->sector_base = FS_BP_SECTOR_BASE;
+    bp_rg->rec_size = FS_BP_REC_SIZE;
+    bp_rg->rec_per_sector = FS_BP_REC_PER_SECTOR;
+    bp_rg->region_sectors = FS_BP_REGION_SECTORS;
+    bp_rg->zms_id = ZMS_ID_BLE_BP_STORE_META;
+    bp_rg->staging_buf = (uint8_t *)s_bp_staging;
+
+    // 从ZMS加载并恢复各区的读写指针
     fs_region_load(tag_rg);
     fs_region_load(mac_rg);
+    fs_region_load(th_rg);
+    fs_region_load(bp_rg);
 
     s_inited = true;
-    LOG_INF("flash store init ok: TAG %d rec/sector, MAC %d rec/sector",
-            FS_TAG_REC_PER_SECTOR, FS_MAC_REC_PER_SECTOR);
+    LOG_INF("flash store init ok: TAG %d, MAC %d, TH %d, BP %d rec/sector",
+            FS_TAG_REC_PER_SECTOR, FS_MAC_REC_PER_SECTOR,
+            FS_TH_REC_PER_SECTOR, FS_BP_REC_PER_SECTOR);
     return 0;
 }
 
@@ -510,6 +565,40 @@ int my_flash_store_push_mac(const tran_mac_result_item_t *rec_ptr)
     }
 
     return fs_region_push(&s_region[FS_TYPE_MAC], rec_ptr, sizeof(tran_mac_result_item_t));
+}
+
+/********************************************************************
+**函数名称:  my_flash_store_push_th
+**入口参数:  rec_ptr   ---        待存储的温湿度记录指针（输入）
+**出口参数:  无
+**函数功能:  追加一条温湿度记录到TH区暂存缓冲，攒满一整扇区就写入FLASH
+**返 回 值:  0表示成功，负值表示失败
+*********************************************************************/
+int my_flash_store_push_th(const fs_temp_humi_record_t *rec_ptr)
+{
+    if (!s_inited || rec_ptr == NULL)
+    {
+        return -EINVAL;
+    }
+
+    return fs_region_push(&s_region[FS_TYPE_TH], rec_ptr, sizeof(fs_temp_humi_record_t));
+}
+
+/********************************************************************
+**函数名称:  my_flash_store_push_bp
+**入口参数:  rec_ptr   ---        待存储的气压记录指针（输入）
+**出口参数:  无
+**函数功能:  追加一条气压记录到BP区暂存缓冲，攒满一整扇区就写入FLASH
+**返 回 值:  0表示成功，负值表示失败
+*********************************************************************/
+int my_flash_store_push_bp(const fs_barometer_record_t *rec_ptr)
+{
+    if (!s_inited || rec_ptr == NULL)
+    {
+        return -EINVAL;
+    }
+
+    return fs_region_push(&s_region[FS_TYPE_BP], rec_ptr, sizeof(fs_barometer_record_t));
 }
 
 /********************************************************************
@@ -572,8 +661,27 @@ int my_flash_store_read_next(fs_data_type_t type, void *out_rec_ptr)
         return -EINVAL;
     }
 
-    data_len = (type == FS_TYPE_TAG) ? sizeof(tag_scan_result_t)
-                                     : sizeof(tran_mac_result_item_t);
+    switch (type)
+    {
+        case FS_TYPE_TAG:
+            data_len = sizeof(tag_scan_result_t);
+            break;
+
+        case FS_TYPE_MAC:
+            data_len = sizeof(tran_mac_result_item_t);
+            break;
+
+        case FS_TYPE_TH:
+            data_len = sizeof(fs_temp_humi_record_t);
+            break;
+
+        case FS_TYPE_BP:
+            data_len = sizeof(fs_barometer_record_t);
+            break;
+
+        default:
+            return -EINVAL;
+    }
 
     /* 兜底：正常应先调用my_flash_store_upload_begin开启上报。
      * 若漏调了，这里在第一次读取时补做两件事：打开上报标志、记下当前暂存记录数，
@@ -604,7 +712,7 @@ int my_flash_store_read_next(fs_data_type_t type, void *out_rec_ptr)
         abs_rec = rg_ptr->rd_rec_idx + rg_ptr->read_offset;
         // 由绝对序号反算位置：序号÷每扇区记录数=跨过的扇区数，从rd_sector往后数这么多个，
         // 再对区扇区总数取模实现环形回绕，得到该记录所在的扇区索引
-        sector_idx = (rg_ptr->rd_sector + abs_rec / rg_ptr->rec_per_sector) % FS_REGION_SECTORS;
+        sector_idx = (rg_ptr->rd_sector + abs_rec / rg_ptr->rec_per_sector) % rg_ptr->region_sectors;
         // 序号对每扇区记录数取余，得到该记录在所在扇区内的第几条(0起)
         rec_idx = abs_rec % rg_ptr->rec_per_sector;
 
@@ -668,7 +776,7 @@ void my_flash_store_rewind(fs_data_type_t type)
 **           并记下当前暂存记录数。此后push不再写FLASH、读写指针保持不动，确保
 **           整轮实际发送数与START声明的总数严格一致
 **返 回 值:  无
-**注意事项:  须在发送START之后、首条read_next之前调用；由commit或rewind关闭上报
+**注意事项:  须在发送START之前、首条read_next之前调用；由commit或rewind关闭上报
 **           标志。本接口已包含读取位置复位，调用前无需再调rewind
 *********************************************************************/
 void my_flash_store_upload_begin(fs_data_type_t type)
@@ -721,7 +829,7 @@ int my_flash_store_commit(fs_data_type_t type)
     if (consumed_sectors > 0)
     {
         // 读扇区起点往后移consumed_sectors个，对区扇区总数取模实现环形回绕
-        rg_ptr->rd_sector = (rg_ptr->rd_sector + consumed_sectors) % FS_REGION_SECTORS;
+        rg_ptr->rd_sector = (rg_ptr->rd_sector + consumed_sectors) % rg_ptr->region_sectors;
         // 发完的整扇区被腾空，有效扇区数相应减少
         if (rg_ptr->valid_sectors >= consumed_sectors)
         {
@@ -824,7 +932,7 @@ int my_flash_store_get_debug_info(fs_data_type_t type, fs_debug_info_t *info_ptr
     info_ptr->seq_counter = rg_ptr->seq_counter;
     info_ptr->staging_count = rg_ptr->staging_count;
     info_ptr->rec_per_sector = rg_ptr->rec_per_sector;
-    info_ptr->region_sectors = FS_REGION_SECTORS;
+    info_ptr->region_sectors = rg_ptr->region_sectors;
     info_ptr->upload_staging_snap = rg_ptr->upload_staging_snap;
     info_ptr->read_offset = rg_ptr->read_offset;
     info_ptr->staging_read_idx = rg_ptr->staging_read_idx;

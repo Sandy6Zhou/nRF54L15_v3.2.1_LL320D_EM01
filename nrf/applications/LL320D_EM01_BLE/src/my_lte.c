@@ -123,6 +123,9 @@ static const ble_rsp_cmd_map_t ble_rsp_cmd_table[] = {
     {"WMODE",    BLE_RSP_WMODE },
     {"PWROFF",   BLE_RSP_PWROFF },
     {"PULSE",    BLE_RSP_PULSE },
+    {"TH",       BLE_RSP_TH},
+    {"BP",       BLE_RSP_BP},
+    {"CDATA",    BLE_RSP_CDATA},
     {NULL,       BLE_RSP_UNKNOWN }
 };
 
@@ -137,6 +140,7 @@ typedef struct
 #define ASYNC_QUEUE_SIZE 6
 
 async_resp_tiem_t g_async_queue[ASYNC_QUEUE_SIZE];
+static ble_rsp_result_t s_sensor_ble_rsp = { 0 };
 
 /* LTE电源状态跟踪 */
 static bool s_lte_power_state = false;  // false=关闭, true=开启
@@ -1951,6 +1955,8 @@ static int my_lte_handle_power_on(char *data)
     // 低功耗运行状态同步统一交由main线程串行处理
     my_send_msg(MOD_LTE, MOD_MAIN, MY_MSG_LPSLEEP_LTE_SYNC);
 
+    // LTE启动并返回OK后，通知BLE线程统一调度TAG/MAC与TH/BP缓存上报
+    my_send_msg(MOD_LTE, MOD_BLE, MY_MSG_UPLOAD_WAKEUP);
     // 发送蓝牙信息给LTE模块
     send_bt_info_command();
 
@@ -2318,6 +2324,25 @@ int ble_rsp_parse(char *rsp_str, ble_rsp_result_t *result)
 }
 
 /********************************************************************
+**函数名称:  my_lte_get_sensor_ble_rsp
+**入口参数:  rsp_ptr    ---        接收解析结果的结构体指针（输出）
+**出口参数:  rsp_ptr    ---        最近一条传感器上传相关BLE应答解析结果
+**函数功能:  获取LTE线程保存的最新传感器应答解析结果
+**返 回 值:  0表示成功，负值表示失败
+*********************************************************************/
+int my_lte_get_sensor_ble_rsp(ble_rsp_result_t *rsp_ptr)
+{
+    if (rsp_ptr == NULL)
+    {
+        return -EINVAL;
+    }
+
+    memcpy(rsp_ptr, &s_sensor_ble_rsp, sizeof(s_sensor_ble_rsp));
+
+    return 0;
+}
+
+/********************************************************************
 **函数名称:  my_ble_handle
 **入口参数:  data     --- 接收到的应答原始数据字符串指针（如 "LOCATION=OK,22345678,113456789#）
 **出口参数:  无
@@ -2394,6 +2419,12 @@ static int my_ble_handle(char *data)
             my_send_msg(MOD_LTE, MOD_BLE, MY_MSG_UPLOAD_TAG_AND_MAC);
             break;
 
+        case BLE_RSP_TH:
+        case BLE_RSP_BP:
+        case BLE_RSP_CDATA:
+            memcpy(&s_sensor_ble_rsp, &rsp_result, sizeof(s_sensor_ble_rsp));
+            my_send_msg(MOD_LTE, MOD_BLE, MY_MSG_BLE_SENSOR_LTE_ACK);
+            break;
         default:
             MY_LOG_INF("Unhandled BLE TYPE: %d", rsp_result.type);
             break;

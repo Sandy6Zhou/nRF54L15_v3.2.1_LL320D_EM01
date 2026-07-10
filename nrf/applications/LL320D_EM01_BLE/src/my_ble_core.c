@@ -1343,6 +1343,9 @@ static void my_ble_task(void *p1, void *p2, void *p3)
             case MY_MSG_SCAN_UPLOAD:
             case MY_MSG_UPLOAD_WAKEUP:
             case MY_MSG_TRAN_MAC_PROCESS:
+            case MY_MSG_BLE_SENSOR_TH_SAMPLE:
+            case MY_MSG_BLE_SENSOR_BP_SAMPLE:
+            case MY_MSG_BLE_SENSOR_LTE_ACK:
                 my_scan_msg_handler(&msg);
                 break;
 

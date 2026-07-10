@@ -37,6 +37,9 @@ typedef enum
     BLE_RSP_WMODE,    // BLE+WMODE=OK
     BLE_RSP_PWROFF,   // BLE+PWROFF=OK
     BLE_RSP_PULSE,    // BLE+PULSE=OK,<持续时间(分钟)>
+    BLE_RSP_TH,       // BLE+TH=OK
+    BLE_RSP_BP,       // BLE+BP=OK
+    BLE_RSP_CDATA,    // BLE+CDATA=OK,START/END/seq
     BLE_RSP_MAX
 } ble_rsp_t;
 
@@ -120,6 +123,15 @@ int my_lte_uart_send(const uint8_t *data, uint16_t len);
 **返 回 值:  true:电源打开，false:电源关闭
 *********************************************************************/
 bool get_lte_power_state(void);
+
+/********************************************************************
+**函数名称:  my_lte_get_sensor_ble_rsp
+**入口参数:  rsp_ptr    ---        接收解析结果的结构体指针（输出）
+**出口参数:  rsp_ptr    ---        最近一条传感器上传相关BLE应答解析结果
+**函数功能:  获取LTE线程保存的最新传感器应答解析结果
+**返 回 值:  0表示成功，负值表示失败
+*********************************************************************/
+int my_lte_get_sensor_ble_rsp(ble_rsp_result_t *rsp_ptr);
 
 /********************************************************************
 **函数名称:  my_lte_pwr_on

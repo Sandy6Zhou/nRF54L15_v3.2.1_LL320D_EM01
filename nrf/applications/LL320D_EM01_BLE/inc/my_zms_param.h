@@ -68,6 +68,10 @@ typedef enum                           // 参数ID定义
     ZMS_ID_LPSLEEP_CONFIG,             // 低功耗运行配置参数ID
     ZMS_ID_BLE_TAG_STORE_META,         // BLE TAG扫描数据循环存储区元数据ID
     ZMS_ID_BLE_MAC_STORE_META,         // BLE 透传MAC扫描数据循环存储区元数据ID
+    ZMS_ID_PATM_TIMER_CONFIG,          // 气压定时上传配置参数ID
+    ZMS_ID_TEMP_TIMER_CONFIG,          // 温湿度定时上传配置参数ID
+    ZMS_ID_BLE_TH_STORE_META,          // BLE 温湿度循环存储区元数据ID
+    ZMS_ID_BLE_BP_STORE_META,          // BLE 气压循环存储区元数据ID
 } my_zms_id_t;
 
 typedef struct                              // 存储的LICENSE GG信息
@@ -229,6 +233,20 @@ typedef struct                              // 存储的透传mac地址配置数
     uint8_t      bt_parmac_mac_count;               // 已配置MAC数量
 } bparmac_config_t;
 
+typedef struct                              // 存储的气压定时上传配置参数
+{
+    uint8_t flag;                           // 参数有效标志
+    uint16_t interval_min;                  // 上传间隔(分钟): 0或10~1440
+    uint8_t wakeup_cell_sw;                 // 4G离线时是否唤醒: 0-OFF, 1-ON
+} patm_timer_config_t;
+
+typedef struct                              // 存储的温湿度定时上传配置参数
+{
+    uint8_t flag;                           // 参数有效标志
+    uint16_t interval_min;                  // 上传间隔(分钟): 0或10~1440
+    uint8_t wakeup_cell_sw;                 // 4G离线时是否唤醒: 0-OFF, 1-ON
+} temp_timer_config_t;
+
 typedef struct
 {
     lic_ff_t                    lic_ff;                     // 存储的LICENSE FF信息
@@ -254,6 +272,8 @@ typedef struct
     ltint_config_t              ltint_config;               // 光感过滤配置
     buzzer_config_t             buzzer_config;              // 蜂鸣器配置
     bparmac_config_t            bparmac_config;             // 透传mac地址配置
+    patm_timer_config_t         patm_timer_config;          // 气压定时上传配置
+    temp_timer_config_t         temp_timer_config;          // 温湿度定时上传配置
 } config_param_t;
 
 extern config_param_t    gConfigParam;

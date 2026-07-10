@@ -14,10 +14,10 @@ target_include_directories(app PRIVATE
 #  ./ext_module/imu/api
 #  ./ext_module/imu/port
 #  ./ext_module/imu/vendor
-#  ./ext_module/temp_humi/api
-#  ./ext_module/temp_humi/drivers/SHTC3/inc
-#  ./ext_module/barometer/api
-#  ./ext_module/barometer/drivers/SPA06/inc
+ ./ext_module/temp_humi/api
+ ./ext_module/temp_humi/drivers/SHTC3/inc
+ ./ext_module/barometer/api
+ ./ext_module/barometer/drivers/SPA06/inc
 #  ./ext_module/accelerometer/api
 #  ./ext_module/accelerometer/drivers/DA213/inc
 )
@@ -46,10 +46,10 @@ target_sources(app PRIVATE
   # ext_module/imu/port/bmi325_port.c
   # ext_module/imu/vendor/bmi325.c
   # ext_module/imu/vendor/bmi3.c
-  # ext_module/temp_humi/api/temp_humi_api.c
-  # ext_module/temp_humi/drivers/SHTC3/src/shtc3_driver.c
-  # ext_module/barometer/api/barometer_api.c
-  # ext_module/barometer/drivers/SPA06/src/spa06_driver.c
+  ext_module/temp_humi/api/temp_humi_api.c
+  ext_module/temp_humi/drivers/SHTC3/src/shtc3_driver.c
+  ext_module/barometer/api/barometer_api.c
+  ext_module/barometer/drivers/SPA06/src/spa06_driver.c
   # ext_module/accelerometer/api/accelerometer_api.c
   # ext_module/accelerometer/drivers/DA213/src/da213_driver.c
   src/my_flash_store.c

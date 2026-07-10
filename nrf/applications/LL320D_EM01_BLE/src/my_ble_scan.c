@@ -66,6 +66,36 @@ static uint16_t s_flash_consumed = 0;
 //本轮上报开始时记下实时表有几条，本轮最多发这么多，发送途中表里新增的下轮再发
 static uint16_t s_rt_count_snap = 0;
 
+typedef enum
+{
+    SENSOR_UPLOAD_STATE_IDLE = 0,
+    SENSOR_UPLOAD_STATE_TH_WAIT_ACK,
+    SENSOR_UPLOAD_STATE_BP_WAIT_ACK,
+    SENSOR_UPLOAD_STATE_CDATA_WAIT_START_ACK,
+    SENSOR_UPLOAD_STATE_CDATA_WAIT_DATA_ACK,
+    SENSOR_UPLOAD_STATE_CDATA_WAIT_END_ACK,
+} sensor_upload_state_t;
+
+typedef struct
+{
+    sensor_upload_state_t state;
+    fs_data_type_t upload_type;
+    uint16_t total_packets;
+    uint16_t next_seq;
+} sensor_upload_ctx_t;
+
+#define SENSOR_CDATA_UART_FRAME_MAX_LEN      1024U    // 单条LTE UART发送上限，需与my_lte.c中的UART_TX_BUFFER_SIZE保持一致
+#define SENSOR_CDATA_CMD_PREFIX_LEN          10U      // "BLE+CDATA=" 固定前缀长度
+#define SENSOR_CDATA_PARAM_MAX_LEN           (SENSOR_CDATA_UART_FRAME_MAX_LEN - SENSOR_CDATA_CMD_PREFIX_LEN - 2U) // CDATA参数区最大长度，额外预留"\r\n"
+#define SENSOR_CDATA_PREFIX_RESERVED_LEN     24U      // 预留"seq,data_sum"文本前缀空间：seq最大5位 + data_sum最大5位 + 1个逗号 + 结尾'\0'，并额外留裕量
+#define SENSOR_CDATA_TH_RECORD_MAX_TEXT_LEN  25U      // 单条TH记录最大文本长度：",4294967295,-32768,65535" 共24字符，外加结尾'\0'预留
+#define SENSOR_CDATA_BP_RECORD_MAX_TEXT_LEN  22U      // 单条BP记录最大文本长度：",4294967295,4294967295" 共21字符，外加结尾'\0'预留
+
+static sensor_upload_ctx_t s_sensor_upload_ctx = { 0 };
+static uint8_t s_sensor_upload_frame_buf[SENSOR_CDATA_PARAM_MAX_LEN];
+
+static void sensor_upload_reset(bool rewind_flash);
+
 /********************************************************************
 **函数名称:  parse_scan_rsp_name
 **入口参数:  buf_ptr         ---        接收数据缓冲区
@@ -859,6 +889,7 @@ static void scan_set_config_internal(uint8_t mode, uint32_t scan_interval,
     // 把FLASH读取位置退回上次已确认处(只退读位置，FLASH里的历史数据保留，下次重新上报)
     my_flash_store_rewind(FS_TYPE_TAG);
     my_flash_store_rewind(FS_TYPE_MAC);
+    sensor_upload_reset(true);
 
     // 更新配置
     s_scan_config.mode = (scan_mode_t)mode;
@@ -1038,6 +1069,476 @@ if (item_ptr->ff_data_len > 0)
 }
 
 /********************************************************************
+**函数名称:  sensor_cdata_record_max_text_len_get
+**入口参数:  type      ---        FLASH数据类型（输入）
+**出口参数:  无
+**函数功能:  获取单条CDATA记录按文本协议编码后的最大字符数
+**返 回 值:  单条记录最大字符数
+**注意事项:  返回值包含记录前导逗号，如",时间戳,温度,湿度"
+*********************************************************************/
+static uint16_t sensor_cdata_record_max_text_len_get(fs_data_type_t type)
+{
+    switch (type)
+    {
+        case FS_TYPE_TH:
+            return SENSOR_CDATA_TH_RECORD_MAX_TEXT_LEN;
+
+        case FS_TYPE_BP:
+            return SENSOR_CDATA_BP_RECORD_MAX_TEXT_LEN;
+
+        default:
+            LOG_WRN("sensor_cdata_record_max_text_len_get: unexpected type %d", (int)type);
+            return 0;
+    }
+}
+
+/********************************************************************
+**函数名称:  sensor_cdata_max_records_per_packet
+**入口参数:  type      ---        FLASH数据类型（输入）
+**出口参数:  无
+**函数功能:  获取单个CDATA文本数据包最多可携带的记录条数
+**返 回 值:  单包最大记录条数
+**注意事项:  该值按最坏情况字符数预留，保证不会超出UART单包长度上限
+*********************************************************************/
+static uint16_t sensor_cdata_max_records_per_packet(fs_data_type_t type)
+{
+    uint16_t record_max_len;
+
+    record_max_len = sensor_cdata_record_max_text_len_get(type);
+    if (record_max_len == 0U)
+    {
+        return 0;
+    }
+
+    if (SENSOR_CDATA_PARAM_MAX_LEN <= SENSOR_CDATA_PREFIX_RESERVED_LEN)
+    {
+        return 0;
+    }
+
+    return (uint16_t)((SENSOR_CDATA_PARAM_MAX_LEN - SENSOR_CDATA_PREFIX_RESERVED_LEN - 1U) / record_max_len);
+}
+
+/********************************************************************
+**函数名称:  sensor_cdata_type_get
+**入口参数:  type      ---        FLASH数据类型（输入）
+**出口参数:  无
+**函数功能:  将FLASH数据类型转换为CDATA协议数据类型编号
+**返 回 值:  1表示温湿度，2表示气压
+*********************************************************************/
+static uint8_t sensor_cdata_type_get(fs_data_type_t type)
+{
+    switch (type)
+    {
+        case FS_TYPE_TH:
+            return 1;
+
+        case FS_TYPE_BP:
+            return 2;
+
+        default:
+            LOG_WRN("sensor_cdata_type_get: unexpected type %d", (int)type);
+            return 0;
+    }
+}
+
+/********************************************************************
+**函数名称:  sensor_upload_busy
+**入口参数:  无
+**出口参数:  无
+**函数功能:  判断当前是否存在传感器上传会话
+**返 回 值:  true表示忙，false表示空闲
+*********************************************************************/
+static bool sensor_upload_busy(void)
+{
+    return s_sensor_upload_ctx.state != SENSOR_UPLOAD_STATE_IDLE;
+}
+
+/********************************************************************
+**函数名称:  sensor_upload_reset
+**入口参数:  rewind_flash ---      是否回退FLASH读取位置（输入）
+**出口参数:  无
+**函数功能:  复位传感器上传状态机
+**返 回 值:  无
+*********************************************************************/
+static void sensor_upload_reset(bool rewind_flash)
+{
+    if (rewind_flash &&
+        (s_sensor_upload_ctx.upload_type == FS_TYPE_TH || s_sensor_upload_ctx.upload_type == FS_TYPE_BP) &&
+        (s_sensor_upload_ctx.state == SENSOR_UPLOAD_STATE_CDATA_WAIT_START_ACK ||
+         s_sensor_upload_ctx.state == SENSOR_UPLOAD_STATE_CDATA_WAIT_DATA_ACK ||
+         s_sensor_upload_ctx.state == SENSOR_UPLOAD_STATE_CDATA_WAIT_END_ACK))
+    {
+        my_flash_store_rewind(s_sensor_upload_ctx.upload_type);
+    }
+
+    s_sensor_upload_ctx.state = SENSOR_UPLOAD_STATE_IDLE;
+    s_sensor_upload_ctx.upload_type = FS_TYPE_MAX;
+    s_sensor_upload_ctx.total_packets = 0;
+    s_sensor_upload_ctx.next_seq = 0;
+}
+
+/********************************************************************
+**函数名称:  sensor_cdata_send_next_packet
+**入口参数:  无
+**出口参数:  无
+**函数功能:  发送当前会话的下一包CDATA数据
+**返 回 值:  0表示成功，负值表示失败
+*********************************************************************/
+static int sensor_cdata_send_next_packet(void)
+{
+    fs_temp_humi_record_t th_record;
+    fs_barometer_record_t bp_record;
+    char prefix_buf[SENSOR_CDATA_PREFIX_RESERVED_LEN];
+    uint16_t data_sum;
+    uint16_t max_records;
+    uint16_t record_max_len;
+    uint16_t prefix_len;
+    uint16_t record_text_len;
+    uint16_t used_len;
+    int append_len;
+    int ret;
+
+    data_sum = 0;
+    record_text_len = 0;
+    // 先从保留区之后开始写记录文本，待记录条数确定后再回填"seq,data_sum"前缀。
+    used_len = SENSOR_CDATA_PREFIX_RESERVED_LEN;
+    memset(prefix_buf, 0, sizeof(prefix_buf));
+    memset(s_sensor_upload_frame_buf, 0, sizeof(s_sensor_upload_frame_buf));
+
+    max_records = sensor_cdata_max_records_per_packet(s_sensor_upload_ctx.upload_type);
+    record_max_len = sensor_cdata_record_max_text_len_get(s_sensor_upload_ctx.upload_type);
+    if (max_records == 0U || record_max_len == 0U)
+    {
+        return -EINVAL;
+    }
+
+    // 每次循环先按最坏情况预留单条记录文本空间，确保snprintf写入后不会越界。
+    while ((data_sum < max_records) &&
+           (used_len + record_max_len + 1U <= sizeof(s_sensor_upload_frame_buf)))
+    {
+        if (s_sensor_upload_ctx.upload_type == FS_TYPE_TH)
+        {
+            ret = my_flash_store_read_next(FS_TYPE_TH, &th_record);
+            if (ret <= 0)
+            {
+                break;
+            }
+
+            // TH文本协议格式：",时间戳,温度,湿度"
+            append_len = snprintf((char *)&s_sensor_upload_frame_buf[used_len],
+                                  sizeof(s_sensor_upload_frame_buf) - used_len,
+                                  ",%u,%d,%u",
+                                  th_record.timestamp,
+                                  th_record.temperature_x10,
+                                  th_record.humidity_x10);
+        }
+        else
+        {
+            ret = my_flash_store_read_next(FS_TYPE_BP, &bp_record);
+            if (ret <= 0)
+            {
+                break;
+            }
+
+            // BP文本协议格式：",时间戳,气压"
+            append_len = snprintf((char *)&s_sensor_upload_frame_buf[used_len],
+                                  sizeof(s_sensor_upload_frame_buf) - used_len,
+                                  ",%u,%u",
+                                  bp_record.timestamp,
+                                  bp_record.pressure_pa);
+        }
+
+        if ((append_len <= 0) || ((size_t)append_len >= sizeof(s_sensor_upload_frame_buf) - used_len))
+        {
+            return -ENOMEM;
+        }
+
+        used_len = (uint16_t)(used_len + append_len);
+        data_sum++;
+    }
+
+    if (data_sum == 0U)
+    {
+        return -EINVAL;
+    }
+
+    // 前缀固定为"seq,data_sum"，其中data_sum表示当前包实际携带的记录条数。
+    prefix_len = (uint16_t)snprintf(prefix_buf, sizeof(prefix_buf), "%u,%u",
+                                    s_sensor_upload_ctx.next_seq, data_sum);
+    if (prefix_len >= sizeof(prefix_buf))
+    {
+        return -ENOMEM;
+    }
+
+    record_text_len = (uint16_t)(used_len - SENSOR_CDATA_PREFIX_RESERVED_LEN);
+    if ((uint32_t)prefix_len + record_text_len + 1U > sizeof(s_sensor_upload_frame_buf))
+    {
+        return -ENOMEM;
+    }
+
+    // 将记录文本整体前移，覆盖掉开头预留区，再把前缀拷到最前面，最终形成：
+    // "seq,data_sum,时间戳,温度,湿度..."
+    memmove(&s_sensor_upload_frame_buf[prefix_len],
+            &s_sensor_upload_frame_buf[SENSOR_CDATA_PREFIX_RESERVED_LEN],
+            (size_t)record_text_len + 1U);
+    memcpy(s_sensor_upload_frame_buf, prefix_buf, prefix_len);
+
+    ret = lte_send_command("CDATA", (char *)s_sensor_upload_frame_buf);
+    if (ret == 0)
+    {
+        s_sensor_upload_ctx.state = SENSOR_UPLOAD_STATE_CDATA_WAIT_DATA_ACK;
+    }
+
+    return ret;
+}
+
+/********************************************************************
+**函数名称:  sensor_cached_upload_try_start
+**入口参数:  无
+**出口参数:  无
+**函数功能:  若存在历史缓存且BLE当前无其他上传，则启动一轮CDATA补传
+**返 回 值:  无
+*********************************************************************/
+static void sensor_cached_upload_try_start(void)
+{
+    fs_data_type_t upload_type;
+    uint32_t pending_count;
+    uint16_t max_records_per_packet;
+
+    // 传感器CDATA与TAG/MAC上传共用BLE->LTE串口通道及异步应答推进机制，
+    // 两套状态机若并发穿插，START/DATA/END时序与ACK归属会混乱，因此这里必须串行化。
+    if (sensor_upload_busy() || s_tag_macinfo_upload_state != UPLOAD_STATE_IDLE)
+    {
+        return;
+    }
+
+    upload_type = FS_TYPE_MAX;
+    if (my_flash_store_pending_count(FS_TYPE_TH) > 0)
+    {
+        upload_type = FS_TYPE_TH;
+    }
+    else if (my_flash_store_pending_count(FS_TYPE_BP) > 0)
+    {
+        upload_type = FS_TYPE_BP;
+    }
+
+    if (upload_type == FS_TYPE_MAX || !g_bLteReady)
+    {
+        return;
+    }
+
+    pending_count = my_flash_store_pending_count(upload_type);
+    max_records_per_packet = sensor_cdata_max_records_per_packet(upload_type);
+    if (pending_count == 0U || max_records_per_packet == 0U)
+    {
+        return;
+    }
+
+    // 锁定本轮补传会话的读取起点；只有整轮CDATA收到END应答后才真正commit消费这些记录。
+    my_flash_store_upload_begin(upload_type);
+    s_sensor_upload_ctx.upload_type = upload_type;
+    // 总包数按“待补传总条数 / 单包最大条数”向上取整，供START包告知4G本轮补传规模。
+    s_sensor_upload_ctx.total_packets = (uint16_t)((pending_count + max_records_per_packet - 1U) /
+                                                    max_records_per_packet);
+    s_sensor_upload_ctx.next_seq = 1;
+    s_sensor_upload_ctx.state = SENSOR_UPLOAD_STATE_CDATA_WAIT_START_ACK;
+
+    // START只负责声明数据类型和总包数，真正的数据正文要等收到START的OK后再逐包发送。
+    snprintf((char *)s_sensor_upload_frame_buf, sizeof(s_sensor_upload_frame_buf), "START,%d,%u",
+             sensor_cdata_type_get(upload_type), s_sensor_upload_ctx.total_packets);
+    if (lte_send_command("CDATA", (char *)s_sensor_upload_frame_buf) != 0)
+    {
+        sensor_upload_reset(true);
+    }
+}
+
+/********************************************************************
+**函数名称:  sensor_realtime_upload_start
+**入口参数:  cmd_name   ---        指令名（输入）
+**           upload_type ---       上传类型（输入）
+**           param_ptr   ---       上报参数字符串（输入）
+**出口参数:  无
+**函数功能:  启动一次传感器实时上传
+**返 回 值:  0表示成功，负值表示失败
+*********************************************************************/
+static int sensor_realtime_upload_start(const char *cmd_name, fs_data_type_t upload_type, const char *param_ptr)
+{
+    int ret;
+
+    LOG_INF("g_bLteReady:%d, sensor_upload_busy:%d, s_tag_macinfo_upload_state:%d", g_bLteReady, sensor_upload_busy(), s_tag_macinfo_upload_state);
+
+    // 实时TH/BP上报与TAG/MAC扫描上报不能并发占用同一串口会话，否则异步ACK无法正确归属。
+    if (!g_bLteReady || sensor_upload_busy() || s_tag_macinfo_upload_state != UPLOAD_STATE_IDLE)
+    {
+        return -EBUSY;
+    }
+
+    s_sensor_upload_ctx.upload_type = upload_type;
+    s_sensor_upload_ctx.state = (upload_type == FS_TYPE_TH) ?
+                                 SENSOR_UPLOAD_STATE_TH_WAIT_ACK :
+                                 SENSOR_UPLOAD_STATE_BP_WAIT_ACK;
+
+    ret = lte_send_command(cmd_name, param_ptr);
+    if (ret != 0)
+    {
+        sensor_upload_reset(false);
+    }
+
+    return ret;
+}
+
+/********************************************************************
+**函数名称:  sensor_process_temp_humi_sample
+**入口参数:  record_ptr ---        温湿度记录指针（输入）
+**出口参数:  无
+**函数功能:  处理CTRL采样得到的温湿度数据
+**返 回 值:  无
+*********************************************************************/
+static void sensor_process_temp_humi_sample(const fs_temp_humi_record_t *record_ptr)
+{
+    char param_buf[48];
+
+    if (record_ptr == NULL)
+    {
+        return;
+    }
+    // LOG_INF("%s:%d,%u,%d,%d", __func__, g_bLteReady, record_ptr->timestamp, record_ptr->temperature_x10, record_ptr->humidity_x10);
+
+    if (g_bLteReady)
+    {
+        // LTE已在线时优先尝试实时直传，成功则本条数据不进入缓存，降低补传压力和FLASH写入次数。
+        snprintf(param_buf, sizeof(param_buf), "%u,%d,%u",
+                 record_ptr->timestamp,
+                 record_ptr->temperature_x10,
+                 record_ptr->humidity_x10);
+        if (sensor_realtime_upload_start("TH", FS_TYPE_TH, param_buf) == 0)
+        {
+            return;
+        }
+    }
+
+    // 走到这里说明LTE当前不可用，或实时直传因会话冲突/发送失败未发出，本条数据必须落缓存避免丢失。
+    my_flash_store_push_th(record_ptr);
+
+    if (!g_bLteReady && gConfigParam.temp_timer_config.wakeup_cell_sw)
+    {
+        // 若配置允许“采样触发唤醒蜂窝”，则在缓存后主动拉起LTE，待上线后再由CDATA补传历史记录。
+        set_lte_boot_reason(LTE_BOOT_REASON_SCAN);
+        my_send_msg(MOD_BLE, MOD_LTE, MY_MSG_LTE_PWRON);
+    }
+}
+
+/********************************************************************
+**函数名称:  sensor_process_barometer_sample
+**入口参数:  record_ptr ---        气压记录指针（输入）
+**出口参数:  无
+**函数功能:  处理CTRL采样得到的气压数据
+**返 回 值:  无
+*********************************************************************/
+static void sensor_process_barometer_sample(const fs_barometer_record_t *record_ptr)
+{
+    char param_buf[48];
+
+    if (record_ptr == NULL)
+    {
+        return;
+    }
+    // LOG_INF("%s:%d,%u,%u", __func__, g_bLteReady, record_ptr->timestamp, record_ptr->pressure_pa);
+
+    if (g_bLteReady)
+    {
+        // LTE已在线时优先尝试实时直传，成功则本条气压数据不进入缓存。
+        snprintf(param_buf, sizeof(param_buf), "%u,%u", record_ptr->timestamp, record_ptr->pressure_pa);
+        if (sensor_realtime_upload_start("BP", FS_TYPE_BP, param_buf) == 0)
+        {
+            return;
+        }
+    }
+
+    // LTE不在线或实时发送失败时，先写入循环缓存，后续依赖CDATA补传。
+    my_flash_store_push_bp(record_ptr);
+
+    if (!g_bLteReady && gConfigParam.patm_timer_config.wakeup_cell_sw)
+    {
+        // 若气压定时器允许唤醒蜂窝，则缓存后主动请求开机，缩短历史数据滞留时间。
+        set_lte_boot_reason(LTE_BOOT_REASON_SCAN);
+        my_send_msg(MOD_BLE, MOD_LTE, MY_MSG_LTE_PWRON);
+    }
+}
+
+/********************************************************************
+**函数名称:  sensor_handle_lte_ack
+**入口参数:  rsp_ptr    ---        LTE应答解析结果指针（输入）
+**出口参数:  无
+**函数功能:  处理传感器上传相关异步应答
+**返 回 值:  无
+*********************************************************************/
+static void sensor_handle_lte_ack(const ble_rsp_result_t *rsp_ptr)
+{
+    if (rsp_ptr == NULL)
+    {
+        return;
+    }
+
+    switch (rsp_ptr->type)
+    {
+        case BLE_RSP_TH:
+        case BLE_RSP_BP:
+            if ((rsp_ptr->type == BLE_RSP_TH && s_sensor_upload_ctx.state == SENSOR_UPLOAD_STATE_TH_WAIT_ACK) ||
+                (rsp_ptr->type == BLE_RSP_BP && s_sensor_upload_ctx.state == SENSOR_UPLOAD_STATE_BP_WAIT_ACK))
+            {
+                // 实时单条上报收到OK后，当前会话结束；若缓存区还有历史记录，立即衔接CDATA补传。
+                sensor_upload_reset(false);
+                sensor_cached_upload_try_start();
+            }
+            break;
+
+        case BLE_RSP_CDATA:
+            if (s_sensor_upload_ctx.state == SENSOR_UPLOAD_STATE_CDATA_WAIT_START_ACK)
+            {
+                // START收到OK，说明4G已切换到补传接收态，此时发送第一包正文数据。
+                if (sensor_cdata_send_next_packet() != 0)
+                {
+                    sensor_upload_reset(true);
+                }
+            }
+            else if (s_sensor_upload_ctx.state == SENSOR_UPLOAD_STATE_CDATA_WAIT_DATA_ACK)
+            {
+                if (s_sensor_upload_ctx.next_seq < s_sensor_upload_ctx.total_packets)
+                {
+                    // 当前数据包收到OK后推进序号，继续发下一包，直到发完整轮历史记录。
+                    s_sensor_upload_ctx.next_seq++;
+                    if (sensor_cdata_send_next_packet() != 0)
+                    {
+                        sensor_upload_reset(true);
+                    }
+                }
+                else
+                {
+                    // 最后一包正文收到OK后，只剩收尾END；END成功应答后才允许真正commit缓存读指针。
+                    if (lte_send_command("CDATA", "END") != 0)
+                    {
+                        sensor_upload_reset(true);
+                        break;
+                    }
+                    s_sensor_upload_ctx.state = SENSOR_UPLOAD_STATE_CDATA_WAIT_END_ACK;
+                }
+            }
+            else if (s_sensor_upload_ctx.state == SENSOR_UPLOAD_STATE_CDATA_WAIT_END_ACK)
+            {
+                // 整轮CDATA完成，确认消费本轮已读缓存，并尝试继续发下一类/下一批历史数据。
+                my_flash_store_commit(s_sensor_upload_ctx.upload_type);
+                sensor_upload_reset(false);
+                sensor_cached_upload_try_start();
+            }
+            break;
+
+        default:
+            break;
+    }
+}
+
+/********************************************************************
 **函数名称:  clear_tag_macinfo
 **入口参数:  无
 **出口参数:  无
@@ -1058,6 +1559,7 @@ void clear_tag_macinfo(void)
     // 把FLASH读取位置退回上次已确认处，没确认的数据下次重发(不清空FLASH里的存储)
     my_flash_store_rewind(FS_TYPE_TAG);
     my_flash_store_rewind(FS_TYPE_MAC);
+    sensor_upload_reset(true);
 }
 
 /********************************************************************
@@ -1096,6 +1598,13 @@ void tag_mac_scan_upload_data(void)
     //1不发2不发
     if (s_tag_macinfo_upload_state == UPLOAD_STATE_IDLE)
     {
+        // TAG/MAC扫描上报与传感器上传共用BLE->LTE串口通道及异步应答状态机，
+        // 若此时传感器正在上传，则必须等待其会话结束后再启动扫描数据上传。
+        if (sensor_upload_busy())
+        {
+            LOG_WRN("sensor upload busy, skip scan upload");
+            return;
+        }
         // 检查是否有TAG数据需要上报
         if (tag_total == 0)
         {
@@ -1192,6 +1701,7 @@ void tag_mac_scan_upload_data(void)
             s_flash_consumed = 0;
             s_tag_macinfo_upload_state = UPLOAD_STATE_IDLE;
             s_scan_config.state = SCAN_STATE_IDLE;
+            sensor_cached_upload_try_start();
             //清空对应的变量
             return;
         }
@@ -1253,6 +1763,7 @@ void tag_mac_scan_upload_data(void)
         s_tag_macinfo_seq = 0;
         s_flash_consumed = 0;
         s_scan_config.state = SCAN_STATE_IDLE;
+        sensor_cached_upload_try_start();
     }
 
 }
@@ -1639,6 +2150,25 @@ void my_scan_msg_handler(msg_t *msg)
 
                 default:
                     break;
+            }
+            sensor_cached_upload_try_start();
+            break;
+
+        case MY_MSG_BLE_SENSOR_TH_SAMPLE:
+            sensor_process_temp_humi_sample(&g_temp_humi_sample);
+            break;
+
+        case MY_MSG_BLE_SENSOR_BP_SAMPLE:
+            sensor_process_barometer_sample(&g_barometer_sample);
+            break;
+
+        case MY_MSG_BLE_SENSOR_LTE_ACK:
+            {
+                ble_rsp_result_t rsp_result;
+                if (my_lte_get_sensor_ble_rsp(&rsp_result) == 0)
+                {
+                    sensor_handle_lte_ack(&rsp_result);
+                }
             }
             break;
 

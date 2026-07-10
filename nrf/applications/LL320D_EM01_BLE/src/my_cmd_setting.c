@@ -68,6 +68,8 @@ static int modeget_cmd_handler(at_cmd_t* msg);
 static int modeparam_cmd_handler(at_cmd_t* msg);
 static int bt_parmac_cmd_handler(at_cmd_t* msg);
 static int status_cmd_handler(at_cmd_t* msg);
+static int patmtimer_cmd_handler(at_cmd_t* msg);
+static int temptimer_cmd_handler(at_cmd_t* msg);
 
 static const at_cmd_attr_t at_cmd_attr_table[] =
 {
@@ -99,6 +101,8 @@ static const at_cmd_attr_t at_cmd_attr_table[] =
     {"MODEPARAM",      modeparam_cmd_handler},
     {"BT_PARMAC",      bt_parmac_cmd_handler},
     {"STATUS",         status_cmd_handler},
+    {"PATMTIMER",      patmtimer_cmd_handler},
+    {"TEMPTIMER",      temptimer_cmd_handler},
 };
 
 static const char* lte_cmd_attr_table[] =
@@ -3244,6 +3248,144 @@ static int bt_parmac_cmd_handler(at_cmd_t* msg)
 
 param_invalid:
     LOG_INF("%s=>%s, param error or set fail", __func__, msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
+}
+
+/********************************************************************
+**函数名称:  patmtimer_cmd_handler
+**入口参数:  msg      ---        AT指令结构体指针
+**出口参数:  无
+**函数功能:  处理气压定时上传配置指令
+**返 回 值:  BLE_DATA_TYPE_PACKET_MULTIPLE
+*********************************************************************/
+static int patmtimer_cmd_handler(at_cmd_t* msg)
+{
+    uint16_t remaining;
+    uint8_t no_count;
+    uint16_t interval_min;
+    uint8_t wakeup_sw;
+
+    remaining = RESP_STRING_LENGTH_MAX;
+
+    if (msg->parm_count == 0)
+    {
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "PATMTIMER:%d,%s",
+                                    gConfigParam.patm_timer_config.interval_min,
+                                    gConfigParam.patm_timer_config.wakeup_cell_sw ? "ON" : "OFF");
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
+    }
+
+    if (msg->parm_count != 2)
+    {
+        goto param_invalid;
+    }
+
+    no_count = string_check_is_number(0, msg->parm[1]);
+    if (no_count == 0 || no_count > 4)
+    {
+        goto param_invalid;
+    }
+
+    interval_min = (uint16_t)atoi(msg->parm[1]);
+    if (!(interval_min == 0 || (interval_min >= 10 && interval_min <= 1440)))
+    {
+        goto param_invalid;
+    }
+
+    if (my_strcasecmp(msg->parm[2], "ON") == 0)
+    {
+        wakeup_sw = 1;
+    }
+    else if (my_strcasecmp(msg->parm[2], "OFF") == 0)
+    {
+        wakeup_sw = 0;
+    }
+    else
+    {
+        goto param_invalid;
+    }
+
+    gConfigParam.patm_timer_config.flag = FLAG_VALID;
+    gConfigParam.patm_timer_config.interval_min = interval_min;
+    gConfigParam.patm_timer_config.wakeup_cell_sw = wakeup_sw;
+    my_user_data_write(ZMS_ID_PATM_TIMER_CONFIG, &gConfigParam.patm_timer_config, sizeof(patm_timer_config_t));
+    // 通知CTRL线程仅重装气压上传定时器
+    my_send_msg(MOD_BLE, MOD_CTRL, MY_MSG_CTRL_PATM_RELOAD);
+
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK!");
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
+
+param_invalid:
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
+}
+
+/********************************************************************
+**函数名称:  temptimer_cmd_handler
+**入口参数:  msg      ---        AT指令结构体指针
+**出口参数:  无
+**函数功能:  处理温湿度定时上传配置指令
+**返 回 值:  BLE_DATA_TYPE_PACKET_MULTIPLE
+*********************************************************************/
+static int temptimer_cmd_handler(at_cmd_t* msg)
+{
+    uint16_t remaining;
+    uint8_t no_count;
+    uint16_t interval_min;
+    uint8_t wakeup_sw;
+
+    remaining = RESP_STRING_LENGTH_MAX;
+
+    if (msg->parm_count == 0)
+    {
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "TEMPTIMER:%d,%s",
+                                    gConfigParam.temp_timer_config.interval_min,
+                                    gConfigParam.temp_timer_config.wakeup_cell_sw ? "ON" : "OFF");
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
+    }
+
+    if (msg->parm_count != 2)
+    {
+        goto param_invalid;
+    }
+
+    no_count = string_check_is_number(0, msg->parm[1]);
+    if (no_count == 0 || no_count > 4)
+    {
+        goto param_invalid;
+    }
+
+    interval_min = (uint16_t)atoi(msg->parm[1]);
+    if (!(interval_min == 0 || (interval_min >= 10 && interval_min <= 1440)))
+    {
+        goto param_invalid;
+    }
+
+    if (my_strcasecmp(msg->parm[2], "ON") == 0)
+    {
+        wakeup_sw = 1;
+    }
+    else if (my_strcasecmp(msg->parm[2], "OFF") == 0)
+    {
+        wakeup_sw = 0;
+    }
+    else
+    {
+        goto param_invalid;
+    }
+
+    gConfigParam.temp_timer_config.flag = FLAG_VALID;
+    gConfigParam.temp_timer_config.interval_min = interval_min;
+    gConfigParam.temp_timer_config.wakeup_cell_sw = wakeup_sw;
+    my_user_data_write(ZMS_ID_TEMP_TIMER_CONFIG, &gConfigParam.temp_timer_config, sizeof(temp_timer_config_t));
+    // 通知CTRL线程仅重装温湿度上传定时器
+    my_send_msg(MOD_BLE, MOD_CTRL, MY_MSG_CTRL_TEMP_RELOAD);
+
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK!");
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
+
+param_invalid:
     msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
