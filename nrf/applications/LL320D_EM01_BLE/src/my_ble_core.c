@@ -1382,6 +1382,19 @@ static void my_ble_task(void *p1, void *p2, void *p3)
                 my_stop_timer(MY_TIMER_BLUETOOTH_ADV);
                 break;
 
+            case MY_MSG_SCAN_LPSLEEP_ENTER:  /* 扫描进入低功耗运行消息 */
+                my_scan_set_config(0, gConfigParam.bt_updata_config.bt_updata_scan_interval,
+                                    gConfigParam.bt_updata_config.bt_updata_scan_length,
+                                    gConfigParam.bt_updata_config.bt_updata_updata_interval);
+                break;
+
+            case MY_MSG_SCAN_LPSLEEP_EXIT:  /* 扫描退出低功耗运行消息 */
+                my_scan_set_config(gConfigParam.bt_updata_config.bt_updata_mode,
+                                    gConfigParam.bt_updata_config.bt_updata_scan_interval,
+                                    gConfigParam.bt_updata_config.bt_updata_scan_length,
+                                    gConfigParam.bt_updata_config.bt_updata_updata_interval);
+                break;
+
             default:
                 break;
         }

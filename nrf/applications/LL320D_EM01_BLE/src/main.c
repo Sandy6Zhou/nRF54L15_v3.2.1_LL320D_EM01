@@ -333,6 +333,18 @@ void switch_work_mode(work_mode_t mode)
 }
 
 /*********************************************************************
+**函数名称:  get_lprunning_active
+**入口参数:  无
+**出口参数:  无
+**函数功能:  获取低功耗运行状态
+**返 回 值:  true 表示低功耗运行状态，false 表示非低功耗运行状态
+*********************************************************************/
+bool get_lprunning_active(void)
+{
+    return s_lprunning_active;
+}
+
+/*********************************************************************
 **函数名称:  switch_work_mode_internal
 **入口参数:  mode     --  要切换到的工作模式
 **出口参数:  无
@@ -786,9 +798,7 @@ static void handle_lprunning_enter(void)
     s_lprunning_active = true;
 
     // 3. 停止扫描相关定时器
-    my_stop_timer(MY_TIMER_SCAN_INTERVAL);
-    my_stop_timer(MY_TIMER_SCAN_LENGTH);
-    my_stop_timer(MY_TIMER_UPLOAD_INTERVAL);
+    my_send_msg(MOD_MAIN, MOD_BLE, MY_MSG_SCAN_LPSLEEP_ENTER);  /* 扫描进入低功耗运行消息 */
 
     // 4. 停止正常工作模式的LTE唤醒定时器
     my_stop_timer(MY_TIMER_LTE_POWER);
@@ -836,6 +846,9 @@ static void handle_lprunning_exit(void)
 
     // 4. 恢复低功耗运行前的工作模式（已在main线程中，直接调用内部接口）
     switch_work_mode_internal(s_lprunning_saved_mode);
+
+    // 5. 恢复扫描相关定时器
+    my_send_msg(MOD_MAIN, MOD_BLE, MY_MSG_SCAN_LPSLEEP_EXIT);  /* 扫描退出低功耗运行消息 */
 
     if (g_bLteReady == true)
     {
@@ -1042,6 +1055,7 @@ int main(void)
                 #else
                     lte_send_command("OTA", "ENTER");
                 #endif
+                handle_lprunning_lte_sync();
                 MY_LOG_INF("DFU start received");
                 break;
 

@@ -859,7 +859,7 @@ static int scan_stop_internal(void)
 }
 
 /********************************************************************
-**函数名称:  scan_set_config_internal
+**函数名称:  my_scan_set_config
 **入口参数:  mode        ---        工作模式（0-2）
 **           scan_interval ---      扫描间隔（秒）
 **           scan_length ---        单次扫描时长（秒）
@@ -868,7 +868,7 @@ static int scan_stop_internal(void)
 **函数功能:  内部函数：设置扫描配置，在BLE线程中调用
 **返 回 值:  无
 *********************************************************************/
-static void scan_set_config_internal(uint8_t mode, uint32_t scan_interval,
+void my_scan_set_config(uint8_t mode, uint32_t scan_interval,
                                   uint32_t scan_length, uint32_t upload_interval)
 {
     // 停止所有定时器
@@ -880,8 +880,8 @@ static void scan_set_config_internal(uint8_t mode, uint32_t scan_interval,
     scan_stop_internal();
 
     // 清空数据
-    memset(&s_result_table, 0, sizeof(s_result_table));
-    memset(&s_tran_mac_result_table, 0, sizeof(s_tran_mac_result_table));
+    tag_table_flush_to_flash();
+    tran_mac_table_flush_to_flash();
     s_tag_macinfo_seq = 0;
     s_tag_macinfo_upload_state = 0;
     s_flash_consumed = 0;
@@ -1933,13 +1933,6 @@ int my_scan_init(void)
     // 初始化前缀表
     tag_prefix_table_init();
 
-    // 初始化扫描配置（从全局配置读取）
-    s_scan_config.mode = gConfigParam.bt_updata_config.bt_updata_mode;
-    s_scan_config.scan_interval = gConfigParam.bt_updata_config.bt_updata_scan_interval;
-    s_scan_config.scan_length = gConfigParam.bt_updata_config.bt_updata_scan_length;
-    s_scan_config.upload_interval = gConfigParam.bt_updata_config.bt_updata_updata_interval;
-    s_scan_config.state = SCAN_STATE_IDLE;
-
     // 清空结果表
     memset(&s_result_table, 0, sizeof(s_result_table));
     memset(&s_adv_cache_table, 0, sizeof(s_adv_cache_table));
@@ -1957,29 +1950,13 @@ int my_scan_init(void)
         return err;
     }
 
-    my_scan_set_config(s_scan_config.mode, s_scan_config.scan_interval,
-                       s_scan_config.scan_length, s_scan_config.upload_interval);
+    my_scan_set_config(gConfigParam.bt_updata_config.bt_updata_mode,
+                           gConfigParam.bt_updata_config.bt_updata_scan_interval,
+                           gConfigParam.bt_updata_config.bt_updata_scan_length,
+                           gConfigParam.bt_updata_config.bt_updata_updata_interval);
 
     LOG_INF("scan module initialized");
     return 0;
-}
-
-/********************************************************************
-**函数名称:  my_scan_set_config
-**入口参数:  mode        ---        工作模式（0-3）
-**           scan_interval ---      扫描间隔（秒）
-**           scan_length ---        单次扫描时长（秒）
-**           upload_interval ---    上报间隔（秒）
-**出口参数:  无
-**函数功能:  设置扫描配置参数（直接调用，调用者需在BLE线程中）
-**返 回 值:  无
-**注意事项:  此函数必须在BLE线程中调用，或确保串行执行安全
-*********************************************************************/
-void my_scan_set_config(uint8_t mode, uint32_t scan_interval,
-                           uint32_t scan_length, uint32_t upload_interval)
-{
-    // 直接调用内部配置函数（调用者已在BLE线程中，无需消息队列中转）
-    scan_set_config_internal(mode, scan_interval, scan_length, upload_interval);
 }
 
 /********************************************************************

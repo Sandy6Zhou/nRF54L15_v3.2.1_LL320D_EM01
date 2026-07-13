@@ -1754,6 +1754,13 @@ static int bt_updata_cmd_handler(at_cmd_t* msg)
         return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
+    if (get_lprunning_active() == true)
+    {
+        LOG_INF("%s=>%s, LPRunning active, not support BT_UPDATA", __func__, msg->parm[0]);
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! Unauthorized");
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
+    }
+
     /* 检查参数数量 */
     if (msg->parm_count != 4)
     {
@@ -2393,7 +2400,7 @@ static int led_cmd_handler(at_cmd_t* msg)
     gConfigParam.led_config.led_display = (uint8_t)display_value;
 
     // 只有在LTE就绪状态下才发送LED指令
-    if (g_bLteReady == 1)
+    if (g_bLteReady == true)
     {
         send_led_command();
     }

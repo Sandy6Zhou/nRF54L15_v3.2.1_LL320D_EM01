@@ -476,6 +476,15 @@ static void jimi_dfu_start(uint8_t *data, uint16_t len)
     ARG_UNUSED(data);
     ARG_UNUSED(len);
 
+    if (get_show_percent() < 10)
+    {
+        LOG_INF("DFU start, battery low");
+        // TODO: 待跟APP确定OTA失败协议具体在哪个包里面
+
+        ble_packet_trans_send((uint8_t *)"DFU start, battery low", strlen("DFU start, battery low"));
+        return;
+    }
+
     s_dfu_end_flag = false;
     s_dfu_in_progress = true;
 

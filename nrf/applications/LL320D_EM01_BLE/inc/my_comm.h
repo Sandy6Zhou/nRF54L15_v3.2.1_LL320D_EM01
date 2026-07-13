@@ -198,8 +198,6 @@ typedef enum
     MY_MSG_SHOW_CHARG, // 充电状态显示LED消息
     MY_MSG_UPDATE_BATTERY, // 更新电池状态消息
 
-
-
     /* LTE处理程序消息 */
     MY_MSG_RESET_LTE_TIMER,
     MY_MSG_LTE_UART_IDLE,
@@ -270,6 +268,8 @@ typedef enum
     MY_MSG_SCAN_UPLOAD,         /* 上报间隔定时器消息 */
     MY_MSG_UPLOAD_WAKEUP,       /* LTE就绪后触发BLE统一调度扫描与传感器缓存上报 */
     MY_MSG_LTE_WAKEUP,          /* LTE唤醒引脚中断触发的UART恢复消息 */
+    MY_MSG_SCAN_LPSLEEP_ENTER,  /* 扫描进入低功耗运行消息 */
+    MY_MSG_SCAN_LPSLEEP_EXIT,   /* 扫描退出低功耗运行消息 */
 
     /* 低功耗运行处理程序消息 */
     MY_MSG_LPSLEEP_ENTER,            /* 进入低功耗运行消息 */
