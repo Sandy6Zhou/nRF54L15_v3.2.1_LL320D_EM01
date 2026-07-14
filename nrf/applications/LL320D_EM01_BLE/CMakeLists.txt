@@ -33,7 +33,7 @@ target_sources(app PRIVATE
   src/my_gsensor_algorithm.c
   src/my_ctrl.c
   src/my_battery.c
-#  src/my_wdt.c
+  src/my_wdt.c
   src/my_tool.c
   src/my_cmd_setting.c
   src/my_zms_param.c

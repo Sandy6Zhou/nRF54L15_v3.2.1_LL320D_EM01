@@ -25,6 +25,8 @@
 #define LTE_UART_TX_WAIT_MS         200
 // LTE UART 空闲挂起超时：3秒无收发自动进入低功耗挂起态
 #define LTE_UART_IDLE_TIMEOUT_MS    3000
+// LTE UART 调试模式控制：1=默认调试模式，不挂起UART；0=启用挂起/唤醒机制
+#define LTE_UART_DEBUG_ENABLE       0
 
 // 串口协议报文头定义清单
 char LTE_PWRON[] = "LTE+PWRON=";
@@ -282,6 +284,11 @@ static int lte_pm_suspend(void)
 {
     int ret;
 
+#if LTE_UART_DEBUG_ENABLE
+    MY_LOG_INF("LTE UART suspend disabled by macro");
+    return 0;
+#endif
+
     // 先设置标志，再禁用 RX，防止中断抢占导致重新 enable rx
     s_lte_uart_ctx.active = false;
 
@@ -399,6 +406,10 @@ static bool lte_uart_can_suspend(void)
 *********************************************************************/
 static void lte_uart_activity_kick(void)
 {
+#if LTE_UART_DEBUG_ENABLE
+    return;
+#endif
+
     if (!s_lte_uart_ctx.active)
     {
         return;
@@ -422,6 +433,10 @@ static void lte_wake_pin_isr(const struct device *port, struct gpio_callback *cb
     ARG_UNUSED(port);
     ARG_UNUSED(cb);
     ARG_UNUSED(pins);
+
+#if LTE_UART_DEBUG_ENABLE
+    return;
+#endif
 
     // 避免频繁发消息到LTE线程
     if (!s_lte_uart_ctx.active)
@@ -3159,6 +3174,16 @@ int my_lte_init(k_tid_t *tid)
         MY_LOG_ERR("LTE PM registration failed: %d", err);
         return err;
     }
+
+#if LTE_UART_DEBUG_ENABLE
+    err = my_pm_device_resume(MY_PM_DEV_LTE);
+    if (err < 0)
+    {
+        MY_LOG_ERR("Failed to keep LTE UART resumed in debug mode: %d", err);
+        return err;
+    }
+#endif
+
     /* 初始化消息队列 */
     my_init_msg_handler(MOD_LTE, &my_lte_msgq);
 

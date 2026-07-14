@@ -28,12 +28,9 @@ static const struct device *wdt_dev = DEVICE_DT_GET(WDT_NODE);
 /* 看门狗通道 ID */
 static int s_wdt_channel_id = -1;
 
-/* 看门狗配置参数（30秒超时） */
-#define WDT_TIMEOUT_MS 30000
-#define WDT_FEED_INTERVAL_MS 10000  /* 每10秒喂一次狗 */
-
-/* 线程检活标志位 */
-static volatile uint32_t s_thread_alive_flags = 0;
+/* 看门狗配置参数（90秒超时） */
+#define WDT_TIMEOUT_MS 90000
+#define WDT_FEED_INTERVAL_MS 30000  /* 每30秒喂一次狗 */
 
 /********************************************************************
 **函数名称:  wdt_feed_timer_callback
@@ -46,39 +43,10 @@ static void wdt_feed_timer_callback(void *p1)
 {
     ARG_UNUSED(p1);
 
-    /* 检查关键线程是否都活跃: Main, BLE, Ctrl, LTE, GSensor */
-    uint32_t expected_flags = (1 << MOD_MAIN) | (1 << MOD_BLE) | (1 << MOD_CTRL) |
-                              (1 << MOD_LTE) | (1 << MOD_GSENSOR);
-
-    if ((s_thread_alive_flags & expected_flags) == expected_flags)
-    {
-        /* 所有关键线程正常，喂狗 */
-        wdt_feed(wdt_dev, s_wdt_channel_id);
-
-        /* 清除标志位，准备下一轮检查 */
-        s_thread_alive_flags = 0;
-    }
-    else
-    {
-        MY_LOG_ERR("Thread watchdog check failed! alive_flags=0x%x, expected=0x%x",
-                s_thread_alive_flags, expected_flags);
-        /* 不喂狗，让看门狗复位系统 */
-    }
-}
-
-/********************************************************************
-**函数名称:  my_wdt_feed
-**入口参数:  mod_type ---        模块类型
-**出口参数:  无
-**函数功能:  标记指定模块线程为活跃状态
-**返 回 值:  无
-*********************************************************************/
-void my_wdt_feed(module_type mod_type)
-{
-    if (mod_type < MAX_MY_MOD_TYPE)
-    {
-        s_thread_alive_flags |= (1 << mod_type);
-    }
+    /* 喂狗：重置看门狗倒计时，防止系统复位
+     * wdt_feed() 标注了 isr-ok 属性，可在中断上下文中安全调用。
+     */
+    wdt_feed(wdt_dev, s_wdt_channel_id);
 }
 
 /********************************************************************
@@ -115,15 +83,15 @@ int my_wdt_init(void)
         return s_wdt_channel_id;
     }
 
-    /* 启动看门狗 */
-    err = wdt_setup(wdt_dev, WDT_OPT_PAUSE_HALTED_BY_DBG);
+    /* 启动看门狗，不设置任何暂停选项（options = 0） */
+    err = wdt_setup(wdt_dev, 0);
     if (err)
     {
         MY_LOG_ERR("Failed to setup watchdog (err %d)", err);
         return err;
     }
 
-    /* 初始喂狗 */
+    /* 启动周期定时器前先喂一次狗，确保首个周期窗口从当前时刻开始计算 */
     wdt_feed(wdt_dev, s_wdt_channel_id);
 
     /* 启动定时喂狗定时器（周期性） */

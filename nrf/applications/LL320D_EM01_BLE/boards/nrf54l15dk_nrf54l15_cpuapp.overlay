@@ -318,8 +318,6 @@
 	sense-edge-mask = <(BIT(2) | BIT(9) | BIT(10))>;  /* P1.2、P1.9 和 P1.10 */
 };
 
-/*
 &wdt31 {
 	status = "okay";
 };
-*/

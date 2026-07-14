@@ -994,6 +994,17 @@ int main(void)
     /* 初始化主线程消息队列 */
     my_init_msg_handler(MOD_MAIN, &my_main_msgq);
 
+    /* 在所有核心模块、线程及主消息队列完成初始化后再启动看门狗，
+     * 避免上电初始化阶段因模块启动耗时较长而被误判复位。
+     * 此时系统已具备正常运行条件，后续工作模式切换及业务消息处理
+     * 均受看门狗保护，初始化时机更稳妥。
+     */
+    err = my_wdt_init();
+    if (err)
+    {
+        MY_LOG_ERR("Failed to initialize watchdog module (err %d)", err);
+    }
+
     switch_work_mode(gConfigParam.device_workmode_config.workmode_config.current_mode);
 
     /* 主循环：等待并处理消息，逻辑已迁移至各线程 */

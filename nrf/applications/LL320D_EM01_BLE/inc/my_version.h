@@ -12,7 +12,15 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260710"
+#define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260714"
+/* 软件版本:        V1.0
+** 完成日期:        2026.07.14
+** 作    者:       周森达 (zhousenda@jimiiot.com)
+** 修改内容:        1.增加硬件看门狗功能接入，优化喂狗策略和超时参数(启用后功耗增加约2uA)
+**                 2.增加宏控控制LTE休眠唤醒功能(默认关闭,方便调试使用)
+***/
+
+// #define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260710"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.07.10
 ** 作    者:       曹阳 (caoyang@jimiiot.com)
