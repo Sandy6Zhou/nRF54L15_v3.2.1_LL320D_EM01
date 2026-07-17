@@ -644,7 +644,7 @@ void my_battery_event_reporting()
     if (g_batt_led_ctrl.state != s_last_batt_state)
     {
         snprintf(cmd_param, sizeof(cmd_param), "%d", g_batt_led_ctrl.state);
-        send_alarm_message_to_lte(ALARM_BATT, cmd_param);
+        send_alarm_message_to_lte(ALARM_BAT_SWITCH, cmd_param);
 
         // 更新上次电池状态
         s_last_batt_state = g_batt_led_ctrl.state;

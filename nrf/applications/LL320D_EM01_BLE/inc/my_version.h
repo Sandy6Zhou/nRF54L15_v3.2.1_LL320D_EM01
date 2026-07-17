@@ -12,7 +12,14 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260716"
+#define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260717"
+/* 软件版本:        V1.0
+** 完成日期:        2026.07.17
+** 作    者:       曹阳 (caoyang@jimiiot.com)
+** 修改内容:        1.重构告警接口和告警枚举定义
+***/
+
+// #define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260716"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.07.16
 ** 作    者:       曹阳 (caoyang@jimiiot.com)

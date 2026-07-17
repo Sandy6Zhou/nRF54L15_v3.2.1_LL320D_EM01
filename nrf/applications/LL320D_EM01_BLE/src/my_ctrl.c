@@ -116,17 +116,19 @@ void send_alarm_message_to_lte(alarm_type_t alarm_type, const char *additional_i
     // 根据告警类型映射字符串，设置上报方式和告警类型字符串
     switch(alarm_type)
     {
-        case ALARM_OPEN:
-            rpt = gConfigParam.remalm_config.remalm_mode;
+        case ALARM_LOW_BAT:          // 内置电池低电报警
             break;
 
-        case ALARM_STILL:
-        case ALARM_SEA:
-        case ALARM_LAND:
-            rpt = gConfigParam.motdet_config.motdet_report_type;
+        case ALARM_CHARGE_IN:            // 充电器插入告警
+        case ALARM_CHARGE_OUT:           // 充电器拔出告警
+            rpt = gConfigParam.batlevel_config.chargesta_report;
             break;
 
-        case ALARM_BATT:
+        case ALARM_CHARGE_FULL:          // 充满状态告警
+            rpt = gConfigParam.batlevel_config.chargesta_report;
+            break;
+
+        case ALARM_BAT_SWITCH:           // 电量状态切换告警
             switch(atoi(additional_info))
             {
                 case BATT_EMPTY:
@@ -159,17 +161,33 @@ void send_alarm_message_to_lte(alarm_type_t alarm_type, const char *additional_i
             }
             break;
 
-        case ALARM_CHARGE_OUT:
-        case ALARM_CHARGE_IN:
-            rpt = gConfigParam.batlevel_config.chargesta_report;
+        case ALARM_REMOVE:               // 拆卸告警
             break;
 
-        case ALARM_CHARGE_FULL:
-            rpt = gConfigParam.batlevel_config.chargesta_report;
+        case ALARM_CASE_OPEN:            // 拆壳告警
+            rpt = gConfigParam.remalm_config.remalm_mode;
             break;
 
-        case ALARM_IMPACT:
-            rpt = gConfigParam.shockalarm_config.shockalarm_type;
+        case ALARM_MOVE_START:           // 开始运动告警
+        case ALARM_MOVE_STOP:            // 停止运动告警
+            rpt = gConfigParam.motdet_config.motdet_report_type;
+            break;
+
+        case ALARM_BLE_CONNECTED:        // 蓝牙连接成功告警
+            break;
+        case ALARM_BLE_CONNECT_ERR:      // 蓝牙连接异常告警
+            break;
+        case ALARM_HIGH_PATM:            // 高压告警
+            break;
+        case ALARM_LOW_PATM:             // 低压告警
+            break;
+        case ALARM_HIGH_TEMP:            // 高温告警
+            break;
+        case ALARM_LOW_TEMP:             // 低温告警
+            break;
+        case ALARM_HIGH_HUMI:            // 高湿告警
+            break;
+        case ALARM_LOW_HUMI:             // 低湿告警
             break;
 
         default:
@@ -1311,10 +1329,10 @@ static void my_ctrl_task(void *p1, void *p2, void *p3)
 
             case MY_MSG_CTRL_LIGHT_TAMPER_SENSOR_BRIGHT:
                 MY_LOG_INF("Light tamper sensor detected: BRIGHT");
-                //上报拆除检测告警
+                //上报拆壳检测告警
                 if(gConfigParam.remalm_config.remalm_sw)
                 {
-                    send_alarm_message_to_lte(ALARM_OPEN, NULL);
+                    send_alarm_message_to_lte(ALARM_CASE_OPEN, NULL);
                 }
                 break;
 

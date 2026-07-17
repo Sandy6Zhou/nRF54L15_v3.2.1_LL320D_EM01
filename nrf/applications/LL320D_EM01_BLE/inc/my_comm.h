@@ -111,17 +111,24 @@ typedef enum
 /* ========== 告警类型枚举 ========== */
 typedef enum
 {
-    ALARM_OPEN = 1,         // 拆壳告警
-    ALARM_STILL,            // 静止状态告警
-    ALARM_SEA,              // 海运状态告警
-    ALARM_LAND,             // 陆运状态告警
-    ALARM_CHARGE_OUT,        // 充电器拔出告警
-    ALARM_CHARGE_IN,        // 充电器插入告警
-    ALARM_CHARGE_FULL,      // 充满状态告警
-    ALARM_IMPACT,           // 撞击检测告警
-    ALARM_CUT,              // 剪线告警
-    ALARM_BATT,             // 电池状态告警
-    ALARM_OTHER,            // 其他类型告警
+    ALARM_LOW_BAT = 1,          // 内置电池低电报警
+    ALARM_CHARGE_IN,            // 充电器插入告警
+    ALARM_CHARGE_OUT,           // 充电器拔出告警
+    ALARM_CHARGE_FULL,          // 充满状态告警
+    ALARM_BAT_SWITCH,           // 电量状态切换告警
+    ALARM_REMOVE,               // 拆卸告警
+    ALARM_CASE_OPEN,            // 拆壳告警
+    ALARM_MOVE_START,           // 开始运动告警
+    ALARM_MOVE_STOP,            // 停止运动告警
+    ALARM_BLE_CONNECTED,        // 蓝牙连接成功告警
+    ALARM_BLE_CONNECT_ERR,      // 蓝牙连接异常告警
+    ALARM_HIGH_PATM,            // 高压告警
+    ALARM_LOW_PATM,             // 低压告警
+    ALARM_HIGH_TEMP,            // 高温告警
+    ALARM_LOW_TEMP,             // 低温告警
+    ALARM_HIGH_HUMI,            // 高湿告警
+    ALARM_LOW_HUMI,             // 低湿告警
+    ALARM_OTHER,                // 其他类型告警
 } alarm_type_t;
 
 /* ========== 4G开机/唤醒协议相关枚举 ========== */

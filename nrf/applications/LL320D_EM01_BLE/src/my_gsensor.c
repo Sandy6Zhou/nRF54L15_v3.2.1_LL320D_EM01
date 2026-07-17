@@ -652,11 +652,11 @@ void get_motion_status(void)
     // 发送状态切换告警
     if (state == STATE_STATIC)
     {
-        send_alarm_message_to_lte(ALARM_STILL, NULL);
+        send_alarm_message_to_lte(ALARM_MOVE_START, NULL);
     }
     else
     {
-        send_alarm_message_to_lte(ALARM_LAND, NULL);
+        send_alarm_message_to_lte(ALARM_MOVE_STOP, NULL);
     }
 
     // 应用LTE唤醒策略
@@ -934,7 +934,6 @@ void my_gsensor_shock_handler(void)
     if (s_shock_alarm_flag == false)
     {
         s_shock_alarm_flag = true;
-        send_alarm_message_to_lte(ALARM_IMPACT, NULL);
         my_start_timer(MY_TIMER_GSENSOR_SHOCK_ALARM, gConfigParam.shockalarm_config.shockalarm_time * 1000, false, shock_alarm_timer_cb);
     }
 
