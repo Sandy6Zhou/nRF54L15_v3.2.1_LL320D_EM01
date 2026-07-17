@@ -791,7 +791,7 @@ static int remalm_cmd_handler(at_cmd_t* msg)
     }
 
     no_count = string_check_is_number(0, msg->parm[2]);
-    if (no_count == 0 || no_count > 2)
+    if (no_count == 0 || no_count > 9)
     {
         LOG_INF("%s=>invalid M param: %s", __func__, msg->parm[2]);
         goto param_invalid;
@@ -867,7 +867,7 @@ static int motdet_cmd_handler(at_cmd_t* msg)
     }
 
     no_count = string_check_is_number(0, msg->parm[1]);
-    if (no_count == 0 || no_count > 3)
+    if (no_count == 0 || no_count > 9)
     {
         LOG_INF("%s=>invalid Transition Count param: %s", __func__, msg->parm[1]);
         goto param_invalid;
@@ -881,7 +881,7 @@ static int motdet_cmd_handler(at_cmd_t* msg)
     }
 
     no_count = string_check_is_number(0, msg->parm[2]);
-    if (no_count == 0 || no_count > 5)
+    if (no_count == 0 || no_count > 9)
     {
         LOG_INF("%s=>invalid Detection Interval param: %s", __func__, msg->parm[2]);
         goto param_invalid;
@@ -895,7 +895,7 @@ static int motdet_cmd_handler(at_cmd_t* msg)
     }
 
     no_count = string_check_is_number(0, msg->parm[3]);
-    if (no_count == 0 || no_count > 3)
+    if (no_count == 0 || no_count > 9)
     {
         LOG_INF("%s=>invalid Report Type param: %s", __func__, msg->parm[3]);
         goto param_invalid;
@@ -982,7 +982,7 @@ static int batlevel_cmd_handler(at_cmd_t* msg)
     for (i = 0; i < 6; i++)
     {
         no_count = string_check_is_number(0, msg->parm[i + 1]);
-        if (no_count == 0 || no_count > 3)
+        if (no_count == 0 || no_count > 9)
         {
             LOG_INF("%s=>invalid RPT param: %s", __func__, msg->parm[i + 1]);
             goto param_invalid;
@@ -1058,7 +1058,7 @@ static int chargesta_cmd_handler(at_cmd_t* msg)
     }
 
     no_count = string_check_is_number(0, msg->parm[1]);
-    if (no_count == 0 || no_count > 3)
+    if (no_count == 0 || no_count > 9)
     {
         LOG_INF("%s=>invalid RPT param: %s", __func__, msg->parm[1]);
         goto param_invalid;
@@ -1155,7 +1155,7 @@ static int shockalarm_cmd_handler(at_cmd_t* msg)
     }
 
     no_count = string_check_is_number(0, msg->parm[2]);
-    if (no_count == 0 || no_count > 2)
+    if (no_count == 0 || no_count > 9)
     {
         LOG_INF("%s=>invalid Level param: %s", __func__, msg->parm[2]);
         goto param_invalid;
@@ -1169,7 +1169,7 @@ static int shockalarm_cmd_handler(at_cmd_t* msg)
     }
 
     no_count = string_check_is_number(0, msg->parm[3]);
-    if (no_count == 0 || no_count > 3)
+    if (no_count == 0 || no_count > 9)
     {
         LOG_INF("%s=>invalid Type param: %s", __func__, msg->parm[3]);
         goto param_invalid;
@@ -1183,7 +1183,7 @@ static int shockalarm_cmd_handler(at_cmd_t* msg)
     }
 
     no_count = string_check_is_number(0, msg->parm[4]);
-    if (no_count == 0 || no_count > 5)
+    if (no_count == 0 || no_count > 9)
     {
         LOG_INF("%s=>invalid Time param: %s", __func__, msg->parm[4]);
         goto param_invalid;
@@ -1415,14 +1415,14 @@ static int lprunning_cmd_handler(at_cmd_t* msg)
     {
         // 校验参数是否为纯数字
         no_count = string_check_is_number(0, msg->parm[2]);
-        if (no_count == 0 || no_count > 3)
+        if (no_count == 0 || no_count > 9)
         {
             LOG_INF("%s=>threshold is not a number: %s", __func__, msg->parm[2]);
             goto param_invalid;
         }
 
         no_count = string_check_is_number(0, msg->parm[3]);
-        if (no_count == 0 || no_count > 3)
+        if (no_count == 0 || no_count > 9)
         {
             LOG_INF("%s=>interval is not a number: %s", __func__, msg->parm[3]);
             goto param_invalid;
@@ -1679,7 +1679,7 @@ static int bt_crfpwr_cmd_handler(at_cmd_t* msg)
     }
 
     no_count = string_check_is_number(1, msg->parm[1]);
-    if (no_count == 0 || no_count > 5)
+    if (no_count == 0 || no_count > 9)
     {
         LOG_INF("%s=>invalid A param: %s", __func__, msg->parm[1]);
         goto param_invalid;
@@ -1769,7 +1769,7 @@ static int bt_updata_cmd_handler(at_cmd_t* msg)
     }
 
     no_count = string_check_is_number(0, msg->parm[1]);
-    if (no_count == 0 || no_count > 3)
+    if (no_count == 0 || no_count > 9)
     {
         LOG_INF("%s=>invalid Mode param: %s", __func__, msg->parm[1]);
         goto param_invalid;
@@ -1783,7 +1783,7 @@ static int bt_updata_cmd_handler(at_cmd_t* msg)
     }
 
     no_count = string_check_is_number(0, msg->parm[2]);
-    if (no_count == 0 || no_count > 6)
+    if (no_count == 0 || no_count > 9)
     {
         LOG_INF("%s=>invalid Scan Interval param: %s", __func__, msg->parm[2]);
         goto param_invalid;
@@ -1797,7 +1797,7 @@ static int bt_updata_cmd_handler(at_cmd_t* msg)
     }
 
     no_count = string_check_is_number(0, msg->parm[3]);
-    if (no_count == 0 || no_count > 6)
+    if (no_count == 0 || no_count > 9)
     {
         LOG_INF("%s=>invalid Scan Length param: %s", __func__, msg->parm[3]);
         goto param_invalid;
@@ -1811,7 +1811,7 @@ static int bt_updata_cmd_handler(at_cmd_t* msg)
     }
 
     no_count = string_check_is_number(0, msg->parm[4]);
-    if (no_count == 0 || no_count > 6)
+    if (no_count == 0 || no_count > 9)
     {
         LOG_INF("%s=>invalid Updata interval param: %s", __func__, msg->parm[4]);
         goto param_invalid;
@@ -1957,7 +1957,7 @@ static int bluetooth_cmd_handler(at_cmd_t* msg)
         }
 
         no_count = string_check_is_number(0, msg->parm[2]);
-        if (no_count == 0 || no_count > 2)
+        if (no_count == 0 || no_count > 9)
         {
             LOG_INF("%s=>invalid param: %s", __func__, msg->parm[2]);
             goto param_invalid;
@@ -1970,7 +1970,7 @@ static int bluetooth_cmd_handler(at_cmd_t* msg)
         }
 
         no_count = string_check_is_number(0, msg->parm[3]);
-        if (no_count == 0 || no_count > 2)
+        if (no_count == 0 || no_count > 9)
         {
             LOG_INF("%s=>invalid param: %s", __func__, msg->parm[3]);
             goto param_invalid;
@@ -2074,7 +2074,7 @@ static int tag_cmd_handler(at_cmd_t* msg)
     if (msg->parm_count == 2)
     {
         no_count = string_check_is_number(0, msg->parm[2]);
-        if (no_count == 0 || no_count > 6)
+        if (no_count == 0 || no_count > 9)
         {
             LOG_INF("%s=>invalid Interval param: %s", __func__, msg->parm[2]);
             goto param_invalid;
@@ -2457,14 +2457,14 @@ static int ltint_cmd_handler(at_cmd_t* msg)
     }
 
     no_count = string_check_is_number(0, msg->parm[1]);
-    if (no_count == 0 || no_count > 6)
+    if (no_count == 0 || no_count > 9)
     {
         LOG_INF("%s=>invalid T1 param: %s", __func__, msg->parm[1]);
         goto param_invalid;
     }
 
     no_count = string_check_is_number(0, msg->parm[2]);
-    if (no_count == 0 || no_count > 6)
+    if (no_count == 0 || no_count > 9)
     {
         LOG_INF("%s=>invalid T2 param: %s", __func__, msg->parm[2]);
         goto param_invalid;
@@ -2729,7 +2729,7 @@ static int modeset_cmd_handler(at_cmd_t* msg)
     }
 
     no_count = string_check_is_number(0, msg->parm[1]);
-    if (no_count == 0 || no_count > 3)
+    if (no_count == 0 || no_count > 9)
     {
         LOG_INF("%s=>invalid Work Mode param: %s", __func__, msg->parm[1]);
         goto param_invalid;
@@ -2770,13 +2770,13 @@ static int modeset_cmd_handler(at_cmd_t* msg)
         }
 
         no_count = string_check_is_number(0, msg->parm[2]);
-        if (no_count == 0 || no_count > 6)
+        if (no_count == 0 || no_count > 9)
         {
             LOG_INF("%s=>invalid Reporting Interval Sec param: %s", __func__, msg->parm[2]);
             goto param_invalid;
         }
         no_count = string_check_is_number(0, msg->parm[3]);
-        if (no_count == 0 || no_count > 6)
+        if (no_count == 0 || no_count > 9)
         {
             LOG_INF("%s=>invalid Reporting Interval Dis param: %s", __func__, msg->parm[3]);
             goto param_invalid;
@@ -2824,7 +2824,7 @@ static int modeset_cmd_handler(at_cmd_t* msg)
         }
 
         no_count = string_check_is_number(0, msg->parm[2]);
-        if (no_count == 0 || no_count > 6)
+        if (no_count == 0 || no_count > 9)
         {
             LOG_INF("%s=>invalid Reporting Interval Min param: %s", __func__, msg->parm[2]);
             goto param_invalid;
@@ -2879,19 +2879,19 @@ static int modeset_cmd_handler(at_cmd_t* msg)
         }
 
         no_count = string_check_is_number(0, msg->parm[2]);
-        if (no_count == 0 || no_count > 6)
+        if (no_count == 0 || no_count > 9)
         {
             LOG_INF("%s=>invalid Sub Mode param: %s", __func__, msg->parm[2]);
             goto param_invalid;
         }
         no_count = string_check_is_number(0, msg->parm[3]);
-        if (no_count == 0 || no_count > 6)
+        if (no_count == 0 || no_count > 9)
         {
             LOG_INF("%s=>invalid Static INT param: %s", __func__, msg->parm[3]);
             goto param_invalid;
         }
         no_count = string_check_is_number(0, msg->parm[4]);
-        if (no_count == 0 || no_count > 6)
+        if (no_count == 0 || no_count > 9)
         {
             LOG_INF("%s=>invalid Moving INT param: %s", __func__, msg->parm[4]);
             goto param_invalid;
@@ -3289,7 +3289,7 @@ static int patmtimer_cmd_handler(at_cmd_t* msg)
     }
 
     no_count = string_check_is_number(0, msg->parm[1]);
-    if (no_count == 0 || no_count > 4)
+    if (no_count == 0 || no_count > 9)
     {
         goto param_invalid;
     }
@@ -3358,7 +3358,7 @@ static int temptimer_cmd_handler(at_cmd_t* msg)
     }
 
     no_count = string_check_is_number(0, msg->parm[1]);
-    if (no_count == 0 || no_count > 4)
+    if (no_count == 0 || no_count > 9)
     {
         goto param_invalid;
     }
