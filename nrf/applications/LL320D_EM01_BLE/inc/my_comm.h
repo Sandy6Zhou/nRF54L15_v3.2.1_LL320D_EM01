@@ -173,9 +173,8 @@ typedef enum
     MY_TIMER_BLUETOOTH_ADV,   // BLE连接广播定时器
 
     // G-Sensor 专用定时器
-    MY_TIMER_GSENSOR_SAMPLE,        // G-Sensor 周期采样定时器
-    MY_TIMER_GSENSOR_BURST,         // G-Sensor 批量采样定时器
-    MY_TIMER_GSENSOR_SHOCK_ALARM,   // G-Sensor 撞击告警定时器
+    MY_TIMER_IMU_INT_DITHER,      // IMU 中断去抖定时器
+    MY_TIMER_GSENSOR_STATE_CHECK, // 运动状态检查定时器
 
     // 低功耗运行专用定时器
     MY_TIMER_LPSLEEP,               // 低功耗运行定时唤醒定时器
@@ -219,13 +218,11 @@ typedef enum
     MY_MSG_LTE_PULSE_STOP,
 
     /* G-Sensor处理程序消息 */
+    MY_MSG_GSENSOR_HIGH_POWER,      /* G-Sensor 模式切换进入高性能模式 */
     MY_MSG_GSENSOR_LOW_POWER,       /* G-Sensor 模式切换进入低功耗模式 */
     MY_MSG_GSENSOR_INT,             /* G-Sensor INT1 中断消息 */
-    MY_MSG_GSENSOR_FIFO_INT,        /* G-Sensor FIFO中断消息 */
-    MY_MSG_GSENSOR_SHOCK_INT,       /* G-Sensor 撞击检测中断消息 */
-    MY_MSG_GSENSOR_SAMPLE,          /* G-Sensor 周期采样消息 */
-    MY_MSG_GPS_SPEED_UPDATE ,       /* 处理GPS速度消息 */
-    MY_MSG_SHOCK_SW,                /* 处理撞击检测开关消息 */
+    MY_MSG_READ_GSENSOR_DATA,       /* 读取G-Sensor数据消息 */
+    MY_MSG_MOTION_CHECK,            /*检查设备运动状态*/
 
     /* CTRL处理程序消息 */
     MY_MSG_CTRL_KEY_SHORT_PRESS,       /* 按键短按事件 */
@@ -294,7 +291,7 @@ typedef enum
 #include "my_shell.h"
 #include "my_lte.h"
 #include "my_gsensor.h"
-#include "my_gsensor_algorithm.h"
+// #include "my_gsensor_algorithm.h"
 #include "my_battery.h"
 #include "my_wdt.h"
 #include "my_tool.h"

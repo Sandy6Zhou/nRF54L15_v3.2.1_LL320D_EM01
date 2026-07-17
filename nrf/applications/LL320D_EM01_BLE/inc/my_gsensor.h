@@ -13,37 +13,18 @@
 #ifndef _MY_GSENSOR_H_
 #define _MY_GSENSOR_H_
 
+#define GSENSOR_DUTY_PROJECT 0
+
 /* 智能模式时间间隔定义（单位：秒） */
 #define STATIC_INTERVAL         (24 * 60 * 60)   // 静止状态：24小时
-
-#define SHOCKALARM_TAP_STEP_THRESHOLD       4           // 敲击步进阈值
-#define GSENSOR_WAKEUP_DURATION             2           // 唤醒持续时间（2=3个ODR周期@15Hz≈200ms，过滤瞬态噪声）
-#define GSENSOR_INT_DEBOUNCE_MS             50          // INT1 唤醒中断消抖时间，避免电平抖动导致重复触发
-
-// 传感器相关宏定义（基于LSM6DSVD文档特性）
-#define LSM6DSVD_ACC_SENSITIVITY            0.061f     // 灵敏度 0.061 mg/LSB（±2g时，文档Table 3）
-#define LSM6DSVD_GYRO_SENSITIVITY           4.375f     // 灵敏度 4.375 mdps/LSB（±125dps量程，分辨率加倍）
-
-#define WINDOW_SIZE                         250         // 滑动窗口大小（约0.42秒数据，120Hz×50≈0.417s）
 
 /* 智能模式状态枚举 */
 typedef enum
 {
     STATE_UNKNOWN = 0,      // 未知状态
     STATE_STATIC,           // 静止状态
-    STATE_LAND_TRANSPORT,   // 陆运状态
-    STATE_SEA_TRANSPORT,    // 海运状态
+    STATE_MOTION,           // 运动状态
 } gsensor_state_t;
-
-/* 三轴数据结构体 */
-typedef struct {
-    int16_t acc_raw_x;
-    int16_t acc_raw_y;
-    int16_t acc_raw_z;
-    int16_t gyro_raw_x;
-    int16_t gyro_raw_y;
-    int16_t gyro_raw_z;
-} gsensor_data_t;
 
 /* ============================================================
  *  IMU原始数据结构: 单个采样点的6轴数据
@@ -60,18 +41,11 @@ typedef struct {
 /* GSENSOR 运行时上下文结构体 */
 typedef struct
 {
-    /* 滑动窗口相关 */
-    imu_reading_t imu_readings[WINDOW_SIZE];
-    uint16_t window_index;                       // 当前窗口写入索引
-
     /* 传感器状态 */
     bool sensor_ready;                          // 传感器是否已初始化并就绪
 
-    /* 运动状态判定相关 */
-    uint32_t sample_count;                      // 累计采样次数，用于判断滑动窗口是否已填满
-    bool window_ready;                          // 滑动窗口是否已满，满后才能进行状态判断
     gsensor_state_t last_gsensor_state;         // 上次上报的运动状态，用于检测状态变化避免重复上报
-    gsensor_state_t current_gsensor_state;      // 当前运动状态（静止/陆运/海运/未知）
+    gsensor_state_t current_gsensor_state;      // 当前运动状态（静止/运动/未知）
 } gsensor_runtime_ctx_t;
 
 extern gsensor_runtime_ctx_t g_gsensor_runtime_ctx;
@@ -101,16 +75,16 @@ int my_gsensor_pwr_on(bool on);
 **函数功能:  读取当前加速度传感器的三轴原始数据
 **返 回 值:  0 表示成功，负值表示失败
 *********************************************************************/
-int my_gsensor_read_data(gsensor_data_t *data);
+void my_gsensor_read_data(void);
 
 /********************************************************************
-**函数名称:  my_lsm6dsv16x_init
+**函数名称:  my_bmi325_init
 **入口参数:  无
 **出口参数:  无
-**函数功能:  初始化 LSM6DSV16X 传感器设备
+**函数功能:  初始化 BMI325 传感器设备
 **返 回 值:  0 表示成功，负值表示失败
 *********************************************************************/
-int my_lsm6dsv16x_init(void);
+int my_bmi325_init(void);
 
 /********************************************************************
 **函数名称:  lsm6dsv16x_check_id

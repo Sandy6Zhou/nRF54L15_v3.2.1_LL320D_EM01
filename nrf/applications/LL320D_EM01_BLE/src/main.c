@@ -504,7 +504,7 @@ void handle_long_life_mode(void)
 *********************************************************************/
 void handle_smart_mode(void)
 {
-    my_send_msg(MOD_MAIN, MOD_GSENSOR, MY_MSG_GSENSOR_SAMPLE);
+    my_send_msg(MOD_MAIN, MOD_GSENSOR, MY_MSG_GSENSOR_HIGH_POWER);
 }
 
 /*********************************************************************
@@ -521,8 +521,8 @@ void handle_continuous_mode(void)
 {
     my_stop_timer(MY_TIMER_LTE_POWER);
 
-    /* 关闭GSENSOR */
-    my_send_msg(MOD_MAIN, MOD_GSENSOR, MY_MSG_GSENSOR_LOW_POWER);
+    /* 打开GSENSOR */
+    my_send_msg(MOD_MAIN, MOD_GSENSOR, MY_MSG_GSENSOR_HIGH_POWER);
 
     /* 开启LTE */
     my_send_msg(MOD_MAIN, MOD_LTE, MY_MSG_LTE_PWRON);
@@ -543,7 +543,7 @@ void handle_always_online_mode(void)
     my_stop_timer(MY_TIMER_LTE_POWER);
 
     /* 开启GSENSOR正常采样，支持震动/移动报警 */
-    my_send_msg(MOD_MAIN, MOD_GSENSOR, MY_MSG_GSENSOR_SAMPLE);
+    my_send_msg(MOD_MAIN, MOD_GSENSOR, MY_MSG_GSENSOR_HIGH_POWER);
 
     /* 开启LTE，永久保持在线 */
     my_send_msg(MOD_MAIN, MOD_LTE, MY_MSG_LTE_PWRON);
@@ -1066,7 +1066,6 @@ int main(void)
                 #else
                     lte_send_command("OTA", "ENTER");
                 #endif
-                handle_lprunning_lte_sync();
                 MY_LOG_INF("DFU start received");
                 break;
 

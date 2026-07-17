@@ -138,13 +138,9 @@ static int cmd_switch_mode(const struct shell *sh, size_t argc, char **argv)
         {
             gsensor_state = STATE_STATIC;
         }
-        else if (strcmp(state_str, "land") == 0)
+        else if (strcmp(state_str, "motion") == 0)
         {
-            gsensor_state = STATE_LAND_TRANSPORT;
-        }
-        else if (strcmp(state_str, "sea") == 0)
-        {
-            gsensor_state = STATE_SEA_TRANSPORT;
+            gsensor_state = STATE_MOTION;
         }
         else
         {
@@ -2034,6 +2030,11 @@ static int cmd_fs_test(const struct shell *sh, size_t argc, char **argv)
 }
 #endif /* FS_STORE_TEST_ENABLE */
 
+void cmd_read_gsensor_data(const struct shell *sh, size_t argc, char **argv)
+{
+    my_send_msg(MOD_MAIN, MOD_GSENSOR, MY_MSG_READ_GSENSOR_DATA);
+}
+
 /* 注册自定义命令到 Shell 子系统 */
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_app,
     SHELL_CMD(sysinfo, NULL, "Display system information", cmd_system_info),
@@ -2055,6 +2056,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_app,
     SHELL_CMD(alarmtest, NULL, "Test alarm message: app alarmtest <type> [info]", cmd_alarm_test),
     SHELL_CMD(retransmit_check_test, NULL, "Run retransmit_check_test test", cmd_retransmit_check_test),
     SHELL_CMD(hardware_test, NULL, "Run hardware test", cmd_hardware_test),
+    SHELL_CMD(read_gsensor_data, NULL, "Read G-Sensor data", cmd_read_gsensor_data),
 #if FS_STORE_TEST_ENABLE
     SHELL_CMD(fs, NULL, "Flash store test: app fs <init|info|count|push|fill|begin|read|commit|rewind|clear|sorttest|covertest|partialtest|busytest>", cmd_fs_test),
 #endif

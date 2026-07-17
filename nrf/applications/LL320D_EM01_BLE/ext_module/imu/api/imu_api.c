@@ -7,7 +7,6 @@
 
 #include "imu_api.h"
 #include "../port/bmi325_port.h"
-#include "../vendor/bmi325.h"
 
 #include <errno.h>
 #include <string.h>
@@ -1612,6 +1611,84 @@ imu_result_t imu_get_axis_map(struct imu_axis_map *axis_map)
     axis_map->invert_x = (remap_axis.invert_x != 0U);
     axis_map->invert_y = (remap_axis.invert_y != 0U);
     axis_map->invert_z = (remap_axis.invert_z != 0U);
+
+    return IMU_SUCCESS;
+}
+
+/********************************************************************
+**函数名称:  imu_set_any_motion_config
+**入口参数:  config   ---        ANY_MOTION 配置参数（输入）
+**出口参数:  无
+**函数功能:  配置 BMI325 ANY_MOTION 检测参数
+**返回值:    IMU_SUCCESS 表示成功，其他表示错误码
+*********************************************************************/
+imu_result_t imu_set_any_motion_config(const struct imu_any_motion_config *config)
+{
+    struct bmi3_dev *dev;
+    struct bmi3_sens_config sens_cfg;
+    imu_result_t ret;
+    int8_t rslt;
+
+    if (config == NULL)
+    {
+        return IMU_ERROR_PARAM;
+    }
+
+    /* 参数范围检查 */
+    if (config->slope_thres > 4095U)
+    {
+        LOG_ERR("slope_thres %u out of range (0-4095)", config->slope_thres);
+        return IMU_ERROR_PARAM;
+    }
+
+    if (config->duration > 8191U)
+    {
+        LOG_ERR("duration %u out of range (0-8191)", config->duration);
+        return IMU_ERROR_PARAM;
+    }
+
+    if (config->hysteresis > 1023U)
+    {
+        LOG_ERR("hysteresis %u out of range (0-1023)", config->hysteresis);
+        return IMU_ERROR_PARAM;
+    }
+
+    if (config->wait_time > 7U)
+    {
+        LOG_ERR("wait_time %u out of range (0-7)", config->wait_time);
+        return IMU_ERROR_PARAM;
+    }
+
+    if (config->acc_ref_up > 1U)
+    {
+        LOG_ERR("acc_ref_up %u out of range (0-1)", config->acc_ref_up);
+        return IMU_ERROR_PARAM;
+    }
+
+    ret = imu_get_dev_checked(&dev);
+    if (ret != IMU_SUCCESS)
+    {
+        return ret;
+    }
+
+    /* 配置 ANY_MOTION 参数 */
+    sens_cfg.type = BMI3_ANY_MOTION;
+    sens_cfg.cfg.any_motion.slope_thres = config->slope_thres;
+    sens_cfg.cfg.any_motion.duration = config->duration;
+    sens_cfg.cfg.any_motion.hysteresis = config->hysteresis;
+    sens_cfg.cfg.any_motion.wait_time = config->wait_time;
+    sens_cfg.cfg.any_motion.acc_ref_up = config->acc_ref_up;
+
+    /* 写入配置到 BMI325 */
+    rslt = bmi325_set_sensor_config(&sens_cfg, 1, dev);
+    if (rslt != BMI325_OK)
+    {
+        LOG_ERR("bmi325_set_sensor_config failed: %d", rslt);
+        return IMU_ERROR_COMM;
+    }
+
+    LOG_INF("ANY_MOTION configured: slope_thres=%u, duration=%u, hysteresis=%u, wait_time=%u, acc_ref_up=%u",
+            config->slope_thres, config->duration, config->hysteresis, config->wait_time, config->acc_ref_up);
 
     return IMU_SUCCESS;
 }

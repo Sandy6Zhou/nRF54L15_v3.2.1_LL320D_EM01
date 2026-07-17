@@ -117,9 +117,8 @@ const remalm_config_t gDefaultRemAlmConfig =
 const mot_det_config_t gDefaultMotDetConfig =
 {
     .flag = FLAG_VALID,
-    .motdet_transition_count = 3,           /* 默认3次 */
-    .motdet_detection_interval = 300,      /* 默认300秒 */
-    .motdet_report_type = REPORT_MODE_GPRS,           /* 默认GPRS */
+    .motdet_vibration = 5,           /* 默认5次 */
+    .motdet_duration = 10,      /* 默认10秒 */
 };
 
 const bat_level_config_t gDefaultBatlevelConfig =
@@ -132,15 +131,6 @@ const bat_level_config_t gDefaultBatlevelConfig =
     .batlevel_high_rpt = REPORT_MODE_GPRS,            /* 默认GPRS */
     .batlevel_full_rpt = REPORT_MODE_GPRS,            /* 默认GPRS */
     .chargesta_report = REPORT_MODE_GPRS,             /* 默认GPRS */
-};
-
-const shock_alarm_config_t gDefaultShockAlarmConfig =
-{
-    .flag = FLAG_VALID,
-    .shockalarm_sw = 0,                         /* 默认关闭 */
-    .shockalarm_level = 3,                      /* 默认中等敏感度 */
-    .shockalarm_type = REPORT_MODE_GPRS,        /* 默认GPRS */
-    .shockalarm_time = 60,                      /* 默认60秒 */
 };
 
 const startr_config_t gDefaultStartrConfig =
@@ -467,13 +457,13 @@ void my_param_load_config(void)
     if (ret != length)
     {
         memcpy(&gConfigParam.motdet_config, &gDefaultMotDetConfig, length);
-        MY_LOG_INF("Mot det config not found. Use default:motdet_transition_count(%d), motdet_detection_interval(%d), motdet_report_type(%d)",
-                    gConfigParam.motdet_config.motdet_transition_count, gConfigParam.motdet_config.motdet_detection_interval, gConfigParam.motdet_config.motdet_report_type);
+        MY_LOG_INF("Mot det config not found. Use default:motdet_vibration(%d), motdet_duration(%d)",
+                    gConfigParam.motdet_config.motdet_vibration, gConfigParam.motdet_config.motdet_duration);
     }
     else
     {
-        MY_LOG_INF("Mot det config loaded: motdet_transition_count(%d), motdet_detection_interval(%d), motdet_report_type(%d)",
-                    gConfigParam.motdet_config.motdet_transition_count, gConfigParam.motdet_config.motdet_detection_interval, gConfigParam.motdet_config.motdet_report_type);
+        MY_LOG_INF("Mot det config loaded: motdet_vibration(%d), motdet_duration(%d)",
+                    gConfigParam.motdet_config.motdet_vibration, gConfigParam.motdet_config.motdet_duration);
     }
 
     //--------Load Batlevel Config ---------------------
@@ -497,23 +487,6 @@ void my_param_load_config(void)
                     gConfigParam.batlevel_config.batlevel_normal_rpt, gConfigParam.batlevel_config.batlevel_fair_rpt,
                     gConfigParam.batlevel_config.batlevel_high_rpt, gConfigParam.batlevel_config.batlevel_full_rpt,
                     gConfigParam.batlevel_config.chargesta_report);
-    }
-
-    //--------Load Shock Alarm Config ---------------------
-    length = sizeof(shock_alarm_config_t);
-    ret = my_user_data_read(ZMS_ID_SHOCK_ALARM_CONFIG, &gConfigParam.shockalarm_config, length);
-    if (ret != length)
-    {
-        memcpy(&gConfigParam.shockalarm_config, &gDefaultShockAlarmConfig, length);
-        MY_LOG_INF("Shock alarm config not found. Use default:shockalarm_level(%d), shockalarm_sw(%d), shockalarm_type(%d), shockalarm_time(%d)",
-                    gConfigParam.shockalarm_config.shockalarm_level, gConfigParam.shockalarm_config.shockalarm_sw,
-                    gConfigParam.shockalarm_config.shockalarm_type, gConfigParam.shockalarm_config.shockalarm_time);
-    }
-    else
-    {
-        MY_LOG_INF("Shock alarm config loaded: shockalarm_level(%d), shockalarm_sw(%d), shockalarm_type(%d), shockalarm_time(%d)",
-                    gConfigParam.shockalarm_config.shockalarm_level, gConfigParam.shockalarm_config.shockalarm_sw,
-                    gConfigParam.shockalarm_config.shockalarm_type, gConfigParam.shockalarm_config.shockalarm_time);
     }
 
     //--------Load Startr Config ---------------------

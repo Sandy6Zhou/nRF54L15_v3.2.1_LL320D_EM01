@@ -10,6 +10,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "../vendor/bmi325.h"
 
 typedef enum
 {
@@ -90,6 +91,24 @@ typedef enum
     IMU_INT_SRC_MAX,
 } imu_int_src_t;
 
+/* BMI325 中断状态标志位定义（导出给用户使用） */
+#define IMU_INT_STATUS_NO_MOTION       BMI3_INT_STATUS_NO_MOTION
+#define IMU_INT_STATUS_ANY_MOTION      BMI3_INT_STATUS_ANY_MOTION
+#define IMU_INT_STATUS_FLAT            BMI3_INT_STATUS_FLAT
+#define IMU_INT_STATUS_ORIENTATION     BMI3_INT_STATUS_ORIENTATION
+#define IMU_INT_STATUS_STEP_DETECTOR   BMI3_INT_STATUS_STEP_DETECTOR
+#define IMU_INT_STATUS_STEP_COUNTER    BMI3_INT_STATUS_STEP_COUNTER
+#define IMU_INT_STATUS_SIG_MOTION      BMI3_INT_STATUS_SIG_MOTION
+#define IMU_INT_STATUS_TILT            BMI3_INT_STATUS_TILT
+#define IMU_INT_STATUS_TAP             BMI3_INT_STATUS_TAP
+#define IMU_INT_STATUS_I3C             BMI3_INT_STATUS_I3C
+#define IMU_INT_STATUS_ERR             BMI3_INT_STATUS_ERR
+#define IMU_INT_STATUS_TEMP_DRDY       BMI3_INT_STATUS_TEMP_DRDY
+#define IMU_INT_STATUS_GYR_DRDY        BMI3_INT_STATUS_GYR_DRDY
+#define IMU_INT_STATUS_ACC_DRDY        BMI3_INT_STATUS_ACC_DRDY
+#define IMU_INT_STATUS_FWM             BMI3_INT_STATUS_FWM
+#define IMU_INT_STATUS_FFULL           BMI3_INT_STATUS_FFULL  /* FIFO 满中断 */
+
 typedef enum
 {
     IMU_FEATURE_NO_MOTION = 0,
@@ -160,6 +179,15 @@ struct imu_axis_map
     bool invert_x;
     bool invert_y;
     bool invert_z;
+};
+
+struct imu_any_motion_config
+{
+    uint16_t slope_thres;    // 斜率阈值 0~4095
+    uint16_t duration;       // 持续时间（单位：20ms） 0~8191
+    uint16_t hysteresis;     // 滞回值 0~1023
+    uint16_t wait_time;      // 等待时间（单位：20ms） 0~7
+    uint8_t acc_ref_up;      // 参考更新模式（0=OnEvent, 1=Always）
 };
 
 typedef void (*imu_int_callback_t)(void);
@@ -362,5 +390,14 @@ imu_result_t imu_set_axis_map(const struct imu_axis_map *axis_map);
 **返回值:    IMU_SUCCESS 表示成功，其他表示错误码
 *********************************************************************/
 imu_result_t imu_get_axis_map(struct imu_axis_map *axis_map);
+
+/********************************************************************
+**函数名称:  imu_set_any_motion_config
+**入口参数:  config   ---        ANY_MOTION 配置参数（输入）
+**出口参数:  无
+**函数功能:  配置 BMI325 ANY_MOTION 检测参数
+**返回值:    IMU_SUCCESS 表示成功，其他表示错误码
+*********************************************************************/
+imu_result_t imu_set_any_motion_config(const struct imu_any_motion_config *config);
 
 #endif /* _IMU_API_H_ */

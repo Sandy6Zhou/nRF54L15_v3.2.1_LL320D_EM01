@@ -11,9 +11,9 @@ project(LL311_BLE)
 target_include_directories(app PRIVATE
  ./inc
  ./src
-#  ./ext_module/imu/api
-#  ./ext_module/imu/port
-#  ./ext_module/imu/vendor
+ ./ext_module/imu/api
+ ./ext_module/imu/port
+ ./ext_module/imu/vendor
  ./ext_module/temp_humi/api
  ./ext_module/temp_humi/drivers/SHTC3/inc
  ./ext_module/barometer/api
@@ -30,7 +30,7 @@ target_sources(app PRIVATE
   src/my_ble_core.c
   src/my_lte.c
   src/my_gsensor.c
-  src/my_gsensor_algorithm.c
+#  src/my_gsensor_algorithm.c
   src/my_ctrl.c
   src/my_battery.c
   src/my_wdt.c
@@ -42,10 +42,10 @@ target_sources(app PRIVATE
   src/my_dfu_jimi.c
   src/my_pm.c
   src/my_ble_scan.c
-  # ext_module/imu/api/imu_api.c
-  # ext_module/imu/port/bmi325_port.c
-  # ext_module/imu/vendor/bmi325.c
-  # ext_module/imu/vendor/bmi3.c
+  ext_module/imu/api/imu_api.c
+  ext_module/imu/port/bmi325_port.c
+  ext_module/imu/vendor/bmi325.c
+  ext_module/imu/vendor/bmi3.c
   ext_module/temp_humi/api/temp_humi_api.c
   ext_module/temp_humi/drivers/SHTC3/src/shtc3_driver.c
   ext_module/barometer/api/barometer_api.c

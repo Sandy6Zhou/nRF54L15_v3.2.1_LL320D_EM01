@@ -44,7 +44,6 @@ static int remalm_cmd_handler(at_cmd_t* msg);
 static int motdet_cmd_handler(at_cmd_t* msg);
 static int batlevel_cmd_handler(at_cmd_t* msg);
 static int chargesta_cmd_handler(at_cmd_t* msg);
-static int shockalarm_cmd_handler(at_cmd_t* msg);
 static int pwsave_cmd_handler(at_cmd_t* msg);
 static int pwrlimit_cmd_handler(at_cmd_t* msg);
 static int lprunning_cmd_handler(at_cmd_t* msg);
@@ -77,7 +76,6 @@ static const at_cmd_attr_t at_cmd_attr_table[] =
     {"MOTDET",         motdet_cmd_handler},
     {"BATLEVEL",       batlevel_cmd_handler},
     {"CHARGESTA",      chargesta_cmd_handler},
-    {"SHOCKALARM",     shockalarm_cmd_handler},
     {"PWRSAVE",        pwsave_cmd_handler},
     {"PWRLIMIT",       pwrlimit_cmd_handler},
     {"LPSLEEP",        lprunning_cmd_handler},
@@ -832,19 +830,17 @@ param_invalid:
 **出口参数:  msg->resp_msg  ---  响应消息
 **           msg->resp_length --- 响应长度
 **函数功能:  处理MOTDET指令：设置运动检测参数
-**指令格式:  MOTDET,[Transition Count],[Detection Interval],[Report Type]#
-**参数说明:  [Transition Count] - 运动切换次数: 1-10 (默认5)
-**           [Detection Interval] - 检测间隔: 5-3600 s (默认300)
-**           [Report Type] - 模式切换上报方式: 0-不上报，1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
+**指令格式:  MOTDET,[Vibration],[Duration]#
+**参数说明:  [Vibration] - 震动次数: 1-500 (默认5)
+**           [Duration] - 检测间隔: 1-3600 s (默认10)
 **返 回 值:  BLE数据类型
 *********************************************************************/
 static int motdet_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
     uint8_t no_count = 0;
-    int transition_count_value;
-    int detection_interval_value;
-    int report_type_value;
+    int vibration_value;
+    int duration_value;
 
     remaining = RESP_STRING_LENGTH_MAX;
 
@@ -853,14 +849,13 @@ static int motdet_cmd_handler(at_cmd_t* msg)
     {
         msg->resp_length = snprintf(msg->resp_msg, remaining, "%s:%d,%d,%d",
                             msg->parm[0],
-                            gConfigParam.motdet_config.motdet_transition_count,
-                            gConfigParam.motdet_config.motdet_detection_interval,
-                            gConfigParam.motdet_config.motdet_report_type);
+                            gConfigParam.motdet_config.motdet_vibration,
+                            gConfigParam.motdet_config.motdet_duration);
         return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
     /* 检查参数数量 */
-    if (msg->parm_count != 3)
+    if (msg->parm_count != 2)
     {
         LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
         goto param_invalid;
@@ -869,50 +864,42 @@ static int motdet_cmd_handler(at_cmd_t* msg)
     no_count = string_check_is_number(0, msg->parm[1]);
     if (no_count == 0 || no_count > 9)
     {
-        LOG_INF("%s=>invalid Transition Count param: %s", __func__, msg->parm[1]);
+        LOG_INF("%s=>invalid Vibration param: %s", __func__, msg->parm[1]);
         goto param_invalid;
     }
-    /* 解析Transition Count参数 */
-    transition_count_value = atoi(msg->parm[1]);
-    if (transition_count_value < 1 || transition_count_value > 10)
+    /* 解析Vibration参数 */
+    vibration_value = atoi(msg->parm[1]);
+    if (vibration_value < 1 || vibration_value > 500)
     {
-        LOG_INF("%s=>invalid Transition Count param: %s", __func__, msg->parm[1]);
+        LOG_INF("%s=>invalid Vibration param: %s", __func__, msg->parm[1]);
         goto param_invalid;
     }
 
     no_count = string_check_is_number(0, msg->parm[2]);
     if (no_count == 0 || no_count > 9)
     {
-        LOG_INF("%s=>invalid Detection Interval param: %s", __func__, msg->parm[2]);
+        LOG_INF("%s=>invalid Duration param: %s", __func__, msg->parm[2]);
         goto param_invalid;
     }
-    /* 解析Detection Interval参数 */
-    detection_interval_value = atoi(msg->parm[2]);
-    if (detection_interval_value < 5 || detection_interval_value > 3600)
+    /* 解析Duration参数 */
+    duration_value = atoi(msg->parm[2]);
+    if (duration_value < 1 || duration_value > 3600)
     {
-        LOG_INF("%s=>invalid Detection Interval param: %s", __func__, msg->parm[2]);
+        LOG_INF("%s=>invalid Duration param: %s", __func__, msg->parm[2]);
         goto param_invalid;
     }
 
-    no_count = string_check_is_number(0, msg->parm[3]);
-    if (no_count == 0 || no_count > 9)
+#if GSENSOR_DUTY_PROJECT
+    if (vibration_value > duration_value)
     {
-        LOG_INF("%s=>invalid Report Type param: %s", __func__, msg->parm[3]);
         goto param_invalid;
     }
-    /* 解析Report Type参数 */
-    report_type_value = atoi(msg->parm[3]);
-    if (report_type_value < 0 || report_type_value > 3)
-    {
-        LOG_INF("%s=>invalid Report Type param: %s", __func__, msg->parm[3]);
-        goto param_invalid;
-    }
+#endif
 
     /* 所有参数验证通过,统一赋值 */
     gConfigParam.motdet_config.flag = FLAG_VALID;
-    gConfigParam.motdet_config.motdet_transition_count = (uint16_t)transition_count_value;
-    gConfigParam.motdet_config.motdet_detection_interval = (uint16_t)detection_interval_value;
-    gConfigParam.motdet_config.motdet_report_type = (uint8_t)report_type_value;
+    gConfigParam.motdet_config.motdet_vibration = (uint16_t)vibration_value;
+    gConfigParam.motdet_config.motdet_duration = (uint16_t)duration_value;
 
     /* 保存配置 */
     my_user_data_write(ZMS_ID_MOT_DET_CONFIG, &gConfigParam.motdet_config, sizeof(mot_det_config_t));
@@ -922,10 +909,9 @@ static int motdet_cmd_handler(at_cmd_t* msg)
 
     /* 生成成功响应 */
     msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK", msg->parm[0]);
-    LOG_INF("MOTDET: TransitionCount=%d, DetectionInterval=%d, ReportType=%d",
-           gConfigParam.motdet_config.motdet_transition_count,
-           gConfigParam.motdet_config.motdet_detection_interval,
-           gConfigParam.motdet_config.motdet_report_type);
+    LOG_INF("MOTDET: Vibration=%d, Duration=%d",
+           gConfigParam.motdet_config.motdet_vibration,
+           gConfigParam.motdet_config.motdet_duration);
 
     //TODO 具体逻辑处理
 
@@ -1083,142 +1069,6 @@ static int chargesta_cmd_handler(at_cmd_t* msg)
     /* 所有参数验证通过,生成成功响应 */
     msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK", msg->parm[0]);
     LOG_INF("CHARGESTA: Report=%d", gConfigParam.batlevel_config.chargesta_report);
-
-    //TODO 具体逻辑处理
-
-    return BLE_DATA_TYPE_PACKET_MULTIPLE;
-
-param_invalid:
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam", msg->parm[0]);
-    return BLE_DATA_TYPE_PACKET_MULTIPLE;
-}
-
-/********************************************************************
-**函数名称:  shockalarm_cmd_handler
-**入口参数:  msg      ---        AT指令结构体指针
-**出口参数:  msg->resp_msg  ---  响应消息
-**           msg->resp_length --- 响应长度
-**函数功能:  处理SHOCKALARM指令：设置撞击检测报警功能
-**指令格式:  SHOCKALARM,[SW],[Level],[Type of Alarm],[Silence duration]#
-**参数说明:  [SW] - 功能开关: ON/OFF (默认OFF)
-**           [Level] - 撞击力度阈值: 1-5 (默认3; 5最敏感,1最不敏感)
-**           [Type of Alarm] - 告警上报方式: 0-不上报, 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
-**           [Silence duration] - 静默时间: 10-600秒 (默认60秒)
-**返 回 值:  BLE数据类型
-*********************************************************************/
-static int shockalarm_cmd_handler(at_cmd_t* msg)
-{
-    uint16_t remaining;
-    uint8_t no_count = 0;
-    int level_value;
-    int type_value;
-    int sw_value;
-    int time_value;
-
-    remaining = RESP_STRING_LENGTH_MAX;
-
-    //无参数即查询
-    if (msg->parm_count == 0)
-    {
-        // 根据 shockalarm_sw 的值选择 "ON" 或 "OFF"
-        const char* state_str = gConfigParam.shockalarm_config.shockalarm_sw ? "ON" : "OFF";
-        msg->resp_length = snprintf(msg->resp_msg, remaining, "%s:%s,%d,%d,%d",
-                            msg->parm[0],
-                            state_str,
-                            gConfigParam.shockalarm_config.shockalarm_level,
-                            gConfigParam.shockalarm_config.shockalarm_type,
-                            gConfigParam.shockalarm_config.shockalarm_time
-        );
-        return BLE_DATA_TYPE_PACKET_MULTIPLE;
-    }
-
-    /* 检查参数数量 */
-    if (msg->parm_count != 4)
-    {
-        LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
-        goto param_invalid;
-    }
-
-    /* 解析SW参数 */
-    if (my_strcasecmp(msg->parm[1], "ON") == 0)
-    {
-        sw_value = 1;
-    }
-    else if (my_strcasecmp(msg->parm[1], "OFF") == 0)
-    {
-        sw_value = 0;
-    }
-    else
-    {
-        LOG_INF("%s=>invalid SW param: %s", __func__, msg->parm[1]);
-        goto param_invalid;
-    }
-
-    no_count = string_check_is_number(0, msg->parm[2]);
-    if (no_count == 0 || no_count > 9)
-    {
-        LOG_INF("%s=>invalid Level param: %s", __func__, msg->parm[2]);
-        goto param_invalid;
-    }
-    /* 解析Level参数 */
-    level_value = atoi(msg->parm[2]);
-    if (level_value < 1 || level_value > 5)
-    {
-        LOG_INF("%s=>invalid Level param: %s", __func__, msg->parm[2]);
-        goto param_invalid;
-    }
-
-    no_count = string_check_is_number(0, msg->parm[3]);
-    if (no_count == 0 || no_count > 9)
-    {
-        LOG_INF("%s=>invalid Type param: %s", __func__, msg->parm[3]);
-        goto param_invalid;
-    }
-    /* 解析Type of Alarm参数 */
-    type_value = atoi(msg->parm[3]);
-    if (type_value < 0 || type_value > 3)
-    {
-        LOG_INF("%s=>invalid Type of Alarm param: %s", __func__, msg->parm[3]);
-        goto param_invalid;
-    }
-
-    no_count = string_check_is_number(0, msg->parm[4]);
-    if (no_count == 0 || no_count > 9)
-    {
-        LOG_INF("%s=>invalid Time param: %s", __func__, msg->parm[4]);
-        goto param_invalid;
-    }
-    /* 解析Time参数 */
-    time_value = atoi(msg->parm[4]);
-    if (time_value < 10 || time_value > 600)
-    {
-        LOG_INF("%s=>invalid Time param: %s", __func__, msg->parm[4]);
-        goto param_invalid;
-    }
-
-    /* 所有参数验证通过,统一赋值 */
-    gConfigParam.shockalarm_config.flag = FLAG_VALID;
-    gConfigParam.shockalarm_config.shockalarm_sw = (uint8_t)sw_value;
-    gConfigParam.shockalarm_config.shockalarm_level = (uint8_t)level_value;
-    gConfigParam.shockalarm_config.shockalarm_type = (uint8_t)type_value;
-    gConfigParam.shockalarm_config.shockalarm_time = time_value;
-
-    /* 保存配置 */
-    my_user_data_write(ZMS_ID_SHOCK_ALARM_CONFIG, &gConfigParam.shockalarm_config, sizeof(shock_alarm_config_t));
-
-    /* 通知 G-Sensor 更新配置 */
-    my_send_msg(MOD_GSENSOR, MOD_GSENSOR, MY_MSG_SHOCK_SW);
-
-    LOG_INF("%s=>%s,%s,%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2], msg->parm[3], msg->parm[4]);
-
-    /* 生成成功响应 */
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK", msg->parm[0]);
-    LOG_INF("SHOCKALARM: SW=%d, Level=%d, Type=%d, Silence=%d ",
-           gConfigParam.shockalarm_config.shockalarm_sw,
-           gConfigParam.shockalarm_config.shockalarm_level,
-           gConfigParam.shockalarm_config.shockalarm_type,
-           gConfigParam.shockalarm_config.shockalarm_time
-        );
 
     //TODO 具体逻辑处理
 
@@ -3460,14 +3310,6 @@ static int status_cmd_handler(at_cmd_t* msg)
         {
             case STATE_STATIC:
                 memcpy(motion, "Static", sizeof("Static"));
-                break;
-
-            case STATE_LAND_TRANSPORT:
-                memcpy(motion, "Land Transport", sizeof("Land Transport"));
-                break;
-
-            case STATE_SEA_TRANSPORT:
-                memcpy(motion, "Sea Transport", sizeof("Sea Transport"));
                 break;
 
             default:

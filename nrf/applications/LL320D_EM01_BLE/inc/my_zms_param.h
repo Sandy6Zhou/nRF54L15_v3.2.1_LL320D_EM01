@@ -55,7 +55,6 @@ typedef enum                           // 参数ID定义
     ZMS_ID_REM_ALM_CONFIG,             // 防拆报警配置参数ID
     ZMS_ID_MOT_DET_CONFIG,             // 运动检测报警配置参数ID
     ZMS_ID_BAT_LEVEL_CONFIG,           // 电池状态和充电状态报警配置参数ID
-    ZMS_ID_SHOCK_ALARM_CONFIG,         // 撞击报警配置参数ID
     ZMS_ID_STARTR_CONFIG,              // 数据记录功能配置参数ID
     ZMS_ID_PWRLIMIT_CONFIG,            // 限制按键关机配置参数ID
     ZMS_ID_BT_UPDATA_CONFIG,           // 蓝牙数据上传配置参数ID
@@ -136,9 +135,8 @@ typedef struct                              // 存储的防拆报警配置参数
 typedef struct                              // 存储的运动检测报警配置参数
 {
     uint8_t flag;                           // 参数有效标志
-    uint8_t motdet_transition_count;        // 运动检测状态切换次数阈值 (1-100)
-    uint16_t motdet_detection_interval;     // 运动检测状态切换时间间隔 (5~3600)
-    uint8_t motdet_report_type;             // 模式切换上报方式: 0-不上报, 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
+    uint16_t motdet_vibration;              // 运动检测震动次数 (1-500)
+    uint16_t motdet_duration;               // 运动检测判断时间 (1-3600s)
 } mot_det_config_t;
 
 typedef struct                              // 存储的电池状态和充电状态报警配置参数
@@ -152,15 +150,6 @@ typedef struct                              // 存储的电池状态和充电状
     uint8_t batlevel_full_rpt;              // Full状态上报方式
     uint8_t chargesta_report;               // 充电状态上报方式: 0-不上报, 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
 } bat_level_config_t;
-
-typedef struct                              // 存储的撞击报警配置参数
-{
-    uint8_t flag;                           // 参数有效标志
-    uint8_t shockalarm_sw;                  // 撞击报警开关: 0-OFF, 1-ON
-    uint8_t shockalarm_level;               // 撞击力度阈值: 1-5 (1最不敏感,5最敏感)
-    uint8_t shockalarm_type;                // 告警上报方式: 0-不上报, 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
-    uint16_t shockalarm_time;               // 告警时间间隔: 10-600秒
-} shock_alarm_config_t;
 
 typedef struct                              // 存储的数据记录功能配置参数
 {
@@ -261,7 +250,6 @@ typedef struct
     remalm_config_t             remalm_config;              // 防拆报警配置
     mot_det_config_t            motdet_config;              // 运动检测报警配置
     bat_level_config_t          batlevel_config;            // 电池状态和充电状态报警配置
-    shock_alarm_config_t        shockalarm_config;          // 撞击报警配置
     startr_config_t             startr_config;              // 数据记录功能配置
     pwrlimit_config_t           pwrlimit_config;            // 限制按键关机配置
     lprunning_config_t          lprunning_config;           // 低功耗运行配置

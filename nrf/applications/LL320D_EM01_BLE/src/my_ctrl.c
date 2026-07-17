@@ -170,7 +170,6 @@ void send_alarm_message_to_lte(alarm_type_t alarm_type, const char *additional_i
 
         case ALARM_MOVE_START:           // 开始运动告警
         case ALARM_MOVE_STOP:            // 停止运动告警
-            rpt = gConfigParam.motdet_config.motdet_report_type;
             break;
 
         case ALARM_BLE_CONNECTED:        // 蓝牙连接成功告警

@@ -2222,8 +2222,6 @@ static int my_lte_handle_location(char *data)
     g_location_point.speed = speed_value;
     g_location_point.timestamp_s = my_get_system_time_sec();
 
-    my_send_msg(MOD_LTE, MOD_GSENSOR, MY_MSG_GPS_SPEED_UPDATE);
-
     strcpy(resp_str, "LTE+LOCATION=OK\r\n");
     ret = 0;
 
@@ -2617,14 +2615,9 @@ static int my_lte_handle_getmot(char *data)
             strncpy(result, "STATIC", sizeof("STATIC"));
             break;
 
-        case STATE_LAND_TRANSPORT:
-            // 设备处于陆运状态
-            strncpy(result, "LAND", sizeof("LAND"));
-            break;
-
-        case STATE_SEA_TRANSPORT:
-            // 设备处于海运状态
-            strncpy(result, "SEA", sizeof("SEA"));
+        case STATE_MOTION:
+            // 设备处于运动状态
+            strncpy(result, "MOTION", sizeof("MOTION"));
             break;
 
         default:
