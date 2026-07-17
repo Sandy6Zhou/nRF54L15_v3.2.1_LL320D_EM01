@@ -199,7 +199,7 @@ typedef struct                              // 存储的Tag定位功能配置参
 typedef struct                              // 存储的LED显示配置参数
 {
     uint8_t flag;                           // 参数有效标志
-    uint8_t led_display;                    // LED显示开关: 0-OFF, 1-ON
+    uint8_t led_display;                    // LED显示模式: 0-一直关闭, 1-按键显示, 2-全时显示
 } led_config_t;
 
 typedef struct                              // 存储的光感过滤配置参数

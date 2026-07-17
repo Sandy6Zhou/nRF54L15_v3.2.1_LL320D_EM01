@@ -2208,18 +2208,15 @@ param_invalid:
 static int led_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
-    int display_value;
+    uint8_t no_count = 0;
+    uint8_t mode = 0;
 
     remaining = RESP_STRING_LENGTH_MAX;
 
     // 无参数即查询
     if (msg->parm_count == 0)
     {
-        const char* state_str = gConfigParam.led_config.led_display ? "ON" : "OFF";
-        msg->resp_length = snprintf(msg->resp_msg, remaining, "%s:%s",
-                                    msg->parm[0],
-                                    state_str
-        );
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "%s:%d", msg->parm[0], gConfigParam.led_config.led_display);
         return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
 
@@ -2230,24 +2227,35 @@ static int led_cmd_handler(at_cmd_t* msg)
         goto param_invalid;
     }
 
-    /* 解析A参数 */
-    if (my_strcasecmp(msg->parm[1], "ON") == 0)
-    {
-        display_value = 1;
-    }
-    else if (my_strcasecmp(msg->parm[1], "OFF") == 0)
-    {
-        display_value = 0;
-    }
-    else
+    no_count = string_check_is_number(0, msg->parm[1]);
+
+    if (no_count == 0 || no_count > 2)
     {
         LOG_INF("%s=>invalid A param: %s", __func__, msg->parm[1]);
         goto param_invalid;
     }
 
+    mode = atoi(msg->parm[1]);
+
+    if (mode > 2)
+    {
+         LOG_INF("%s=>invalid A param: %s", __func__, msg->parm[1]);
+        goto param_invalid;
+    }
+
     /* 所有参数验证通过,统一赋值 */
     gConfigParam.led_config.flag = FLAG_VALID;
-    gConfigParam.led_config.led_display = (uint8_t)display_value;
+    gConfigParam.led_config.led_display = (uint8_t)mode;
+    if (gConfigParam.led_config.led_display == 2)
+    {
+        my_send_msg(MOD_BLE, MOD_CTRL, MY_MSG_LED_ENABLE);
+    }
+    else
+    {
+        my_send_msg(MOD_BLE, MOD_CTRL, MY_MSG_LED_DISABLE);
+    }
+
+    LOG_INF("LED: Display=%d", gConfigParam.led_config.led_display);
 
     // 只有在LTE就绪状态下才发送LED指令
     if (g_bLteReady == true)

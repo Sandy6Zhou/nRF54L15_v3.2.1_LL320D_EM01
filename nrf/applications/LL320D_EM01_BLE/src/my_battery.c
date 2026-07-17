@@ -42,7 +42,6 @@ LOG_MODULE_REGISTER(my_battery, LOG_LEVEL_INF);
 #define BATT_UPDATE_COUNT 3      /**< 电池电量更新计数阈值，用于实现电量显示的平滑过渡 */
 
 #define BATT_TIMER_MS 100  /**< 电池状态检查定时器的周期（毫秒），用于控制LED亮灭 */
-#define BATT_LED_TIMER_MS  5000  /**< 正常状态电池 LED 显示的总时间（毫秒），超过此时间后关闭所有 LED */
 #define CHG_DEBOUNCE_MS 50 /**< 充电引脚相关消抖时间（毫秒） */
 #define CHG_CTRL_LED_MS 500/**< 充电状态LED控制定时器的周期（毫秒） */
 #define CHG_UPDATE_S 10 /**< 充电状态电池电量更新周期（秒） */
@@ -58,6 +57,8 @@ LOG_MODULE_REGISTER(my_battery, LOG_LEVEL_INF);
 #define CHG_BATT_LOW_VAL 30     /**< 充电时电池电量低的阈值，当电量低于此值时，充电状态为 CHG_POWER_LOW */
 #define CHG_BATT_FAIR_VAL 60    /**< 充电时电池电量中等的阈值，当电量低于此值时，充电状态为 CHG_POWER_FAIR */
 #define CHG_BATT_HIGH_VAL 85    /**< 充电时电池电量高的阈值，当电量低于此值时，充电状态为 CHG_POWER_HIGH */
+
+#define LED_BLINK_COUNT 4 /**< 蓝牙连接后LED闪烁次数，用于实现LED的快速闪烁效果 */
 
 // 电压换算宏：根据分压采样值计算实际电压
 #define CALC_ACTUAL_MV(avg_mv)    ((avg_mv) * (2000 + 680) / 680)
@@ -82,16 +83,19 @@ static struct k_timer s_chg_stat_timer; // 充电状态检测消抖定时器，�
 static struct k_timer s_chg_det_timer;  // 充电检测消抖定时器，用于充电检测引脚的消抖处理
 static struct k_timer s_batt_update_timer;     // 电池电量检测定时器
 
-// 正常状态LED控制结构体，包含定时器、电池状态和计数器
-batt_led_ctrl_t g_batt_led_ctrl = { 0 };
-
-// 充电状态LED控制结构体，包含定时器、充电电池状态和计数器
-chg_led_ctrl_t g_chg_led_ctrl = { 0 };
+// 电池状态，初始值为空
+static my_batt_state_t s_batt_state = BATT_EMPTY;
+// 充电状态，初始值为低
+static my_chg_batt_state_t s_chg_batt_state = CHG_BATT_LOW;
 
 static int s_chg_stat_level = 0;        // 当前充电状态引脚电平，用于消抖处理
 static int s_chg_det_level = 0;         // 当前充电检测引脚电平，用于消抖处理
 
 static bool s_batt_disable_flag = false;  /**< 电池充电禁止标志，用于控制充电路径的开关，消除充电电压对电池电压测量的影响 */
+
+static led_ctrl_ctx_t s_led_ctrl_ctx = {0};
+static bool s_led_enable_flag = false;                  // LED使能标志
+uint16_t s_led_connect_timer = 100;        // 连接快速闪烁计数
 
 static int battery_pm_init(void);
 
@@ -107,6 +111,28 @@ static const pm_device_ops_t battery_pm_ops =
 my_chg_state_t g_charg_state = NO_CHARGING;
 
 static int8_t s_show_percent = 0;        // 显示的电池电量百分比
+
+/*********************************************************************
+**函数名称:  led_enable
+**入口参数:  on: true=使能，false=禁用
+**出口参数:  无
+**函数功能:  使能LED
+*********************************************************************/
+void led_enable(bool on)
+{
+    s_led_enable_flag = on;
+}
+
+/*********************************************************************
+**函数名称:  led_get_enable
+**入口参数:  无
+**出口参数:  LED使能标志
+**函数功能:  获取LED使能标志
+*********************************************************************/
+bool led_get_enable(void)
+{
+    return s_led_enable_flag;
+}
 
 /*********************************************************************
 **函数名称:  get_charge_state_level
@@ -128,51 +154,6 @@ int get_charge_state_level(void)
 int8_t get_show_percent(void)
 {
     return s_show_percent;
-}
-/*********************************************************************
-**函数名称:  batt_timer_handler
-**入口参数:  timer 定时器指针，由系统自动传递
-**出口参数:  无
-**函数功能:  定时器回调函数，正常状态按键按下LED控制
-*********************************************************************/
-static void batt_timer_handler(struct k_timer *timer)
-{
-    // note:只执行电平翻转，不能执行打印日志这些耗时操作
-    int mode = 0;
-    int level = 0;
-
-    mode = g_batt_led_ctrl.state % 2;    // 电池状态LED模式，0为闪烁状态，1为常亮状态
-    level = g_batt_led_ctrl.state / 2;  // 电池状态LED等级，代表几个led亮
-
-    // 根据LED显示模式控制LED
-    if (mode == 0)
-    {
-        // 模式 0：LED 闪烁模式
-        if (g_batt_led_ctrl.time_count % 10 == 0)
-        {
-            // 每10个时间单位，点亮比当前级别高一级的LED
-            batt_led_set_level(level + 1);
-        }
-        else if (g_batt_led_ctrl.time_count % 10 == 3)
-        {
-            // 每10个时间单位的第3个单位，点亮当前级别的LED
-            batt_led_set_level(level);
-        }
-    }
-    else
-    {
-        // 其他模式：LED 常亮模式
-        batt_led_set_level(level + 1);
-    }
-
-    g_batt_led_ctrl.time_count++;  // 增加电池状态时间计数器
-
-    // 当时间计数器超过阈值时，关闭所有 LED 并停止定时器
-    if(g_batt_led_ctrl.time_count >= BATT_LED_TIMER_MS / 100)
-    {
-        k_timer_stop(g_batt_led_ctrl.timer);  // 停止LED控制定时器
-        batt_led_set_level(0);  // 关闭所有LED
-    }
 }
 
 /* 读取电池电压原始值，并转换为 mV（不含分压系数） */
@@ -251,27 +232,99 @@ int my_battery_pm_register(void)
 }
 
 /*********************************************************************
-**函数名称:  chg_timer_handler
+**函数名称:  led_ctrl_callback
 **入口参数:  timer 定时器指针，由系统自动传递
 **出口参数:  无
-**函数功能:  充电状态LED控制定时器的回调函数，用于控制充电状态LED的显示
+**函数功能:  LED控制定时器的回调函数，用于控制LED的显示
 *********************************************************************/
-void chg_timer_handler(struct k_timer *timer)
+void led_ctrl_callback(void *param)
 {
-    // note:只执行电平翻转，不能执行打印日志这些耗时操作
-    // 根据时间计数器的值，控制LED的闪烁模式
-    if (g_chg_led_ctrl.time_count % 3 == 0)
+
+    if (s_led_enable_flag == false)
     {
-        // 在第1.5s的前1s点亮LED
-        batt_led_set_level(g_chg_led_ctrl.state + 1);
-    }
-    else if (g_chg_led_ctrl.time_count % 3 == 2)
-    {
-        // 在第1s处熄灭对应LED
-        batt_led_set_level(g_chg_led_ctrl.state);
+        return;
     }
 
-    g_chg_led_ctrl.time_count++;  // 增加时间计数器
+    int mode = 0;
+    int level = 0;
+
+    switch (s_led_ctrl_ctx.active_mode)
+    {
+        case CHG_LED_MODE:
+                if (s_led_ctrl_ctx.led_count % 3 == 0)
+            {
+                // 在第1.5s的前1s点亮LED
+                batt_led_set_level(s_chg_batt_state + 1);
+                s_led_ctrl_ctx.led_count = 0;
+            }
+            else if (s_led_ctrl_ctx.led_count % 3 == 2)
+            {
+                // 在第1s处熄灭对应LED
+                batt_led_set_level(s_chg_batt_state);
+            }
+            break;
+
+        case BATT_LED_MODE:
+            mode = s_batt_state % 2;    // 电池状态LED模式，0为闪烁状态，1为常亮状态
+            level = s_batt_state / 2;  // 电池状态LED等级，代表几个led亮
+
+            // 根据LED显示模式控制LED
+            if (mode == 0)
+            {
+                // 模式 0：LED 闪烁模式
+                if (s_led_ctrl_ctx.led_count % 10 == 0)
+                {
+                    // 每10个时间单位，点亮比当前级别高一级的LED
+                    batt_led_set_level(level + 1);
+                    s_led_ctrl_ctx.led_count = 0;
+                }
+                else if (s_led_ctrl_ctx.led_count % 10 == 3)
+                {
+                    // 每10个时间单位的第3个单位，点亮当前级别的LED
+                    batt_led_set_level(level);
+                }
+            }
+            else
+            {
+                // 其他模式：LED 常亮模式
+                batt_led_set_level(level + 1);
+            }
+            break;
+
+        case BT_RADIO_LED_MODE:
+            if (s_led_ctrl_ctx.led_count % 5 == 0)
+            {
+                // 每5个时间单位的第0个单位，点亮当前级别的LED
+                batt_led_set_level(3);
+                s_led_ctrl_ctx.led_count = 0;
+            }
+            else if (s_led_ctrl_ctx.led_count % 5 == 1)
+            {
+                // 每5个时间单位的第1个单位，熄灭当前级别的LED
+                batt_led_set_level(0);
+            }
+            break;
+
+        case BT_CONNECT_LED_MODE:
+            if (s_led_ctrl_ctx.led_count == (LED_BLINK_COUNT * 2 * 5))
+            {
+                led_set_mode(BT_CONNECT_LED_MODE, false);
+                break;
+            }
+            if (s_led_ctrl_ctx.led_count % 2 == 0)
+            {
+                // 每5个时间单位的第0个单位，点亮当前级别的LED
+                batt_led_set_level(3);
+            }
+            else if (s_led_ctrl_ctx.led_count % 2 == 1)
+            {
+                // 每2个时间单位的第1个单位，熄灭当前级别的LED
+                batt_led_set_level(0);
+            }
+            break;
+    }
+
+    s_led_ctrl_ctx.led_count++;
 }
 
 /*********************************************************************
@@ -343,23 +396,18 @@ void my_battery_show_chgled()
 
         my_battery_update_state();      // 更新电池状态
 
-        g_chg_led_ctrl.time_count = 0;  // 重置充电LED控制定时器的时间计数
-        // 启动充电LED控制定时器，立即执行一次，然后以 CHG_CTRL_LED_MS 为周期重复执行
-        k_timer_start(g_chg_led_ctrl.timer, K_MSEC(0), K_MSEC(CHG_CTRL_LED_MS));
         if (gConfigParam.bluetooth_config.bluetooth_flag == 1 && gConfigParam.bluetooth_config.bluetooth_sw == 1 && gConfigParam.bluetooth_config.bluetooth_a == 5)
         {
             my_send_msg(MOD_CTRL, MOD_BLE, MY_MSG_BLE_OPEN_ADV);     // 发送消息到BLE模块,打开广播
         }
 
-        // 停止电池状态LED控制定时器，避免与充电状态LED显示冲突
-        k_timer_stop(g_batt_led_ctrl.timer);
+        led_set_mode(CHG_LED_MODE, true);
     }
     else
     {
-        k_timer_stop(g_chg_led_ctrl.timer);  // 停止充电LED控制定时器
         g_charg_state = NO_CHARGING;  // 设置充电状态为未充电
         batt_enable(true);  // 充电使能
-        batt_led_set_level(0);  // 关闭所有电池LED
+        led_set_mode(CHG_LED_MODE, false);
         LOG_INF("The charger is not plugged in.");
     }
 
@@ -452,7 +500,7 @@ void batt_update_timer_handler(struct k_timer *timer)
 {
     // 当时间计数器达到特定值且充电状态为高电量或满电量时，禁用电池电源,当电池电压过低时，不能禁用充电功能
     // 消除充电电压对电池电压抬高效应的影响。在采集电池电压输出高1s关闭充电路径，采集完毕输出低打开供电路径
-    if (s_batt_disable_flag == true && g_chg_led_ctrl.state > CHG_BATT_FAIR)
+    if (s_batt_disable_flag == true && s_chg_batt_state > CHG_BATT_FAIR)
     {
         batt_enable(false);  // 禁用充电使能
     }
@@ -464,10 +512,6 @@ void batt_update_timer_handler(struct k_timer *timer)
 int batt_gpio_init(void)
 {
     int ret;
-    // 正常状态LED控制定时器，用于控制正常状态LED的显示
-    static struct k_timer s_batt_timer;
-    // 充电状态LED控制定时器，用于控制充电状态LED的显示
-    static struct k_timer s_chg_timer;
 
     if (!device_is_ready(batt_pwr_en.port) ||
         !device_is_ready(charge_state.port) ||
@@ -505,14 +549,6 @@ int batt_gpio_init(void)
     gpio_init_callback(&s_batt_gpio_cb, batt_gpio_isr,
                        BIT(charge_state.pin) | BIT(charge_det.pin));
     gpio_add_callback(charge_det.port, &s_batt_gpio_cb);
-
-    // 初始化正常状态LED控制定时器
-    g_batt_led_ctrl.timer = &s_batt_timer;
-    k_timer_init(g_batt_led_ctrl.timer, batt_timer_handler, NULL);
-
-    // 初始化充电状态LED控制定时器
-    g_chg_led_ctrl.timer = &s_chg_timer;
-    k_timer_init(g_chg_led_ctrl.timer, chg_timer_handler, NULL);
 
     // 初始化充电状态(是否充满)检测引脚消抖定时器
     k_timer_init(&s_chg_stat_timer, batt_chg_stat_handle, NULL);
@@ -641,13 +677,13 @@ void my_battery_event_reporting()
     char cmd_param[2] = {0};                 // 命令参数缓冲区
 
     // 当电池状态发生变化时，根据不同状态进行处理
-    if (g_batt_led_ctrl.state != s_last_batt_state)
+    if (s_batt_state != s_last_batt_state)
     {
-        snprintf(cmd_param, sizeof(cmd_param), "%d", g_batt_led_ctrl.state);
+        snprintf(cmd_param, sizeof(cmd_param), "%d", s_batt_state);
         send_alarm_message_to_lte(ALARM_BAT_SWITCH, cmd_param);
 
         // 更新上次电池状态
-        s_last_batt_state = g_batt_led_ctrl.state;
+        s_last_batt_state = s_batt_state;
     }
 }
 
@@ -782,30 +818,30 @@ void my_battery_update_state()
     // 根据电池电量判断电池状态
     if (s_show_percent <= BATT_EMPTY_VAL)
     {
-        g_batt_led_ctrl.state = BATT_EMPTY;  // 电池电量为空
+        s_batt_state = BATT_EMPTY;  // 电池电量为空
     }
     else if (s_show_percent <= BATT_LOW_VAL)
     {
-        g_batt_led_ctrl.state = BATT_LOW;  // 电池电量低
+        s_batt_state = BATT_LOW;  // 电池电量低
     }
     else if (s_show_percent <= BATT_NORMAL_VAL)
     {
-        g_batt_led_ctrl.state = BATT_NORMAL;  // 电池电量正常
+        s_batt_state = BATT_NORMAL;  // 电池电量正常
     }
     else if (s_show_percent <= BATT_FAIR_VAL)
     {
-        g_batt_led_ctrl.state = BATT_FAIR;  // 电池电量良好
+        s_batt_state = BATT_FAIR;  // 电池电量良好
     }
     else if (s_show_percent <= BATT_HIGH_VAL)
     {
-        g_batt_led_ctrl.state = BATT_HIGH;  // 电池电量高
+        s_batt_state = BATT_HIGH;  // 电池电量高
     }
     else
     {
-        g_batt_led_ctrl.state = BATT_FULL;  // 电池电量满
+        s_batt_state = BATT_FULL;  // 电池电量满
     }
 
-    LOG_INF("battery class:%d", g_batt_led_ctrl.state);  // 输出电池状态等级
+    LOG_INF("battery class:%d", s_batt_state);  // 输出电池状态等级
     // 电池状态发生变化时上报事件
     my_battery_event_reporting();
 
@@ -815,19 +851,19 @@ void my_battery_update_state()
         // 根据电池电量判断充电状态
         if (s_show_percent <= CHG_BATT_LOW_VAL)
         {
-            g_chg_led_ctrl.state = CHG_BATT_LOW;  // 充电电量低
+            s_chg_batt_state = CHG_BATT_LOW;  // 充电电量低
         }
         else if (s_show_percent <= CHG_BATT_FAIR_VAL)
         {
-            g_chg_led_ctrl.state = CHG_BATT_FAIR;  // 充电电量中等
+            s_chg_batt_state = CHG_BATT_FAIR;  // 充电电量中等
         }
         else if (s_show_percent <= CHG_BATT_HIGH_VAL)
         {
-            g_chg_led_ctrl.state = CHG_BATT_HIGH;  // 充电电量高
+            s_chg_batt_state = CHG_BATT_HIGH;  // 充电电量高
         }
         else
         {
-            g_chg_led_ctrl.state = CHG_BATT_FULL;  // 充电电量满
+            s_chg_batt_state = CHG_BATT_FULL;  // 充电电量满
         }
 
         // 检查充电状态引脚，如果为高电平表示充电中
@@ -836,7 +872,7 @@ void my_battery_update_state()
             batt_enable(true);  // 启用充电使能,在定时器回调中检测前1s关闭了充电使能
         }
 
-        LOG_INF("charge class:%d", g_chg_led_ctrl.state);  // 输出充电状态等级
+        LOG_INF("charge class:%d", s_chg_batt_state);  // 输出充电状态等级
     }
 
     // 低功耗运行(LPSLEEP)状态检查统一交由main线程串行判定
@@ -855,22 +891,170 @@ void my_battery_update_state()
 }
 
 /*********************************************************************
-**函数名称:  my_battery_show
+**函数名称:  led_status_set
+**入口参数:  mode: LED模式
+** on: 是否开启
+**出口参数:  无
+**函数功能:  设置LED状态
+*********************************************************************/
+void led_status_set(led_mode_t mode, bool on)
+{
+    if (on == true)
+    {
+        s_led_ctrl_ctx.led_status |= 0x01 << mode;
+    }
+    else
+    {
+        s_led_ctrl_ctx.led_status &= ~(0x01 << mode);
+    }
+}
+
+/*********************************************************************
+**函数名称:  led_status_get
+**入口参数:  mode: LED模式
+**出口参数:  LED状态
+**函数功能:  获取LED状态
+*********************************************************************/
+bool led_status_get(led_mode_t mode)
+{
+    if ((s_led_ctrl_ctx.led_status & (0x01 << mode)) != 0)
+    {
+        return true;
+    }
+    else
+    {
+        return false;
+    }
+}
+
+/*********************************************************************
+**函数名称:  led_sw_callback
 **入口参数:  无
 **出口参数:  无
-**函数功能:  启动100ms循环定时器控制LED显示电池状态
+**函数功能:  LED控制开关回调函数，用于关闭指示灯和连接状态
 *********************************************************************/
-void my_battery_show()
+void led_sw_callback(void *param)
 {
-    if(g_charg_state != NO_CHARGING)
+    if (gConfigParam.led_config.led_display == 1 && led_status_get(CHG_LED_MODE) == false)
     {
-        MY_LOG_INF("be charging");  // 设备正在充电，输出充电状态
-        return;  // 直接返回，不进行后续的电池状态检查
+        my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_LED_DISABLE);
+    }
+}
+
+/*********************************************************************
+**函数名称:  open_led_timer
+**入口参数:  timer_ms: 定时器周期时间，单位毫秒
+**出口参数:  无
+**函数功能:  打开LED控制开关，用于显示指示灯状态
+*********************************************************************/
+void open_led_timer(uint32_t timer_ms)
+{
+    // 如果LED显示使能，且定时器未运行超过5秒， 仅当LED显示使能且LED控制开关未运行超过5秒时，才开启LED控制开关
+    // 开机LED显示要打开60s，此时按键不能控制LED状态
+    if (gConfigParam.led_config.led_display == 1 && led_status_get(CHG_LED_MODE) == false)
+    {
+        my_start_timer(MY_TIMER_LED_ENABLE, timer_ms, false, led_sw_callback);
+        my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_LED_ENABLE);
+    }
+}
+
+/*********************************************************************
+**函数名称:  bt_led_connect_quick_flick
+**入口参数:  count: 闪烁次数
+**出口参数:  无
+**函数功能:  连接指示灯快速闪烁每秒次数
+*********************************************************************/
+void bt_led_connect_quick_flick(uint8_t count)
+{
+    s_led_connect_timer = 500 / count;
+}
+
+/*********************************************************************
+**函数名称:  led_set_mode
+**入口参数:  mode: LED模式
+** on: 是否开启
+**出口参数:  无
+**函数功能:  设置LED模式
+*********************************************************************/
+void led_set_mode(led_mode_t mode, bool on)
+{
+    switch (mode)
+    {
+        case CHG_LED_MODE:
+            led_status_set(mode, on);
+            if (on == true)
+            {
+                led_enable(true);
+            }
+            else if (gConfigParam.led_config.led_display != 2)
+            {
+                led_enable(false);
+            }
+            break;
+
+        case BT_RADIO_LED_MODE:
+            led_status_set(mode, on);
+            if (on == true)
+            {
+                led_status_set(BT_CONNECT_LED_MODE, false);
+            }
+            break;
+
+        case BT_CONNECT_LED_MODE:
+            led_status_set(mode, on);
+            if (on == true)
+            {
+                led_status_set(BT_RADIO_LED_MODE, false);
+            }
+            break;
+
+        default:
+            break;
     }
 
+    my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_LED_CTRL_MODE);
+}
 
-    //当按键重复按下时，重新开始定时器
-    g_batt_led_ctrl.time_count = 0;  // 重置时间计数器
-    // 启动电池状态LED控制定时器，立即执行一次，然后以 100ms 为周期重复执行
-    k_timer_start(g_batt_led_ctrl.timer, K_MSEC(0), K_MSEC(BATT_TIMER_MS));
+/*********************************************************************
+**函数名称:  my_led_ctrl_mode
+**入口参数:  无
+**出口参数:  无
+**函数功能:  控制LED模式
+*********************************************************************/
+void my_led_ctrl_mode(void)
+{
+    my_stop_timer(MY_TIMER_LED_BLINK);
+
+    batt_led_set_level(0);
+
+    s_led_ctrl_ctx.led_count = 0;
+
+    if (led_status_get(CHG_LED_MODE) == false && gConfigParam.led_config.led_display == 1)
+    {
+        s_led_ctrl_ctx.active_mode = BATT_LED_MODE;
+        my_start_timer(MY_TIMER_LED_BLINK, BATT_TIMER_MS, true, led_ctrl_callback);
+        return;
+    }
+
+    if (led_status_get(BT_RADIO_LED_MODE) == true)
+    {
+        s_led_ctrl_ctx.active_mode = BT_RADIO_LED_MODE;
+        my_start_timer(MY_TIMER_LED_BLINK, 200, true, led_ctrl_callback);
+    }
+    else if (led_status_get(BT_CONNECT_LED_MODE) == true)
+    {
+        bt_led_connect_quick_flick(LED_BLINK_COUNT);
+        s_led_ctrl_ctx.active_mode = BT_CONNECT_LED_MODE;
+        my_start_timer(MY_TIMER_LED_BLINK, s_led_connect_timer, true, led_ctrl_callback);
+    }
+    else if (led_status_get(CHG_LED_MODE) == true)
+    {
+        s_led_ctrl_ctx.active_mode = CHG_LED_MODE;
+        my_start_timer(MY_TIMER_LED_BLINK, CHG_CTRL_LED_MS, true, led_ctrl_callback);
+    }
+    else
+    {
+        s_led_ctrl_ctx.active_mode = BATT_LED_MODE;
+        my_start_timer(MY_TIMER_LED_BLINK, BATT_TIMER_MS, true, led_ctrl_callback);
+    }
 }

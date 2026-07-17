@@ -1279,7 +1279,18 @@ static void my_ctrl_task(void *p1, void *p2, void *p3)
     msg_t msg;
     int ret;
 
+    if (gConfigParam.led_config.led_display == 2)
+    {
+        my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_LED_ENABLE);
+    }
+    else
+    {
+        my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_LED_DISABLE);
+    }
+
     MY_LOG_INF("Control thread started");
+
+    k_msleep(100); // 等待100ms，确保BLE线程启动发送蓝牙广播消息
 
     for (;;)
     {
@@ -1364,6 +1375,26 @@ static void my_ctrl_task(void *p1, void *p2, void *p3)
                 sensor_temp_timer_reload();
                 break;
 
+            case MY_MSG_LED_CTRL_MODE:
+                my_led_ctrl_mode();
+                break;
+
+            case MY_MSG_LED_ENABLE:
+                if (gConfigParam.led_config.led_display == 2)
+                {
+                    my_stop_timer(MY_TIMER_LED_ENABLE);
+                }
+                led_enable(true);
+                batt_led_set_level(0);
+                my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_LED_CTRL_MODE);
+                break;
+
+            case MY_MSG_LED_DISABLE:
+                my_stop_timer(MY_TIMER_LED_BLINK);
+                led_enable(false);
+                batt_led_set_level(0);
+                break;
+
             default:
                 break;
         }
@@ -1390,15 +1421,6 @@ int my_ctrl_init(k_tid_t *tid)
 
     // 初始化消息队列
     my_init_msg_handler(MOD_CTRL, &my_ctrl_msgq);
-
-    // 启动控制线程
-    *tid = k_thread_create(&s_my_ctrl_task_data, my_ctrl_task_stack,
-                           K_THREAD_STACK_SIZEOF(my_ctrl_task_stack),
-                           my_ctrl_task, NULL, NULL, NULL,
-                           MY_CTRL_TASK_PRIORITY, 0, K_NO_WAIT);
-
-    // 设置线程名称
-    k_thread_name_set(*tid, "MY_CTRL");
 
     //  初始化按键、光感、LED GPIO、batt
     batt_gpio_init();
@@ -1427,6 +1449,15 @@ int my_ctrl_init(k_tid_t *tid)
     my_ctrl_buzzer_play_tone(2000, 100);
 
     k_timer_init(&s_buzzer_timer, buzzer_timer_handler, NULL);
+
+    // 启动控制线程
+    *tid = k_thread_create(&s_my_ctrl_task_data, my_ctrl_task_stack,
+                           K_THREAD_STACK_SIZEOF(my_ctrl_task_stack),
+                           my_ctrl_task, NULL, NULL, NULL,
+                           MY_CTRL_TASK_PRIORITY, 0, K_NO_WAIT);
+
+    // 设置线程名称
+    k_thread_name_set(*tid, "MY_CTRL");
 
     MY_LOG_INF("Control module initialized");
     return 0;

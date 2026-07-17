@@ -626,7 +626,7 @@ static void adv_work_handler(struct k_work *work)
     LOG_INF("Restart connectable advertising");
     if ((gConfigParam.bluetooth_config.bluetooth_flag == 0) && gConfigParam.bluetooth_config.bluetooth_sw == 1)
     {
-        start_adv(&s_con_adv_obj_hdl, true);
+        my_send_msg(MOD_BLE, MOD_BLE, MY_MSG_BLE_OPEN_ADV);
     }
 }
 
@@ -669,7 +669,11 @@ static void connected(struct bt_conn *conn, uint8_t err)
     LOG_INF("s_connect_id %d", s_connect_id);
 
     /* 蓝牙连接上后，默认被连接的广播会自动停止*/
-    start_adv(&s_con_adv_obj_hdl, false);
+    my_send_msg(MOD_BLE, MOD_BLE, MY_MSG_BLE_CLOSE_ADV);
+    if (led_get_enable() == true)
+    {
+        led_set_mode(BT_CONNECT_LED_MODE, true);
+    }
 
     /* 清除蓝牙日志断开标志，允许日志发送
      * 注意：必须在连接成功后调用，确保日志可以正常发送 */
@@ -1203,7 +1207,7 @@ int my_ble_core_start(void)
 
     if ((gConfigParam.bluetooth_config.bluetooth_flag == 0) && gConfigParam.bluetooth_config.bluetooth_sw == 1)
     {
-        start_adv(&s_con_adv_obj_hdl, true);
+        my_send_msg(MOD_BLE, MOD_BLE, MY_MSG_BLE_OPEN_ADV);
     }
 
     LOG_INF("BLE core start success");
@@ -1370,6 +1374,7 @@ static void my_ble_task(void *p1, void *p2, void *p3)
                 if (s_connect_id == 0xff)
                 {
                     start_adv(&s_con_adv_obj_hdl, true);
+                    led_set_mode(BT_RADIO_LED_MODE, true);
                     if (gConfigParam.bluetooth_config.bluetooth_flag == 1 && gConfigParam.bluetooth_config.bluetooth_a == 5 && gConfigParam.bluetooth_config.bluetooth_b > 0)
                     {
                         my_start_timer(MY_TIMER_BLUETOOTH_ADV, gConfigParam.bluetooth_config.bluetooth_b * 60 * 1000, false, bluetooth_adv_timer_cb);
@@ -1379,6 +1384,7 @@ static void my_ble_task(void *p1, void *p2, void *p3)
 
             case MY_MSG_BLE_CLOSE_ADV:
                 start_adv(&s_con_adv_obj_hdl, false);
+                led_set_mode(BT_RADIO_LED_MODE, false);
                 my_stop_timer(MY_TIMER_BLUETOOTH_ADV);
                 break;
 

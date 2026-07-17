@@ -22,14 +22,6 @@ typedef enum
     BATT_FULL,          /* 电池电量满 */
 } my_batt_state_t;
 
-// 正常状态 LED 控制结构体, 用于控制电池状态 LED 显示的结构体
-typedef struct
-{
-    struct k_timer *timer;       /* 定时器指针，用于控制 LED 显示的定时 */
-    my_batt_state_t state;            /* 当前电池状态，使用枚举类型 */
-    uint8_t time_count;          /* 时间计数器，用于控制 LED 闪烁和显示持续时间, 按键按下, LED 执行5s, 定时器设置为100ms , 50次*/
-} batt_led_ctrl_t;
-
 // 电源状态枚举, 定义了设备的电源连接状态
 typedef enum
 {
@@ -47,13 +39,14 @@ typedef enum
     CHG_BATT_FULL,   /* 充电状态电池电量满，电池已充满 */
 } my_chg_batt_state_t;
 
-// 充电状态 LED 控制结构体, 用于控制电池状态 LED 显示的结构体
-typedef struct
+// LED模式枚举, 定义了LED的不同显示模式
+typedef enum
 {
-    struct k_timer *timer;       /* 定时器指针，用于控制 LED 显示的定时 */
-    my_chg_batt_state_t state;            /* 当前电池状态，使用枚举类型 */
-    uint16_t time_count;          /* 时间计数器，用于控制 LED 闪烁和显示持续时间以及固定时间(10s)检测更新充电状态,定时器500ms循环*/
-} chg_led_ctrl_t;
+    BATT_LED_MODE,          // 电池状态LED模式
+    CHG_LED_MODE,           // 充电状态LED模式
+    BT_RADIO_LED_MODE,      // 蓝牙广播状态LED模式
+    BT_CONNECT_LED_MODE,    // 蓝牙连接状态LED模式
+} led_mode_t;
 
 //电池电压-电量映射结构体,用于存储电池电压值与对应电量百分比的映射关系,用于通过电池电压计算电量百分比.
 typedef struct
@@ -62,11 +55,13 @@ typedef struct
     int8_t percent;   /**< 对应的电池电量百分比，范围为 0-100 */
 } batt_volt_percent_map_t;
 
-// 正常状态LED控制结构体，包含定时器、电池状态和计数器
-extern batt_led_ctrl_t g_batt_led_ctrl;
-
-// 充电状态LED控制结构体，包含定时器、充电电池状态和计数器
-extern chg_led_ctrl_t g_chg_led_ctrl;
+// LED控制上下文结构体, 用于存储LED控制相关的状态信息
+typedef struct
+{
+  uint8_t led_status;                // LED控制标志位
+  led_mode_t active_mode;            // 当前生效模式
+  uint8_t led_count;                 // LED计数器
+} led_ctrl_ctx_t;
 
 // 电源状态，初始值为未连接
 extern my_chg_state_t g_charg_state;
@@ -76,15 +71,6 @@ int ntc_read_raw(int16_t *raw);
 int batt_adc_init(void);
 void batt_enable(bool on);
 int batt_gpio_init(void);
-
-/*********************************************************************
-**函数名称:  show_battary
-**入口参数:  无
-**出口参数:  无
-**函数功能:  显示电池状态
-**返 回 值:  无
-*********************************************************************/
-void my_battery_show(void);
 
 /*********************************************************************
 **函数名称:  my_battery_update_state
@@ -136,5 +122,46 @@ int8_t get_show_percent(void);
 **函数功能:  获取当前充电状态引脚电平
 *********************************************************************/
 int get_charge_state_level(void);
+
+/*********************************************************************
+**函数名称:  open_led_timer
+**入口参数:  timer_ms: 定时器周期时间，单位毫秒
+**出口参数:  无
+**函数功能:  打开LED控制开关，用于显示指示灯状态
+*********************************************************************/
+void open_led_timer(uint32_t timer_ms);
+
+/*********************************************************************
+**函数名称:  my_led_ctrl_mode
+**入口参数:  无
+**出口参数:  无
+**函数功能:  控制LED模式
+*********************************************************************/
+void my_led_ctrl_mode(void);
+
+/*********************************************************************
+**函数名称:  led_enable
+**入口参数:  on: true=使能，false=禁用
+**出口参数:  无
+**函数功能:  使能LED
+*********************************************************************/
+void led_enable(bool on);
+
+/*********************************************************************
+**函数名称:  led_set_mode
+**入口参数:  mode: LED模式
+** on: 是否开启
+**出口参数:  无
+**函数功能:  设置LED模式
+*********************************************************************/
+void led_set_mode(led_mode_t mode, bool on);
+
+/*********************************************************************
+**函数名称:  led_get_enable
+**入口参数:  无
+**出口参数:  LED使能标志
+**函数功能:  获取LED使能标志
+*********************************************************************/
+bool led_get_enable(void);
 
 #endif

@@ -172,6 +172,10 @@ typedef enum
     MY_TIMER_BLUETOOTH_KEY,   // 蓝牙按键定时器
     MY_TIMER_BLUETOOTH_ADV,   // BLE连接广播定时器
 
+    // LED 控制定时器
+    MY_TIMER_LED_ENABLE,           // LED使能定时器
+    MY_TIMER_LED_BLINK,            // LED闪烁定时器
+
     // G-Sensor 专用定时器
     MY_TIMER_IMU_INT_DITHER,      // IMU 中断去抖定时器
     MY_TIMER_GSENSOR_STATE_CHECK, // 运动状态检查定时器
@@ -236,6 +240,9 @@ typedef enum
     MY_MSG_CTRL_TEMP_TIMER,            /* 温湿度定时上传触发消息 */
     MY_MSG_CTRL_PATM_RELOAD,           /* 气压定时器配置更新消息 */
     MY_MSG_CTRL_TEMP_RELOAD,           /* 温湿度定时器配置更新消息 */
+    MY_MSG_LED_CTRL_MODE,              /* LED 控制 */
+    MY_MSG_LED_ENABLE,                 /* LED使能 */
+    MY_MSG_LED_DISABLE,                /* LED禁用 */
 
     /* BLE 处理程序消息 */
     MY_MSG_BLE_RX,

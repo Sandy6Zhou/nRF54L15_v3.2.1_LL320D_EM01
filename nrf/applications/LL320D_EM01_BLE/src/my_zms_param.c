@@ -168,7 +168,7 @@ const bluetooth_config_t gDefaultBluetoothConfig =
     .bluetooth_sw = 0,                   /* 默认关闭 */
     .bluetooth_a = 5,                    /* 默认5 */
     .bluetooth_b = 2,                    /* 默认2 min */
-    .bluetooth_flag = 0,                 /* 默认未携带参数 */
+    .bluetooth_flag = 1,                 /* 默认未携带参数 */
 };
 
 const tag_config_t gDefaultTagConfig =
@@ -181,7 +181,7 @@ const tag_config_t gDefaultTagConfig =
 const led_config_t gDefaultLedConfig =
 {
     .flag = FLAG_VALID,
-    .led_display = 0,                  /* 默认关闭 */
+    .led_display = 1,                  /* 默认模式1 */
 };
 
 const ltint_config_t gDefaultLtintConfig =

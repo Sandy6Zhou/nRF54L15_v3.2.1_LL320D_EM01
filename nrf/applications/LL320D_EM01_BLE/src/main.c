@@ -236,9 +236,9 @@ int my_start_timer(int timerId, uint32_t ms, bool isPeriod, TIMER_FUN timer_fun)
 **入口参数:  timerId    --  定时器ID
 **出口参数:  无
 **函数功能:  检查指定定时器是否正在运行
-**返 回 值:  true 表示正在运行，false 表示未运行或不存在
+**返 回 值:  剩余时间（单位：毫秒）
 *********************************************************************/
-bool my_time_is_run(int timerId)
+uint32_t my_time_is_run(int timerId)
 {
     if (timerId < 0 || timerId >= MY_TIMER_MAX_ID)
     {
@@ -251,7 +251,7 @@ bool my_time_is_run(int timerId)
     }
 
     /* 如果剩余时间大于 0，说明定时器正在运行 */
-    return (k_timer_remaining_get(&s_my_timer_info[timerId]) > 0);
+    return k_timer_remaining_get(&s_my_timer_info[timerId]);
 }
 
 /*********************************************************************
@@ -1028,7 +1028,7 @@ int main(void)
             case MY_MSG_CTRL_KEY_SHORT_PRESS:
                 MY_LOG_INF("KEY EVENT: Short press detected");
                 /* 短按唤醒后，显示电池状态，LED显示,蓝牙广播*/
-                my_battery_show();
+                open_led_timer(5000);
                 my_bluetooth_key_process();
                 break;
 

@@ -1908,10 +1908,14 @@ void send_bt_info_command(void)
 *********************************************************************/
 void send_led_command(void)
 {
+    char send_buf[10] = {0};
+
+    snprintf(send_buf, sizeof(send_buf), "%d", gConfigParam.led_config.led_display);
+
     #if RETRANSMIT_CHECK_ENABLED
-        lte_send_cmd_with_retry("LED", gConfigParam.led_config.led_display == 0 ? "OFF" : "ON");
+        lte_send_cmd_with_retry("LED", send_buf);
     #else
-        lte_send_command("LED", gConfigParam.led_config.led_display == 0 ? "OFF" : "ON");
+        lte_send_command("LED", send_buf);
     #endif
 }
 
