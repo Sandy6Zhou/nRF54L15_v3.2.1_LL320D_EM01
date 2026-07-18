@@ -15,6 +15,16 @@
 #define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260717"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.07.17
+** 作    者:       周森达 (zhousenda@jimiiot.com)
+** 修改内容:        优化LTE UART发送唤醒机制:
+                   1)新增2.5秒发送唤醒窗口，窗口内跳过冗余唤醒字节发送
+                   2)修复GPIO唤醒ISR竞态问题，新增wakeup_pending去抖动标志
+                   3)优化空闲定时器刷新策略及断电清理逻辑
+***/
+
+// #define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260717"
+/* 软件版本:        V1.0
+** 完成日期:        2026.07.17
 ** 作    者:       曹阳 (caoyang@jimiiot.com)
 ** 修改内容:        1.LED控制指令参数从字符串（ON/OFF）改为数字（0/1/2）
 **                 2.LED配置结构体新增led_sw硬件开关字段，led_display从开关标志扩展为三种模式选择（0-关闭/1-按键显示/2-常亮显示）

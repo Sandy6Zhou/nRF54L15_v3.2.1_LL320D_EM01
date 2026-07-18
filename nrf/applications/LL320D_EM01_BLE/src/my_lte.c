@@ -23,6 +23,8 @@
 
 // LTE UART 单次发送最大等待超时
 #define LTE_UART_TX_WAIT_MS         200
+// LTE 发送唤醒窗口：2.5秒内再次发送无需重复发送唤醒字节
+#define LTE_UART_SEND_WAKEUP_WINDOW_MS 2500
 // LTE UART 空闲挂起超时：3秒无收发自动进入低功耗挂起态
 #define LTE_UART_IDLE_TIMEOUT_MS    3000
 // LTE UART 调试模式控制：1=默认调试模式，不挂起UART；0=启用挂起/唤醒机制
@@ -93,9 +95,11 @@ static struct k_timer s_retrans_check_timer;
 // LTE UART 空闲挂起定时器（3秒无收发自动挂起UART）
 typedef struct
 {
-    struct k_timer idle_timer;  // 空闲定时器：超时后触发 UART 挂起以节省功耗
-    bool active;                // UART 是否处于活跃态（true=已启用RX，false=已挂起）
-    bool tx_busy;               // UART 是否正在发送数据（true=发送中，false=空闲）
+    struct k_timer idle_timer;                  // 空闲定时器：超时后触发 UART 挂起以节省功耗
+    int64_t send_wakeup_expire_timestamp_ms;    // 发送唤醒窗口到期单调时间戳（毫秒）
+    bool active;                                // UART 是否处于活跃态（true=已启用RX，false=已挂起）
+    bool tx_busy;                               // UART 是否正在发送数据（true=发送中，false=空闲）
+    volatile bool wakeup_pending;               // 唤醒消息是否已投递，避免GPIO抖动重复塞消息
 } lte_uart_ctx_t;
 
 static lte_uart_ctx_t s_lte_uart_ctx = { 0 };
@@ -267,6 +271,8 @@ static int lte_pm_init(void)
 {
     s_lte_uart_ctx.active = false;
     s_lte_uart_ctx.tx_busy = false;
+    s_lte_uart_ctx.wakeup_pending = false;
+    s_lte_uart_ctx.send_wakeup_expire_timestamp_ms = 0;
     k_timer_init(&s_lte_uart_ctx.idle_timer, lte_uart_idle_timer_handler, NULL);
     return 0;
 }
@@ -419,6 +425,36 @@ static void lte_uart_activity_kick(void)
 }
 
 /********************************************************************
+**函数名称:  lte_uart_send_wakeup_window_kick
+**入口参数:  无
+**出口参数:  无
+**函数功能:  刷新LTE发送唤醒窗口，2.5秒内再次发送无需重复发送唤醒字节
+**返 回 值:  无
+*********************************************************************/
+static void lte_uart_send_wakeup_window_kick(void)
+{
+    s_lte_uart_ctx.send_wakeup_expire_timestamp_ms =
+        k_uptime_get() + LTE_UART_SEND_WAKEUP_WINDOW_MS;
+}
+
+/********************************************************************
+**函数名称:  lte_uart_need_send_wakeup
+**入口参数:  无
+**出口参数:  无
+**函数功能:  判断LTE发送前是否需要发送唤醒字节
+**返 回 值:  true  ---        发送唤醒窗口已到期，需要发送唤醒字节
+**           false ---        发送唤醒窗口未到期，无需发送唤醒字节
+*********************************************************************/
+static bool lte_uart_need_send_wakeup(void)
+{
+    int64_t current_timestamp_ms;
+
+    current_timestamp_ms = k_uptime_get();
+
+    return (current_timestamp_ms >= s_lte_uart_ctx.send_wakeup_expire_timestamp_ms);
+}
+
+/********************************************************************
 **函数名称:  lte_wake_pin_isr
 **入口参数:  port     ---        GPIO端口
 **           cb       ---        GPIO回调结构体
@@ -438,9 +474,10 @@ static void lte_wake_pin_isr(const struct device *port, struct gpio_callback *cb
     return;
 #endif
 
-    // 避免频繁发消息到LTE线程
-    if (!s_lte_uart_ctx.active)
+    // GPIO抖动或短时间重复触发时，只保留一个待处理唤醒消息
+    if (!s_lte_uart_ctx.wakeup_pending)
     {
+        s_lte_uart_ctx.wakeup_pending = true;
         my_send_msg(MOD_LTE, MOD_LTE, MY_MSG_LTE_WAKEUP);
     }
 }
@@ -1092,6 +1129,7 @@ static void my_lte_pwroff_handle(void)
     }
 
     k_timer_stop(&s_lte_uart_ctx.idle_timer);
+    s_lte_uart_ctx.send_wakeup_expire_timestamp_ms = 0;
 
     // 若 UART 正在发送，利用信号量等待发送完成（中断回调直接释放）
     if (s_lte_uart_ctx.tx_busy)
@@ -1110,6 +1148,7 @@ static void my_lte_pwroff_handle(void)
 
     // 强制清理状态，防止异常场景下信号量或标志位未复位
     s_lte_uart_ctx.tx_busy = false;
+    s_lte_uart_ctx.wakeup_pending = false;
     k_sem_give(&s_TxDoneSem);
     my_rb_clear(&s_lte_rb);
     my_lte_msg_queue_clear();
@@ -1261,6 +1300,7 @@ int my_lte_uart_send(const uint8_t *data, uint16_t len)
     static uint8_t wake_byte[3] = {0xAA, 0x0D, 0x0A};  // 唤醒字节
     static uint8_t s_sendDataBuf[UART_TX_BUFFER_SIZE] = {0};
     int ret = 0;
+    bool need_send_wakeup = false;
 #if 0
     if (len == 0 || data == NULL)
     {
@@ -1268,7 +1308,10 @@ int my_lte_uart_send(const uint8_t *data, uint16_t len)
     }
 #endif
 
-    if (!g_bLteReady) return -1;
+    if (!g_bLteReady)
+    {
+        return -1;
+    }
 
     if (len > UART_TX_BUFFER_SIZE)
     {
@@ -1281,7 +1324,7 @@ int my_lte_uart_send(const uint8_t *data, uint16_t len)
         return -1;
     }
 
-    // 刷新LTE UART活跃定时器，延迟挂起以维持通信
+    // 开始发送数据前刷新本端UART空闲计时，避免在等待发送完成期间定时器超时导致UART被挂起
     lte_uart_activity_kick();
 
     // 等待上一次传输完成，增加等待超时避免异常状态下永久阻塞
@@ -1292,27 +1335,36 @@ int my_lte_uart_send(const uint8_t *data, uint16_t len)
     }
 
     s_lte_uart_ctx.tx_busy = true;
+    // 2.5秒窗口内再次发送，默认认为4G串口仍处于唤醒态，无需重复发送唤醒字节
+    need_send_wakeup = lte_uart_need_send_wakeup();
 
-    // 发送唤醒字节：如果4G在休眠状态，这个字节会将其唤醒
-    ret = uart_tx(lte_uart_dev, wake_byte, 3, SYS_FOREVER_MS);
-    if (ret != 0)
+    if (need_send_wakeup)
     {
-        s_lte_uart_ctx.tx_busy = false;
-        k_sem_give(&s_TxDoneSem);
-        return ret;
+        // 发送唤醒字节：2.5秒窗口超时后再次发送需先唤醒4G串口
+        ret = uart_tx(lte_uart_dev, wake_byte, 3, SYS_FOREVER_MS);
+        if (ret != 0)
+        {
+            s_lte_uart_ctx.tx_busy = false;
+            k_sem_give(&s_TxDoneSem);
+            return ret;
+        }
+
+        // 等待唤醒字节发送完成，增加等待超时避免异常状态下永久阻塞
+        ret = k_sem_take(&s_TxDoneSem, K_MSEC(LTE_UART_TX_WAIT_MS));
+        if (ret != 0)
+        {
+            s_lte_uart_ctx.tx_busy = false;
+            k_sem_give(&s_TxDoneSem);
+            return ret;
+        }
+
+        // TODO 唤醒时间仅需几百微秒，几乎不影响后续数据传输，待实际测试验证，暂定等待1ms
+        k_sleep(K_MSEC(1));
     }
 
-    // 等待唤醒字节发送完成，增加等待超时避免异常状态下永久阻塞
-    ret = k_sem_take(&s_TxDoneSem, K_MSEC(LTE_UART_TX_WAIT_MS));
-    if (ret != 0)
-    {
-        s_lte_uart_ctx.tx_busy = false;
-        k_sem_give(&s_TxDoneSem);
-        return ret;
-    }
+    // 无论本次是否发送唤醒字节，只要成功进入发送流程，就刷新2.5秒唤醒窗口
+    lte_uart_send_wakeup_window_kick();
 
-    // TODO 唤醒时间仅需几百微秒，几乎不影响后续数据传输，待实际测试验证，暂定等待1ms
-    k_sleep(K_MSEC(1));
     // ! uart_tx发送是异步处理,传进去的data需要是静态的才能保证数据不丢失或者执行完uart_tx延时一会确保数据传输完.
     memcpy(s_sendDataBuf, data, len);
 
@@ -2992,8 +3044,8 @@ static void my_lte_task(void *p1, void *p2, void *p3)
             /* TODO: 添加 LTE 相关的消息处理逻辑 */
             case MY_MSG_LTE_TX_DONE:
             case MY_MSG_LTE_TX_ABORTED:
+                // 发送完成后仅清发送忙状态，不额外延长3秒空闲挂起时间
                 s_lte_uart_ctx.tx_busy = false;
-                lte_uart_activity_kick();
                 break;
 
             case MY_MSG_LTE_UART_IDLE:
@@ -3020,6 +3072,10 @@ static void my_lte_task(void *p1, void *p2, void *p3)
                 static uint8_t read_buf[128];
                 int len = 0;
 
+                // 在LTE线程上下文刷新唤醒窗口时间戳
+                lte_uart_activity_kick();
+                lte_uart_send_wakeup_window_kick();
+
                 while (1)
                 {
                     memset(read_buf, 0, sizeof(read_buf));
@@ -3035,7 +3091,6 @@ static void my_lte_task(void *p1, void *p2, void *p3)
                         break;
                     }
                 }
-                lte_uart_activity_kick();
             }
                 break;
 
@@ -3080,7 +3135,15 @@ static void my_lte_task(void *p1, void *p2, void *p3)
 
             case MY_MSG_LTE_WAKEUP:
                 MY_LOG_INF("LTE wakeup pin triggered, resuming UART");
-                lte_uart_ensure_active();
+                // GPIO唤醒消息已进入线程处理，清除待处理标志，允许后续新的唤醒中断再次投递消息
+                s_lte_uart_ctx.wakeup_pending = false;
+                if (lte_uart_ensure_active() == 0)
+                {
+                    // 4G侧已主动拉唤醒引脚，说明串口即将收发数据，刷新本端3秒空闲挂起定时器
+                    lte_uart_activity_kick();
+                    // 同步刷新2.5秒发送唤醒窗口，若蓝牙侧紧接着回复4G，可避免重复发送唤醒字节
+                    lte_uart_send_wakeup_window_kick();
+                }
                 break;
 
             default:
