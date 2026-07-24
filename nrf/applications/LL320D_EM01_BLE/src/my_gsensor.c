@@ -321,14 +321,17 @@ void get_motion_status(void)
 
     state = my_gsensor_get_state();
 
-    // 发送状态切换告警
-    if (state == STATE_STATIC)
+    if (gConfigParam.motdetalm_config.motdetalm_sw)
     {
-        send_alarm_message_to_lte(ALARM_MOVE_START, NULL);
-    }
-    else
-    {
-        send_alarm_message_to_lte(ALARM_MOVE_STOP, NULL);
+        // 发送状态切换告警
+        if (state == STATE_STATIC)
+        {
+            send_alarm_message_to_lte(ALARM_MOVE_START, NULL);
+        }
+        else
+        {
+            send_alarm_message_to_lte(ALARM_MOVE_STOP, NULL);
+        }
     }
 
     // 应用LTE唤醒策略

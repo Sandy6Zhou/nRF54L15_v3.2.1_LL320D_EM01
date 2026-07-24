@@ -162,6 +162,7 @@ void send_alarm_message_to_lte(alarm_type_t alarm_type, const char *additional_i
             break;
 
         case ALARM_REMOVE:               // 拆卸告警
+            rpt = gConfigParam.pullalm_config.pullalm_mode;
             break;
 
         case ALARM_CASE_OPEN:            // 拆壳告警
@@ -170,23 +171,22 @@ void send_alarm_message_to_lte(alarm_type_t alarm_type, const char *additional_i
 
         case ALARM_MOVE_START:           // 开始运动告警
         case ALARM_MOVE_STOP:            // 停止运动告警
+            rpt = gConfigParam.motdetalm_config.motdetalm_report_type;
             break;
 
         case ALARM_BLE_CONNECTED:        // 蓝牙连接成功告警
-            break;
         case ALARM_BLE_CONNECT_ERR:      // 蓝牙连接异常告警
+            rpt = gConfigParam.btconnect_config.btconnect_report;
             break;
         case ALARM_HIGH_PATM:            // 高压告警
-            break;
         case ALARM_LOW_PATM:             // 低压告警
+            rpt = gConfigParam.patalm_config.patalm_report_type;
             break;
         case ALARM_HIGH_TEMP:            // 高温告警
-            break;
         case ALARM_LOW_TEMP:             // 低温告警
-            break;
         case ALARM_HIGH_HUMI:            // 高湿告警
-            break;
         case ALARM_LOW_HUMI:             // 低湿告警
+            rpt = gConfigParam.tempalm_config.tempalm_report_type;
             break;
 
         default:
@@ -1353,6 +1353,10 @@ static void my_ctrl_task(void *p1, void *p2, void *p3)
             case MY_MSG_CTRL_LIGHT_PULL_SENSOR_BRIGHT:
                 MY_LOG_INF("Light pull sensor detected: BRIGHT");
                 // TODO: 上报拆卸报警
+                if(gConfigParam.pullalm_config.pullalm_sw)
+                {
+                    send_alarm_message_to_lte(ALARM_REMOVE, NULL);
+                }
                 break;
 
             case MY_MSG_CTRL_LIGHT_PULL_SENSOR_DARK:

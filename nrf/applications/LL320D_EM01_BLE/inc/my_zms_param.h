@@ -53,13 +53,18 @@ typedef enum                           // 参数ID定义
     ZMS_ID_BLE_TX_POWER,               // 蓝牙发射功率参数ID
     ZMS_ID_BLE_LOG_CONFIG,             // 蓝牙日志配置参数ID
     ZMS_ID_WORK_MODE_CONFIG,           // 设备工作模式配置参数ID
-    ZMS_ID_REM_ALM_CONFIG,             // 防拆报警配置参数ID
-    ZMS_ID_MOT_DET_CONFIG,             // 运动检测报警配置参数ID
+    ZMS_ID_REM_ALM_CONFIG,             // 防拆壳报警配置参数ID
+    ZMS_ID_PULL_ALM_CONFIG,            // 防拆卸报警配置参数ID
+    ZMS_ID_PATMALM_CONFIG,             // 气压报警配置参数ID
+    ZMS_ID_TEMPALM_CONFIG,             // 温湿度报警配置参数ID
+    ZMS_ID_MOT_DET_CONFIG,             // 运动检测配置参数ID
+    ZMS_ID_MOTDETALM_CONFIG,           // 运动检测报警报警配置参数ID
     ZMS_ID_BAT_LEVEL_CONFIG,           // 电池状态和充电状态报警配置参数ID
     ZMS_ID_STARTR_CONFIG,              // 数据记录功能配置参数ID
     ZMS_ID_PWRLIMIT_CONFIG,            // 限制按键关机配置参数ID
     ZMS_ID_BT_UPDATA_CONFIG,           // 蓝牙数据上传配置参数ID
     ZMS_ID_BLUETOOTH_CONFIG,           // 蓝牙开启配置参数ID
+    ZMS_ID_BTCONNECT_CONFIG,           // 蓝牙连接配置参数ID
     ZMS_ID_TAG_CONFIG,                 // Tag定位功能配置参数ID
     ZMS_ID_LED_CONFIG,                 // LED显示配置参数ID
     ZMS_ID_LTINT_CONFIG,               // 光感过滤配置参数ID
@@ -133,12 +138,48 @@ typedef struct                              // 存储的防拆报警配置参数
     uint8_t remalm_mode;                    // 报警上报方式: 0-不上报, 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
 } remalm_config_t;
 
+typedef struct                              // 存储的防拆卸报警配置参数
+{
+    uint8_t flag;                           // 参数有效标志
+    uint8_t pullalm_sw;                     // 防拆卸报警开关: 0-OFF, 1-ON
+    uint8_t pullalm_mode;                   // 报警上报方式: 0-不上报, 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
+} pullalm_config_t;
+
+typedef struct                              // 存储的气压报警配置参数
+{
+    uint8_t flag;                          // 参数有效标志
+    uint8_t patalm_sw;                     // 气压报警开关: 0-OFF, 1-ON
+    uint8_t patalm_low_threshold;          // 低压报警阈值: 30-250 (单位：kPa,设置为255表示低压不报警)
+    uint8_t patalm_high_threshold;         // 高压报警阈值: 30-250 (单位：kPa,设置为255表示高压不报警)
+    uint8_t patalm_report_type;            // 气压报警上报方式: 0-不上报, 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
+    uint8_t patalm_report_interval;        // 重复气压报警上报时间间隔: 0-60 (单位：分钟,设置为0表示不重复上报)
+} patalm_config_t;
+
+typedef struct                              // 存储的温湿度报警配置参数
+{
+    uint8_t flag;                           // 参数有效标志
+    uint8_t tempalm_sw;                     // 温报警开关: 0-OFF, 1-ON
+    int temp_low_threshold;                 // 低温报警阈值: -30 - 100 (单位：℃,设置为255表示低温不报警)
+    int temp_high_threshold;                // 高温报警阈值: -30 - 100 (单位：℃,设置为255表示高温不报警)
+    uint8_t humi_low_threshold;             // 低湿度报警阈值: 0-100 (单位：%,设置为255表示低湿度不报警)
+    uint8_t humi_high_threshold;            // 高湿度报警阈值: 0-100 (单位：%,设置为255表示高湿度不报警)
+    uint8_t tempalm_report_type;            // 温湿度报警上报方式: 0-不上报, 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
+    uint8_t tempalm_report_interval;        // 重复温湿度报警上报时间间隔: 0-60 (单位：分钟,设置为0表示不重复上报)
+} tempalm_config_t;
+
 typedef struct                              // 存储的运动检测报警配置参数
 {
     uint8_t flag;                           // 参数有效标志
     uint16_t motdet_vibration;              // 运动检测震动次数 (1-500)
     uint16_t motdet_duration;               // 运动检测判断时间 (1-3600s)
 } mot_det_config_t;
+
+typedef struct                              // 存储的运动检测报警报警配置参数
+{
+    uint8_t flag;                           // 参数有效标志
+    uint8_t motdetalm_sw;                   // 运动检测报警报警开关: 0-OFF, 1-ON
+    uint8_t motdetalm_report_type;            // 报警上报方式: 0-不上报, 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
+} motdetalm_config_t;
 
 typedef struct                              // 存储的电池状态和充电状态报警配置参数
 {
@@ -189,6 +230,14 @@ typedef struct                              // 存储的蓝牙开启配置参数
     uint8_t bluetooth_b;                    // 蓝牙开启B参数: 0~30min 开启广播时间间隔
     uint8_t bluetooth_flag;                 // 指令是否携带参数: 0-未携带, 1-携带
 } bluetooth_config_t;
+
+typedef struct                              // 存储的蓝牙连接配置参数
+{
+    uint8_t flag;                           // 参数有效标志
+    uint8_t btconnect_sw;                   // 蓝牙连接开关: 0-OFF, 1-ON
+    uint16_t btconnect_interval;            // 连接间隔: 300-43200s
+    uint8_t btconnect_report;               // 连接上报方式: 0-不上报, 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
+} btconnect_config_t;
 
 typedef struct                              // 存储的Tag定位功能配置参数
 {
@@ -248,14 +297,19 @@ typedef struct
     ble_tx_power_t              ble_tx_power;               // 蓝牙发射功率
     ble_log_config_t            ble_log_config;             // 蓝牙日志配置
     work_mode_config_t          device_workmode_config;     // 设备工作模式配置
-    remalm_config_t             remalm_config;              // 防拆报警配置
+    remalm_config_t             remalm_config;              // 防拆壳报警配置
+    pullalm_config_t            pullalm_config;             // 防拆卸报警配置
+    patalm_config_t             patalm_config;              // 气压报警配置
+    tempalm_config_t            tempalm_config;             // 温湿度报警配置
     mot_det_config_t            motdet_config;              // 运动检测报警配置
+    motdetalm_config_t          motdetalm_config;           // 运动检测报警报警配置
     bat_level_config_t          batlevel_config;            // 电池状态和充电状态报警配置
     startr_config_t             startr_config;              // 数据记录功能配置
     pwrlimit_config_t           pwrlimit_config;            // 限制按键关机配置
     lprunning_config_t          lprunning_config;           // 低功耗运行配置
     bt_updata_config_t          bt_updata_config;           // 蓝牙数据上传配置
     bluetooth_config_t          bluetooth_config;           // 蓝牙开启配置
+    btconnect_config_t          btconnect_config;           // 蓝牙连接配置
     tag_config_t                tag_config;                 // Tag定位功能配置
     led_config_t                led_config;                 // LED显示配置
     ltint_config_t              ltint_config;               // 光感过滤配置

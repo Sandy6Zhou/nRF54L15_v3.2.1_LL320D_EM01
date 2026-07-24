@@ -114,15 +114,51 @@ const work_mode_config_t gDefaultWorkModeConfig =
 const remalm_config_t gDefaultRemAlmConfig =
 {
     .flag = FLAG_VALID,
-    .remalm_sw = 0,                    /* 默认关闭 */
-    .remalm_mode = REPORT_MODE_GPRS,                  /* 默认GPRS */
+    .remalm_sw = 0,                             /* 默认关闭 */
+    .remalm_mode = REPORT_MODE_GPRS,            /* 默认GPRS */
+};
+
+const pullalm_config_t gDefaultPullAlmConfig =
+{
+    .flag = FLAG_VALID,
+    .pullalm_sw = 0,                             /* 默认关闭 */
+    .pullalm_mode = REPORT_MODE_GPRS,            /* 默认GPRS */
+};
+
+const patalm_config_t gDefaultPatAlmConfig =
+{
+    .flag = FLAG_VALID,
+    .patalm_sw = 0,                             /* 默认关闭 */
+    .patalm_low_threshold = 255,                /* 默认低压不报警 */
+    .patalm_high_threshold = 255,               /* 默认高压不报警 */
+    .patalm_report_type = REPORT_MODE_GPRS,     /* 默认GPRS */
+    .patalm_report_interval = 0,                /* 默认不重复上报 */
+};
+
+const tempalm_config_t gDefaultTempAlmConfig =
+{
+    .flag = FLAG_VALID,
+    .tempalm_sw = 0,                             /* 默认关闭 */
+    .temp_low_threshold = 255,                   /* 默认低温不报警 */
+    .temp_high_threshold = 255,                  /* 默认高温不报警 */
+    .humi_low_threshold = 255,                   /* 默认低湿度不报警 */
+    .humi_high_threshold = 255,                  /* 默认高湿度不报警 */
+    .tempalm_report_type = REPORT_MODE_GPRS,     /* 默认GPRS */
+    .tempalm_report_interval = 0,                /* 默认不重复上报 */
 };
 
 const mot_det_config_t gDefaultMotDetConfig =
 {
     .flag = FLAG_VALID,
     .motdet_vibration = 5,           /* 默认5次 */
-    .motdet_duration = 10,      /* 默认10秒 */
+    .motdet_duration = 10,           /* 默认10秒 */
+};
+
+const motdetalm_config_t gDefaultMotDetAlmConfig =
+{
+    .flag = FLAG_VALID,
+    .motdetalm_sw = 1,                                    /* 默认开启 */
+    .motdetalm_report_type = REPORT_MODE_GPRS,            /* 默认GPRS */
 };
 
 const bat_level_config_t gDefaultBatlevelConfig =
@@ -173,6 +209,14 @@ const bluetooth_config_t gDefaultBluetoothConfig =
     .bluetooth_a = 5,                    /* 默认5 */
     .bluetooth_b = 2,                    /* 默认2 min */
     .bluetooth_flag = 1,                 /* 默认未携带参数 */
+};
+
+const btconnect_config_t gDefaultBtconnectConfig =
+{
+    .flag = FLAG_VALID,
+    .btconnect_sw = 1,                 /* 默认开启 */
+    .btconnect_interval = 1800,        /* 默认1800秒 */
+    .btconnect_report = 1,             /* 默认GPRS */
 };
 
 const tag_config_t gDefaultTagConfig =
@@ -455,6 +499,67 @@ void my_param_load_config(void)
                     gConfigParam.remalm_config.remalm_mode, gConfigParam.remalm_config.remalm_sw);
     }
 
+    //--------Load Pull Alarm Config ---------------------
+    length = sizeof(pullalm_config_t);
+    ret = my_user_data_read(ZMS_ID_PULL_ALM_CONFIG, &gConfigParam.pullalm_config, length);
+    if (ret != length)
+    {
+        memcpy(&gConfigParam.pullalm_config, &gDefaultPullAlmConfig, length);
+        MY_LOG_INF("Pull alarm config not found. Use default:pullalm_mode(%d), pullalm_sw(%d)",
+                    gConfigParam.pullalm_config.pullalm_mode, gConfigParam.pullalm_config.pullalm_sw);
+    }
+    else
+    {
+        MY_LOG_INF("Pull alarm config loaded: pullalm_mode(%d), pullalm_sw(%d)",
+                    gConfigParam.pullalm_config.pullalm_mode, gConfigParam.pullalm_config.pullalm_sw);
+    }
+
+    //--------Load Patalm Config ---------------------
+    length = sizeof(patalm_config_t);
+    ret = my_user_data_read(ZMS_ID_PATMALM_CONFIG, &gConfigParam.patalm_config, length);
+    if (ret != length)
+    {
+        memcpy(&gConfigParam.patalm_config, &gDefaultPatAlmConfig, length);
+        MY_LOG_INF("Pat alarm config not found. Use default:patalm_low_threshold(%d), patalm_high_threshold(%d), patalm_report_type(%d), patalm_report_interval(%d)",
+                    gConfigParam.patalm_config.patalm_low_threshold,
+                    gConfigParam.patalm_config.patalm_high_threshold,
+                    gConfigParam.patalm_config.patalm_report_type,
+                    gConfigParam.patalm_config.patalm_report_interval);
+    }
+    else
+    {
+        MY_LOG_INF("Pat alarm config loaded: patalm_low_threshold(%d), patalm_high_threshold(%d), patalm_report_type(%d), patalm_report_interval(%d)",
+                    gConfigParam.patalm_config.patalm_low_threshold,
+                    gConfigParam.patalm_config.patalm_high_threshold,
+                    gConfigParam.patalm_config.patalm_report_type,
+                    gConfigParam.patalm_config.patalm_report_interval);
+    }
+
+    //--------Load Temp Alm Config ---------------------
+    length = sizeof(tempalm_config_t);
+    ret = my_user_data_read(ZMS_ID_TEMPALM_CONFIG, &gConfigParam.tempalm_config, length);
+    if (ret != length)
+    {
+        memcpy(&gConfigParam.tempalm_config, &gDefaultTempAlmConfig, length);
+        MY_LOG_INF("Temp alarm config not found. Use default:temp_low_threshold(%d), temp_high_threshold(%d), humi_low_threshold(%d), humi_high_threshold(%d), tempalm_report_type(%d), tempalm_report_interval(%d)",
+                    gConfigParam.tempalm_config.temp_low_threshold,
+                    gConfigParam.tempalm_config.temp_high_threshold,
+                    gConfigParam.tempalm_config.humi_low_threshold,
+                    gConfigParam.tempalm_config.humi_high_threshold,
+                    gConfigParam.tempalm_config.tempalm_report_type,
+                    gConfigParam.tempalm_config.tempalm_report_interval);
+    }
+    else
+    {
+        MY_LOG_INF("Temp alarm config loaded: temp_low_threshold(%d), temp_high_threshold(%d), humi_low_threshold(%d), humi_high_threshold(%d), tempalm_report_type(%d), tempalm_report_interval(%d)",
+                    gConfigParam.tempalm_config.temp_low_threshold,
+                    gConfigParam.tempalm_config.temp_high_threshold,
+                    gConfigParam.tempalm_config.humi_low_threshold,
+                    gConfigParam.tempalm_config.humi_high_threshold,
+                    gConfigParam.tempalm_config.tempalm_report_type,
+                    gConfigParam.tempalm_config.tempalm_report_interval);
+    }
+
     //--------Load Mot Det Config ---------------------
     length = sizeof(mot_det_config_t);
     ret = my_user_data_read(ZMS_ID_MOT_DET_CONFIG, &gConfigParam.motdet_config, length);
@@ -468,6 +573,21 @@ void my_param_load_config(void)
     {
         MY_LOG_INF("Mot det config loaded: motdet_vibration(%d), motdet_duration(%d)",
                     gConfigParam.motdet_config.motdet_vibration, gConfigParam.motdet_config.motdet_duration);
+    }
+
+    //--------Load Mot Det Alm Config ---------------------
+    length = sizeof(motdetalm_config_t);
+    ret = my_user_data_read(ZMS_ID_MOTDETALM_CONFIG, &gConfigParam.motdetalm_config, length);
+    if (ret != length)
+    {
+        memcpy(&gConfigParam.motdetalm_config, &gDefaultMotDetAlmConfig, length);
+        MY_LOG_INF("Mot det alarm config not found. Use default:motdetalm_sw(%d), motdetalm_report_type(%d)",
+                    gConfigParam.motdetalm_config.motdetalm_sw, gConfigParam.motdetalm_config.motdetalm_report_type);
+    }
+    else
+    {
+        MY_LOG_INF("Mot det alarm config loaded: motdetalm_sw(%d), motdetalm_report_type(%d)",
+                    gConfigParam.motdetalm_config.motdetalm_sw, gConfigParam.motdetalm_config.motdetalm_report_type);
     }
 
     //--------Load Batlevel Config ---------------------
@@ -568,6 +688,21 @@ void my_param_load_config(void)
     {
         MY_LOG_INF("Bluetooth config loaded: bluetooth_sw(%d), bluetooth_a(%d), bluetooth_b(%d), bluetooth_flag(%d)",
                     gConfigParam.bluetooth_config.bluetooth_sw, gConfigParam.bluetooth_config.bluetooth_a, gConfigParam.bluetooth_config.bluetooth_b, gConfigParam.bluetooth_config.bluetooth_flag);
+    }
+
+    //--------Load BTCONNECT Config ---------------------
+    length = sizeof(btconnect_config_t);
+    ret = my_user_data_read(ZMS_ID_BTCONNECT_CONFIG, &gConfigParam.btconnect_config, length);
+    if (ret != length)
+    {
+        memcpy(&gConfigParam.btconnect_config, &gDefaultBtconnectConfig, length);
+        MY_LOG_INF("BTCONNECT config not found. Use default:btconnect_sw(%d), btconnect_interval(%d), btconnect_report(%d)",
+                    gConfigParam.btconnect_config.btconnect_sw, gConfigParam.btconnect_config.btconnect_interval, gConfigParam.btconnect_config.btconnect_report);
+    }
+    else
+    {
+        MY_LOG_INF("BTCONNECT config loaded: btconnect_sw(%d), btconnect_interval(%d), btconnect_report(%d)",
+                    gConfigParam.btconnect_config.btconnect_sw, gConfigParam.btconnect_config.btconnect_interval, gConfigParam.btconnect_config.btconnect_report);
     }
 
     //--------Load Tag Config ---------------------

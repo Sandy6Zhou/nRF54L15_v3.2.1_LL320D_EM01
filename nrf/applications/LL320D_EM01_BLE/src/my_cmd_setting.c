@@ -41,7 +41,11 @@ uint8_t g_lte_cmdSource = 0;
 char g_resp_buf[RESP_STRING_LENGTH_MAX];
 
 static int remalm_cmd_handler(at_cmd_t* msg);
+static int pullalm_cmd_handler(at_cmd_t* msg);
+static int patalm_cmd_handler(at_cmd_t* msg);
+static int tempalm_cmd_handler(at_cmd_t* msg);
 static int motdet_cmd_handler(at_cmd_t* msg);
+static int motdetalm_cmd_handler(at_cmd_t* msg);
 static int batlevel_cmd_handler(at_cmd_t* msg);
 static int chargesta_cmd_handler(at_cmd_t* msg);
 static int pwsave_cmd_handler(at_cmd_t* msg);
@@ -53,6 +57,7 @@ static int bt_mac_cmd_handler(at_cmd_t* msg);
 static int bt_crfpwr_cmd_handler(at_cmd_t* msg);
 static int bt_updata_cmd_handler(at_cmd_t* msg);
 static int bluetooth_cmd_handler(at_cmd_t* msg);
+static int btconnect_cmd_handler(at_cmd_t* msg);
 static int tag_cmd_handler(at_cmd_t* msg);
 static int jatag_cmd_handler(at_cmd_t* msg);
 static int jgtag_cmd_handler(at_cmd_t* msg);
@@ -73,7 +78,11 @@ static int temptimer_cmd_handler(at_cmd_t* msg);
 static const at_cmd_attr_t at_cmd_attr_table[] =
 {
     {"REMALM",         remalm_cmd_handler},
+    {"PULLALM",        pullalm_cmd_handler},
+    {"PATMALM",        patalm_cmd_handler},
+    {"TEMPALM",        tempalm_cmd_handler},
     {"MOTDET",         motdet_cmd_handler},
+    {"MOTDETALM",      motdetalm_cmd_handler},
     {"BATLEVEL",       batlevel_cmd_handler},
     {"CHARGESTA",      chargesta_cmd_handler},
     {"PWRSAVE",        pwsave_cmd_handler},
@@ -85,6 +94,7 @@ static const at_cmd_attr_t at_cmd_attr_table[] =
     {"BT_CRFPWR",      bt_crfpwr_cmd_handler},
     {"BT_UPDATA",      bt_updata_cmd_handler},
     {"BLUETOOTH",      bluetooth_cmd_handler},
+    {"BTCONNECT",      btconnect_cmd_handler},
     {"TAG",            tag_cmd_handler},
     {"JATAG",          jatag_cmd_handler},
     {"JGTAG",          jgtag_cmd_handler},
@@ -820,7 +830,460 @@ static int remalm_cmd_handler(at_cmd_t* msg)
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
+}
+
+/********************************************************************
+**函数名称:  pullalm_cmd_handler
+**入口参数:  msg      ---        AT指令结构体指针
+**出口参数:  msg->resp_msg  ---  响应消息
+**           msg->resp_length --- 响应长度
+**函数功能:  处理PULLALM指令：设置设备防拆卸报警功能
+**指令格式:  PULLALM,<SW>,<M>#
+**参数说明:  <SW> - 功能开关: ON/OFF
+**           <M> - 报警上报方式: 0-不上报，1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
+**返 回 值:  BLE数据类型
+*********************************************************************/
+static int pullalm_cmd_handler(at_cmd_t* msg)
+{
+    uint16_t remaining;
+    uint8_t no_count = 0;
+    int m_value;
+    int sw_value;
+
+    remaining = RESP_STRING_LENGTH_MAX;
+
+    //无参数即查询
+    if (msg->parm_count == 0)
+    {
+        // 根据 pullalm_sw 的值选择 "ON" 或 "OFF"
+        const char* state_str = gConfigParam.pullalm_config.pullalm_sw ? "ON" : "OFF";
+
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "%s:%s,%d", msg->parm[0],
+                                    state_str, gConfigParam.pullalm_config.pullalm_mode);
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
+    }
+
+    /* 检查参数数量 */
+    if (msg->parm_count != 2)
+    {
+        LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+        goto param_invalid;
+    }
+
+    /* 解析SW参数 */
+    if (my_strcasecmp(msg->parm[1], "ON") == 0)
+    {
+        sw_value = 1;
+    }
+    else if (my_strcasecmp(msg->parm[1], "OFF") == 0)
+    {
+        sw_value = 0;
+    }
+    else
+    {
+        LOG_INF("%s=>invalid SW param: %s", __func__, msg->parm[1]);
+        goto param_invalid;
+    }
+
+    no_count = string_check_is_number(0, msg->parm[2]);
+    if (no_count == 0 || no_count > 9)
+    {
+        LOG_INF("%s=>invalid M param: %s", __func__, msg->parm[2]);
+        goto param_invalid;
+    }
+
+    /* 解析M参数 */
+    m_value = atoi(msg->parm[2]);
+    if (m_value < 0 || m_value > 3)
+    {
+        LOG_INF("%s=>invalid M param: %s", __func__, msg->parm[2]);
+        goto param_invalid;
+    }
+
+    /* 所有参数验证通过,统一赋值 */
+    gConfigParam.pullalm_config.flag = FLAG_VALID;
+    gConfigParam.pullalm_config.pullalm_sw = (uint8_t)sw_value;
+    gConfigParam.pullalm_config.pullalm_mode = (uint8_t)m_value;
+
+    /* 保存配置 */
+    my_user_data_write(ZMS_ID_PULL_ALM_CONFIG, &gConfigParam.pullalm_config, sizeof(pullalm_config_t));
+
+    LOG_INF("%s=>%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2]);
+
+    /* 生成成功响应 */
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK", msg->parm[0]);
+    LOG_INF("PULLALM: SW=%d, M=%d", gConfigParam.pullalm_config.pullalm_sw, gConfigParam.pullalm_config.pullalm_mode);
+
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
+
+param_invalid:
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
+}
+
+/********************************************************************
+**函数名称:  patalm_cmd_handler
+**入口参数:  msg      ---        AT指令结构体指针
+**出口参数:  msg->resp_msg  ---  响应消息
+**           msg->resp_length --- 响应长度
+**函数功能:  处理PATMALM指令：设置气压报警功能
+**指令格式:  PATMALM,<SW>,<LOW_THRESHOLD>,<HIGH_THRESHOLD>,<REPORT_TYPE>,<REPORT_INTERVAL>#
+**参数说明:  <SW> - 功能开关: ON/OFF
+**           <LOW_THRESHOLD> - 低压报警阈值: 30-250, 255-不报警
+**           <HIGH_THRESHOLD> - 高压报警阈值: 30-250, 255-不报警
+**           <REPORT_TYPE> - 报警上报方式: 0-不上报，1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
+**           <REPORT_INTERVAL> - 重复报警上报间隔: 0-60分钟
+**返 回 值:  BLE数据类型
+*********************************************************************/
+static int patalm_cmd_handler(at_cmd_t* msg)
+{
+    uint16_t remaining;
+    uint8_t no_count = 0;
+    int sw_value;
+    uint8_t low_threshold;
+    uint8_t high_threshold;
+    uint8_t report_type;
+    uint8_t report_interval;
+
+    remaining = RESP_STRING_LENGTH_MAX;
+
+    //无参数即查询
+    if (msg->parm_count == 0)
+    {
+        // 根据 patalm_sw 的值选择 "ON" 或 "OFF"
+        const char* state_str = gConfigParam.patalm_config.patalm_sw ? "ON" : "OFF";
+
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "%s:%s,%d,%d,%d,%d,%d", msg->parm[0],
+                                    state_str,
+                                    gConfigParam.patalm_config.patalm_low_threshold,
+                                    gConfigParam.patalm_config.patalm_high_threshold,
+                                    gConfigParam.patalm_config.patalm_report_type,
+                                    gConfigParam.patalm_config.patalm_report_interval);
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
+    }
+
+    /* 检查参数数量 */
+    if (msg->parm_count != 5)
+    {
+        LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+        goto param_invalid;
+    }
+
+    /* 解析SW参数 */
+    if (my_strcasecmp(msg->parm[1], "ON") == 0)
+    {
+        sw_value = 1;
+    }
+    else if (my_strcasecmp(msg->parm[1], "OFF") == 0)
+    {
+        sw_value = 0;
+    }
+    else
+    {
+        LOG_INF("%s=>invalid SW param: %s", __func__, msg->parm[1]);
+        goto param_invalid;
+    }
+
+    no_count = string_check_is_number(0, msg->parm[2]);
+    if (no_count == 0 || no_count > 9)
+    {
+        LOG_INF("%s=>invalid LOW_THRESHOLD param: %s", __func__, msg->parm[2]);
+        goto param_invalid;
+    }
+
+    /* 解析LOW_THRESHOLD参数 */
+    low_threshold = atoi(msg->parm[2]);
+    if ((low_threshold < 30 || low_threshold > 250) && low_threshold != 255)
+    {
+        LOG_INF("%s=>invalid LOW_THRESHOLD param: %s", __func__, msg->parm[2]);
+        goto param_invalid;
+    }
+
+    no_count = string_check_is_number(0, msg->parm[3]);
+    if (no_count == 0 || no_count > 9)
+    {
+        LOG_INF("%s=>invalid HIGH_THRESHOLD param: %s", __func__, msg->parm[3]);
+        goto param_invalid;
+    }
+
+    /* 解析HIGH_THRESHOLD参数 */
+    high_threshold = atoi(msg->parm[3]);
+    if ((high_threshold < 30 || high_threshold > 250) && high_threshold != 255)
+    {
+        LOG_INF("%s=>invalid HIGH_THRESHOLD param: %s", __func__, msg->parm[3]);
+        goto param_invalid;
+    }
+
+    if (high_threshold < low_threshold && low_threshold != 255)
+    {
+        LOG_INF("The low pressure alarm threshold must be less than the high pressure alarm threshold, except 255.");
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "The low pressure alarm threshold must be less than the high pressure alarm threshold, except 255.");
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
+    }
+
+    no_count = string_check_is_number(0, msg->parm[4]);
+    if (no_count == 0 || no_count > 9)
+    {
+        LOG_INF("%s=>invalid REPORT_TYPE param: %s", __func__, msg->parm[4]);
+        goto param_invalid;
+    }
+
+    /* 解析REPORT_TYPE参数 */
+    report_type = atoi(msg->parm[4]);
+    if (report_type < 0 || report_type > 3)
+    {
+        LOG_INF("%s=>invalid REPORT_TYPE param: %s", __func__, msg->parm[4]);
+        goto param_invalid;
+    }
+
+    no_count = string_check_is_number(0, msg->parm[5]);
+    if (no_count == 0 || no_count > 9)
+    {
+        LOG_INF("%s=>invalid REPORT_INTERVAL param: %s", __func__, msg->parm[5]);
+        goto param_invalid;
+    }
+
+    /* 解析REPORT_INTERVAL参数 */
+    report_interval = atoi(msg->parm[5]);
+    if (report_interval < 0 || report_interval > 60)
+    {
+        LOG_INF("%s=>invalid REPORT_INTERVAL param: %s", __func__, msg->parm[5]);
+        goto param_invalid;
+    }
+
+    /* 所有参数验证通过,统一赋值 */
+    gConfigParam.patalm_config.flag = FLAG_VALID;
+    gConfigParam.patalm_config.patalm_sw = (uint8_t)sw_value;
+    gConfigParam.patalm_config.patalm_low_threshold = (uint8_t)low_threshold;
+    gConfigParam.patalm_config.patalm_high_threshold = (uint8_t)high_threshold;
+    gConfigParam.patalm_config.patalm_report_type = (uint8_t)report_type;
+    gConfigParam.patalm_config.patalm_report_interval = (uint8_t)report_interval;
+
+    /* 保存配置 */
+    my_user_data_write(ZMS_ID_PATMALM_CONFIG, &gConfigParam.patalm_config, sizeof(patalm_config_t));
+
+    LOG_INF("%s=>%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2]);
+
+    /* 生成成功响应 */
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK", msg->parm[0]);
+    LOG_INF("PATMALM: SW=%d, LOW_THRESHOLD=%d, HIGH_THRESHOLD=%d, REPORT_TYPE=%d, REPORT_INTERVAL=%d",
+            gConfigParam.patalm_config.patalm_sw,
+            gConfigParam.patalm_config.patalm_low_threshold,
+            gConfigParam.patalm_config.patalm_high_threshold,
+            gConfigParam.patalm_config.patalm_report_type,
+            gConfigParam.patalm_config.patalm_report_interval);
+
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
+
+param_invalid:
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
+}
+
+/********************************************************************
+**函数名称:  tempalm_cmd_handler
+**入口参数:  msg      ---        AT指令结构体指针
+**出口参数:  msg->resp_msg  ---  响应消息
+**           msg->resp_length --- 响应长度
+**函数功能:  处理TEMPALM指令：设置温湿度报警功能
+**指令格式:  TEMPALM,<SW>,<TEMP_LOW_THRESHOLD>,<TEMP_HIGH_THRESHOLD>,<HUMI_LOW_THRESHOLD>,<HUMI_HIGH_THRESHOLD>,<REPORT_TYPE>,<REPORT_INTERVAL>#
+**参数说明:  <SW> - 功能开关: ON/OFF
+**           <TEMP_LOW_THRESHOLD> - 低温报警阈值: -30~100℃, 255-不报警
+**           <TEMP_HIGH_THRESHOLD> - 高温报警阈值: 30~100℃, 255-不报警
+**           <HUMI_LOW_THRESHOLD> - 低湿度报警阈值: 0-100%, 255-不报警
+**           <HUMI_HIGH_THRESHOLD> - 高湿度报警阈值: 0-100%, 255-不报警
+**           <REPORT_TYPE> - 报警上报方式: 0-不上报，1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
+**           <REPORT_INTERVAL> - 重复报警上报间隔: 0-60分钟
+**返 回 值:  BLE数据类型
+*********************************************************************/
+static int tempalm_cmd_handler(at_cmd_t* msg)
+{
+    uint16_t remaining;
+    uint8_t no_count = 0;
+    int sw_value;
+    int temp_low_threshold;
+    int temp_high_threshold;
+    uint8_t humi_low_threshold;
+    uint8_t humi_high_threshold;
+    uint8_t report_type;
+    uint8_t report_interval;
+
+    remaining = RESP_STRING_LENGTH_MAX;
+
+    //无参数即查询
+    if (msg->parm_count == 0)
+    {
+        const char* state_str = gConfigParam.tempalm_config.tempalm_sw ? "ON" : "OFF";
+
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "%s:%s,%d,%d,%d,%d,%d,%d", msg->parm[0],
+                                    state_str,
+                                    gConfigParam.tempalm_config.temp_low_threshold,
+                                    gConfigParam.tempalm_config.temp_high_threshold,
+                                    gConfigParam.tempalm_config.humi_low_threshold,
+                                    gConfigParam.tempalm_config.humi_high_threshold,
+                                    gConfigParam.tempalm_config.tempalm_report_type,
+                                    gConfigParam.tempalm_config.tempalm_report_interval);
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
+    }
+
+    /* 检查参数数量 */
+    if (msg->parm_count != 7)
+    {
+        LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+        goto param_invalid;
+    }
+
+    /* 解析SW参数 */
+    if (my_strcasecmp(msg->parm[1], "ON") == 0)
+    {
+        sw_value = 1;
+    }
+    else if (my_strcasecmp(msg->parm[1], "OFF") == 0)
+    {
+        sw_value = 0;
+    }
+    else
+    {
+        LOG_INF("%s=>invalid SW param: %s", __func__, msg->parm[1]);
+        goto param_invalid;
+    }
+
+    no_count = string_check_is_number(1, msg->parm[2]);
+    if (no_count == 0 || no_count > 9)
+    {
+        LOG_INF("%s=>invalid TEMP_LOW_THRESHOLD param: %s", __func__, msg->parm[2]);
+        goto param_invalid;
+    }
+
+    /* 解析TEMP_LOW_THRESHOLD参数 */
+    temp_low_threshold = atoi(msg->parm[2]);
+    if ((temp_low_threshold < -30 || temp_low_threshold > 100) && temp_low_threshold != 255)
+    {
+        LOG_INF("%s=>invalid TEMP_LOW_THRESHOLD param: %s", __func__, msg->parm[2]);
+        goto param_invalid;
+    }
+
+    no_count = string_check_is_number(1, msg->parm[3]);
+    if (no_count == 0 || no_count > 9)
+    {
+        LOG_INF("%s=>invalid TEMP_HIGH_THRESHOLD param: %s", __func__, msg->parm[3]);
+        goto param_invalid;
+    }
+
+    /* 解析TEMP_HIGH_THRESHOLD参数 */
+    temp_high_threshold = atoi(msg->parm[3]);
+    if ((temp_high_threshold < 30 || temp_high_threshold > 100) && temp_high_threshold != 255)
+    {
+        LOG_INF("%s=>invalid TEMP_HIGH_THRESHOLD param: %s", __func__, msg->parm[3]);
+        goto param_invalid;
+    }
+
+    if (temp_high_threshold < temp_low_threshold && temp_low_threshold != 255)
+    {
+        LOG_INF("The low temperature alarm threshold must be less than the high temperature alarm threshold, except 255.");
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "The low temperature alarm threshold must be less than the high temperature alarm threshold, except 255.");
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
+    }
+
+    no_count = string_check_is_number(0, msg->parm[4]);
+    if (no_count == 0 || no_count > 9)
+    {
+        LOG_INF("%s=>invalid HUMI_LOW_THRESHOLD param: %s", __func__, msg->parm[4]);
+        goto param_invalid;
+    }
+
+    /* 解析HUMI_LOW_THRESHOLD参数 */
+    humi_low_threshold = atoi(msg->parm[4]);
+    if ((humi_low_threshold < 0 || humi_low_threshold > 100) && humi_low_threshold != 255)
+    {
+        LOG_INF("%s=>invalid HUMI_LOW_THRESHOLD param: %s", __func__, msg->parm[4]);
+        goto param_invalid;
+    }
+
+    no_count = string_check_is_number(0, msg->parm[5]);
+    if (no_count == 0 || no_count > 9)
+    {
+        LOG_INF("%s=>invalid HUMI_HIGH_THRESHOLD param: %s", __func__, msg->parm[5]);
+        goto param_invalid;
+    }
+
+    /* 解析HUMI_HIGH_THRESHOLD参数 */
+    humi_high_threshold = atoi(msg->parm[5]);
+    if ((humi_high_threshold < 0 || humi_high_threshold > 100) && humi_high_threshold != 255)
+    {
+        LOG_INF("%s=>invalid HUMI_HIGH_THRESHOLD param: %s", __func__, msg->parm[5]);
+        goto param_invalid;
+    }
+
+    if (humi_high_threshold < humi_low_threshold && humi_low_threshold != 255)
+    {
+        LOG_INF("The low humidity alarm threshold must be less than the high humidity alarm threshold, except 255.");
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "The low humidity alarm threshold must be less than the high humidity alarm threshold, except 255.");
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
+    }
+
+    no_count = string_check_is_number(0, msg->parm[6]);
+    if (no_count == 0 || no_count > 9)
+    {
+        LOG_INF("%s=>invalid REPORT_TYPE param: %s", __func__, msg->parm[6]);
+        goto param_invalid;
+    }
+
+    /* 解析REPORT_TYPE参数 */
+    report_type = atoi(msg->parm[6]);
+    if (report_type < 0 || report_type > 3)
+    {
+        LOG_INF("%s=>invalid REPORT_TYPE param: %s", __func__, msg->parm[6]);
+        goto param_invalid;
+    }
+
+    no_count = string_check_is_number(0, msg->parm[7]);
+    if (no_count == 0 || no_count > 9)
+    {
+        LOG_INF("%s=>invalid REPORT_INTERVAL param: %s", __func__, msg->parm[7]);
+        goto param_invalid;
+    }
+
+    /* 解析REPORT_INTERVAL参数 */
+    report_interval = atoi(msg->parm[7]);
+    if (report_interval < 0 || report_interval > 60)
+    {
+        LOG_INF("%s=>invalid REPORT_INTERVAL param: %s", __func__, msg->parm[7]);
+        goto param_invalid;
+    }
+
+    /* 所有参数验证通过,统一赋值 */
+    gConfigParam.tempalm_config.flag = FLAG_VALID;
+    gConfigParam.tempalm_config.tempalm_sw = (uint8_t)sw_value;
+    gConfigParam.tempalm_config.temp_low_threshold = temp_low_threshold;
+    gConfigParam.tempalm_config.temp_high_threshold = temp_high_threshold;
+    gConfigParam.tempalm_config.humi_low_threshold = humi_low_threshold;
+    gConfigParam.tempalm_config.humi_high_threshold = humi_high_threshold;
+    gConfigParam.tempalm_config.tempalm_report_type = report_type;
+    gConfigParam.tempalm_config.tempalm_report_interval = report_interval;
+
+    /* 保存配置 */
+    my_user_data_write(ZMS_ID_TEMPALM_CONFIG, &gConfigParam.tempalm_config, sizeof(tempalm_config_t));
+
+    LOG_INF("%s=>%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2]);
+
+    /* 生成成功响应 */
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK");
+    LOG_INF("TEMPALM: SW=%d, TEMP_LOW=%d, TEMP_HIGH=%d, HUMI_LOW=%d, HUMI_HIGH=%d, REPORT_TYPE=%d, REPORT_INTERVAL=%d",
+            gConfigParam.tempalm_config.tempalm_sw,
+            gConfigParam.tempalm_config.temp_low_threshold,
+            gConfigParam.tempalm_config.temp_high_threshold,
+            gConfigParam.tempalm_config.humi_low_threshold,
+            gConfigParam.tempalm_config.humi_high_threshold,
+            gConfigParam.tempalm_config.tempalm_report_type,
+            gConfigParam.tempalm_config.tempalm_report_interval);
+
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
+
+param_invalid:
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
@@ -918,7 +1381,95 @@ static int motdet_cmd_handler(at_cmd_t* msg)
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
+}
+
+/********************************************************************
+**函数名称:  motdetalm_cmd_handler
+**入口参数:  msg      ---        AT指令结构体指针
+**出口参数:  msg->resp_msg  ---  响应消息
+**           msg->resp_length --- 响应长度
+**函数功能:  处理MOTDETALM指令：设置运动检测报警报警功能
+**指令格式:  MOTDETALM,<SW>,<M>#
+**参数说明:  <SW> - 功能开关: ON/OFF
+**           <M> - 报警上报方式: 0-不上报，1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
+**返 回 值:  BLE数据类型
+*********************************************************************/
+static int motdetalm_cmd_handler(at_cmd_t* msg)
+{
+    uint16_t remaining;
+    uint8_t no_count = 0;
+    int sw_value;
+    int report_type_value;
+
+    remaining = RESP_STRING_LENGTH_MAX;
+
+    //无参数即查询
+    if (msg->parm_count == 0)
+    {
+        const char* state_str = gConfigParam.motdetalm_config.motdetalm_sw ? "ON" : "OFF";
+
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "%s:%s,%d", msg->parm[0],
+                                    state_str, gConfigParam.motdetalm_config.motdetalm_report_type);
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
+    }
+
+    /* 检查参数数量 */
+    if (msg->parm_count != 2)
+    {
+        LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+        goto param_invalid;
+    }
+
+    /* 解析SW参数 */
+    if (my_strcasecmp(msg->parm[1], "ON") == 0)
+    {
+        sw_value = 1;
+    }
+    else if (my_strcasecmp(msg->parm[1], "OFF") == 0)
+    {
+        sw_value = 0;
+    }
+    else
+    {
+        LOG_INF("%s=>invalid SW param: %s", __func__, msg->parm[1]);
+        goto param_invalid;
+    }
+
+    no_count = string_check_is_number(0, msg->parm[2]);
+    if (no_count == 0 || no_count > 9)
+    {
+        LOG_INF("%s=>invalid Report Type param: %s", __func__, msg->parm[2]);
+        goto param_invalid;
+    }
+
+    /* 解析Report Type参数 */
+    report_type_value = atoi(msg->parm[2]);
+    if (report_type_value < 0 || report_type_value > 3)
+    {
+        LOG_INF("%s=>invalid Report Type param: %s", __func__, msg->parm[2]);
+        goto param_invalid;
+    }
+
+    /* 所有参数验证通过,统一赋值 */
+    gConfigParam.motdetalm_config.flag = FLAG_VALID;
+    gConfigParam.motdetalm_config.motdetalm_sw = (uint8_t)sw_value;
+    gConfigParam.motdetalm_config.motdetalm_report_type = (uint8_t)report_type_value;
+
+    /* 保存配置 */
+    my_user_data_write(ZMS_ID_MOTDETALM_CONFIG, &gConfigParam.motdetalm_config, sizeof(motdetalm_config_t));
+
+    LOG_INF("%s=>%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2]);
+
+    /* 生成成功响应 */
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK");
+    LOG_INF("MOTDETALM: SW=%d, Report Type=%d", gConfigParam.motdetalm_config.motdetalm_sw, gConfigParam.motdetalm_config.motdetalm_report_type);
+
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
+
+param_invalid:
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
@@ -1005,7 +1556,7 @@ static int batlevel_cmd_handler(at_cmd_t* msg)
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
@@ -1075,7 +1626,7 @@ static int chargesta_cmd_handler(at_cmd_t* msg)
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 
 param_invalid:
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }
 
@@ -1853,6 +2404,115 @@ static int bluetooth_cmd_handler(at_cmd_t* msg)
 
     /* 生成成功响应 */
     msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK!");
+
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
+
+param_invalid:
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
+}
+
+/********************************************************************
+**函数名称:  btconnect_cmd_handler
+**入口参数:  msg      ---        AT指令结构体指针
+**出口参数:  msg->resp_msg  ---  响应消息
+**           msg->resp_length --- 响应长度
+**函数功能:  处理BTCONNECT指令：设置蓝牙连接功能开关和参数
+**指令格式:  BTCONNECT,[SW],[Interval],[Report]#
+**参数说明:  SW - 功能开关(默认：OFF)
+**              ON - 开启蓝牙连接功能
+**              OFF - 关闭蓝牙连接功能
+**           Interval - 连接间隔(默认：300秒)，范围：300-43200秒
+**           Report - 上报模式(默认：0)，范围：0-3
+**返 回 值:  BLE数据类型
+*********************************************************************/
+static int btconnect_cmd_handler(at_cmd_t* msg)
+{
+    uint16_t remaining;
+    uint8_t no_count = 0;
+    int sw_value;
+    uint16_t interval_value;
+    int report_value;
+
+    remaining = RESP_STRING_LENGTH_MAX;
+
+    //无参数即查询
+    if (msg->parm_count == 0)
+    {
+        // 根据 btconnect_sw 的值选择 "ON" 或 "OFF"
+        const char* state_str = gConfigParam.btconnect_config.btconnect_sw ? "ON" : "OFF";
+
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "%s:%s,%d,%d", msg->parm[0],
+                                    state_str, gConfigParam.btconnect_config.btconnect_interval, gConfigParam.btconnect_config.btconnect_report);
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
+    }
+
+    /* 检查参数数量 */
+    if (msg->parm_count != 3)
+    {
+        LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+        goto param_invalid;
+    }
+
+    /* 解析SW参数 */
+    if (my_strcasecmp(msg->parm[1], "ON") == 0)
+    {
+        sw_value = 1;
+    }
+    else if (my_strcasecmp(msg->parm[1], "OFF") == 0)
+    {
+        sw_value = 0;
+    }
+    else
+    {
+        LOG_INF("%s=>invalid SW param: %s", __func__, msg->parm[1]);
+        goto param_invalid;
+    }
+
+    no_count = string_check_is_number(0, msg->parm[2]);
+    if (no_count == 0 || no_count > 9)
+    {
+        LOG_INF("%s=>invalid Interval param: %s", __func__, msg->parm[2]);
+        goto param_invalid;
+    }
+
+    /* 解析Interval参数 */
+    interval_value = atoi(msg->parm[2]);
+    if (interval_value < 300 || interval_value > 43200)
+    {
+        LOG_INF("%s=>invalid Interval param: %s", __func__, msg->parm[2]);
+        goto param_invalid;
+    }
+
+    no_count = string_check_is_number(0, msg->parm[3]);
+    if (no_count == 0 || no_count > 9)
+    {
+        LOG_INF("%s=>invalid Report param: %s", __func__, msg->parm[3]);
+        goto param_invalid;
+    }
+
+    /* 解析Report参数 */
+    report_value = atoi(msg->parm[3]);
+    if (report_value < 0 || report_value > 3)
+    {
+        LOG_INF("%s=>invalid Report param: %s", __func__, msg->parm[3]);
+        goto param_invalid;
+    }
+
+    /* 所有参数验证通过,统一赋值 */
+    gConfigParam.btconnect_config.flag = FLAG_VALID;
+    gConfigParam.btconnect_config.btconnect_sw = (uint8_t)sw_value;
+    gConfigParam.btconnect_config.btconnect_interval = (uint16_t)interval_value;
+    gConfigParam.btconnect_config.btconnect_report = (uint8_t)report_value;
+
+    /* 保存配置 */
+    my_user_data_write(ZMS_ID_BTCONNECT_CONFIG, &gConfigParam.btconnect_config, sizeof(btconnect_config_t));
+
+    LOG_INF("%s=>%s,%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2], msg->parm[3]);
+
+    /* 生成成功响应 */
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK", msg->parm[0]);
+    LOG_INF("BTCONNECT: SW=%d, Interval=%d, Report=%d", gConfigParam.btconnect_config.btconnect_sw, gConfigParam.btconnect_config.btconnect_interval, gConfigParam.btconnect_config.btconnect_report);
 
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 

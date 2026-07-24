@@ -112,8 +112,7 @@ typedef enum
 /* ========== 告警类型枚举 ========== */
 typedef enum
 {
-    ALARM_LOW_BAT = 1,          // 内置电池低电报警
-    ALARM_CHARGE_IN,            // 充电器插入告警
+    ALARM_CHARGE_IN = 1,        // 充电器插入告警
     ALARM_CHARGE_OUT,           // 充电器拔出告警
     ALARM_CHARGE_FULL,          // 充满状态告警
     ALARM_BAT_SWITCH,           // 电量状态切换告警
@@ -129,6 +128,7 @@ typedef enum
     ALARM_LOW_TEMP,             // 低温告警
     ALARM_HIGH_HUMI,            // 高湿告警
     ALARM_LOW_HUMI,             // 低湿告警
+    ALARM_LOW_BAT,              // 内置电池低电报警
     ALARM_OTHER,                // 其他类型告警
 } alarm_type_t;
 
