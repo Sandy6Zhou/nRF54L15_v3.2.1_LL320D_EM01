@@ -30,12 +30,13 @@
 		lte-pwr-ctrl = &lte_pwr_en;
 		lte-wake-ctrl = &lte_wake_pin;
 		gsensor-i2c = &i2c21;
+		battery-gauge-i2c = &i2c21;
 		gsensor-pwr-ctrl = &gsensor_pwr_en;
 		buzzer-pwm = &buzzer_pwm_0;
 		fun-key = &fun_key_pin;
 		batt-pwr-ctrl = &batt_pwr_en;
 		gsensor-int = &gsen_int;
-		batt-state = &charge_state;
+		battery-gauge-int = &battery_gauge_int;
 		charge-detect = &charge_det;
 		magnetic-uart = &uart20;
 		light-tamper-detect = &light_tamper_pin;
@@ -105,8 +106,8 @@
 		status = "okay";
 	};
 
-	/* P0.2:电池状态监测； 充电中:低电平; 充满:高电平 */
-	charge_state: charge-state {
+	/* OM70201WV INTN：P0.02，默认上拉输入，低电平有效 */
+	battery_gauge_int: battery-gauge-int {
 		compatible = "nordic,gpio-pins";
 		gpios = <&gpio0 2 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
 		status = "okay";

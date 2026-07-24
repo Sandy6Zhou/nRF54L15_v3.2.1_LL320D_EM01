@@ -67,7 +67,6 @@ LOG_MODULE_REGISTER(my_battery, LOG_LEVEL_INF);
 static const struct adc_dt_spec batt_adc = ADC_DT_SPEC_GET_BY_IDX(ZEPHYR_USER_NODE, 0);
 
 static const struct gpio_dt_spec batt_pwr_en = GPIO_DT_SPEC_GET(DT_ALIAS(batt_pwr_ctrl), gpios);
-static const struct gpio_dt_spec charge_state = GPIO_DT_SPEC_GET(DT_ALIAS(batt_state), gpios);
 static const struct gpio_dt_spec charge_det = GPIO_DT_SPEC_GET(DT_ALIAS(charge_detect), gpios);
 
 static struct gpio_callback s_batt_gpio_cb;
@@ -79,7 +78,6 @@ static struct adc_sequence batt_seq = {
     .buffer_size = sizeof(s_batt_raw),
 };
 
-static struct k_timer s_chg_stat_timer; // 充电状态检测消抖定时器，用于充电状态引脚的消抖处理
 static struct k_timer s_chg_det_timer;  // 充电检测消抖定时器，用于充电检测引脚的消抖处理
 static struct k_timer s_batt_update_timer;     // 电池电量检测定时器
 
@@ -88,7 +86,6 @@ static my_batt_state_t s_batt_state = BATT_EMPTY;
 // 充电状态，初始值为低
 static my_chg_batt_state_t s_chg_batt_state = CHG_BATT_LOW;
 
-static int s_chg_stat_level = 0;        // 当前充电状态引脚电平，用于消抖处理
 static int s_chg_det_level = 0;         // 当前充电检测引脚电平，用于消抖处理
 
 static bool s_batt_disable_flag = false;  /**< 电池充电禁止标志，用于控制充电路径的开关，消除充电电压对电池电压测量的影响 */
@@ -373,9 +370,7 @@ void my_chg_event_reporting()
 **函数名称:  my_battery_show_chgled
 **入口参数:  无
 **出口参数:  无
-**函数功能:  检查充电检测引脚的状态，根据检测结果控制LED显示。
-**           如果检测到充电，则启动充电LED控制定时器；
-**           如果未检测到充电，则关闭所有电池LED。
+**函数功能:  检查充电器接入状态，根据电量百分比更新充电状态并控制 LED 显示
 *********************************************************************/
 void my_battery_show_chgled()
 {
@@ -383,18 +378,15 @@ void my_battery_show_chgled()
     if (gpio_pin_get_dt(&charge_det) == 1)
     {
         LOG_INF("The charger is plugged in.");
-         // 检查充电状态引脚，如果为低电平表示充电已满
-        if (gpio_pin_get_dt(&charge_state) == 0)
-        {
-            g_charg_state = CHARG_FULL;  // 设置充电状态为已满
-            LOG_INF("charge full");  // 输出充电已满信息
-        }
-        else
-        {
-            g_charg_state = CHARGING;  // 设置充电状态为正在充电
-        }
+        g_charg_state = CHARGING;  // 检测到充电器接入，先按充电状态更新电量
 
         my_battery_update_state();      // 更新电池状态
+        //TODO 后续应该更改为库仑计计算
+        if (s_show_percent >= 100)
+        {
+            g_charg_state = CHARG_FULL;
+            LOG_INF("charge full");
+        }
 
         if (gConfigParam.bluetooth_config.bluetooth_flag == 1 && gConfigParam.bluetooth_config.bluetooth_sw == 1 && gConfigParam.bluetooth_config.bluetooth_a == 5)
         {
@@ -413,30 +405,6 @@ void my_battery_show_chgled()
 
     // 充电状态发生变化时上报事件
     my_chg_event_reporting();
-}
-
-/*********************************************************************
-**函数名称:  batt_chg_stat_handle
-**入口参数:  timer 定时器指针，由系统自动传递
-**出口参数:  无
-**函数功能:  定时器回调函数，比较当前检测到的电平与上一次保存的电平，实现消抖功能，
-**向控制模块发送消息作LED控制，当充电状态引脚电平为 0 时，表示充电已满
-*********************************************************************/
-void batt_chg_stat_handle(struct k_timer *timer)
-{
-    static int s_last_chg_stat_level = 0;   // 上一次充电状态引脚电平，用于消抖处理
-
-    // 如果当前检测到的电平与上一次保存的电平相同，说明是抖动，直接返回
-    if (s_chg_stat_level == s_last_chg_stat_level)
-        return;
-
-    // 再次读取引脚电平，如果与之前检测到的电平一致，则认为是稳定状态
-    if (s_chg_stat_level == gpio_pin_get_dt(&charge_state))
-    {
-        s_last_chg_stat_level = s_chg_stat_level;  // 更新上一次保存的电平
-
-        my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_SHOW_CHARG);     // 发送消息到控制模块
-    }
 }
 
 /*********************************************************************
@@ -463,21 +431,13 @@ void batt_chg_det_handle(struct k_timer *timer)
     }
 }
 
-/* 共用 ISR：根据 pins 掩码区分是 P0.2 还是 P0.3 触发 */
+/* P0.3 充电检测 GPIO 中断服务函数 */
 static void batt_gpio_isr(const struct device *dev,
                         struct gpio_callback *cb,
                         uint32_t pins)
 {
     ARG_UNUSED(dev);
     ARG_UNUSED(cb);
-
-    if (pins & BIT(charge_state.pin))
-    {
-        /* P0.2 触发：电池状态变化（充电中 / 充满） */
-        s_chg_stat_level = gpio_pin_get_dt(&charge_state);
-        //50ms消抖处理
-        k_timer_start(&s_chg_stat_timer, K_MSEC(CHG_DEBOUNCE_MS), K_NO_WAIT);
-    }
 
     if (pins & BIT(charge_det.pin))
     {
@@ -514,7 +474,6 @@ int batt_gpio_init(void)
     int ret;
 
     if (!device_is_ready(batt_pwr_en.port) ||
-        !device_is_ready(charge_state.port) ||
         !device_is_ready(charge_det.port))
     {
         return -ENODEV;
@@ -526,10 +485,7 @@ int batt_gpio_init(void)
 
     gpio_pin_set_dt(&batt_pwr_en, 0);
 
-    /* 状态/充电检测：输入（上拉在 DTS 里已经配置） */
-    ret = gpio_pin_configure_dt(&charge_state, GPIO_INPUT);
-    if (ret) return ret;
-
+    /* 充电检测：输入（上拉在 DTS 里已经配置） */
     ret = gpio_pin_configure_dt(&charge_det, GPIO_INPUT);
     if (ret) return ret;
 
@@ -539,19 +495,11 @@ int batt_gpio_init(void)
      *  - GPIO_INT_EDGE_RISING：只在拉高时触发
      *  - GPIO_INT_EDGE_BOTH：高/低变化都触发
      */
-    ret = gpio_pin_interrupt_configure_dt(&charge_state, GPIO_INT_EDGE_BOTH);
-    if (ret) return ret;
-
     ret = gpio_pin_interrupt_configure_dt(&charge_det, GPIO_INT_EDGE_BOTH);
     if (ret) return ret;
 
-    /* 一个回调处理两个引脚 */
-    gpio_init_callback(&s_batt_gpio_cb, batt_gpio_isr,
-                       BIT(charge_state.pin) | BIT(charge_det.pin));
+    gpio_init_callback(&s_batt_gpio_cb, batt_gpio_isr, BIT(charge_det.pin));
     gpio_add_callback(charge_det.port, &s_batt_gpio_cb);
-
-    // 初始化充电状态(是否充满)检测引脚消抖定时器
-    k_timer_init(&s_chg_stat_timer, batt_chg_stat_handle, NULL);
 
     // 初始化充电检测（是否有充电器插入）消抖定时器
     k_timer_init(&s_chg_det_timer, batt_chg_det_handle, NULL);
@@ -866,10 +814,13 @@ void my_battery_update_state()
             s_chg_batt_state = CHG_BATT_FULL;  // 充电电量满
         }
 
-        // 检查充电状态引脚，如果为高电平表示充电中
-        if (gpio_pin_get_dt(&charge_state) == 1)
+        batt_enable(true);  // 电池采样完成后恢复充电使能
+
+        //TODO 后续应该更改为库仑计计算
+        if (s_show_percent >= 100 && g_charg_state != CHARG_FULL)
         {
-            batt_enable(true);  // 启用充电使能,在定时器回调中检测前1s关闭了充电使能
+            g_charg_state = CHARG_FULL;
+            my_send_msg(MOD_CTRL, MOD_CTRL, MY_MSG_SHOW_CHARG);
         }
 
         LOG_INF("charge class:%d", s_chg_batt_state);  // 输出充电状态等级

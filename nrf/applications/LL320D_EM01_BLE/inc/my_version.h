@@ -12,7 +12,20 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260721"
+#define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260724"
+/* 软件版本:        V1.0
+** 完成日期:        2026.07.24
+** 作    者:       周森达 (zhousenda@jimiiot.com)
+** 修改内容:        新增OM70201WV库仑计功能模块
+**                 1)新增battery_gauge的 API、Zephyr端口层和厂家驱动
+**                 2)支持电压、电流、温度、SOC、SOH及循环次数读取
+**                 3)支持睡眠唤醒、阈值中断和INTN回调
+**                 4)更新CMake和设备树，使用I2C21及P0.02中断
+**                 5)移除原P0.02充电状态检测逻辑并调整电池管理流程
+**                 6)新增模块使用示例文档
+***/
+
+// #define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260721"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.07.21
 ** 作    者:       曹阳 (caoyang@jimiiot.com)

@@ -14,6 +14,9 @@ target_include_directories(app PRIVATE
  ./ext_module/imu/api
  ./ext_module/imu/port
  ./ext_module/imu/vendor
+#  ./ext_module/battery_gauge/api
+#  ./ext_module/battery_gauge/port
+#  ./ext_module/battery_gauge/vendor
  ./ext_module/temp_humi/api
  ./ext_module/temp_humi/drivers/SHTC3/inc
  ./ext_module/barometer/api
@@ -47,6 +50,9 @@ target_sources(app PRIVATE
   ext_module/imu/port/bmi325_port.c
   ext_module/imu/vendor/bmi325.c
   ext_module/imu/vendor/bmi3.c
+  # ext_module/battery_gauge/api/battery_gauge_api.c
+  # ext_module/battery_gauge/port/om70201wv_port.c
+  # ext_module/battery_gauge/vendor/omg_battery.c
   ext_module/temp_humi/api/temp_humi_api.c
   ext_module/temp_humi/drivers/SHTC3/src/shtc3_driver.c
   ext_module/barometer/api/barometer_api.c
