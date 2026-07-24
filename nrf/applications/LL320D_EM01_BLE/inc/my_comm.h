@@ -103,6 +103,7 @@ typedef enum
     MOD_BLE,         // BLE处理程序
     MOD_CTRL,        // Control处理程序
     MOD_LTE,         // LTE处理程序
+    MOD_MAGNETIC_UART, // 磁吸串口处理程序
     MOD_GSENSOR,     // G-Sensor处理程序
     MOD_FOTA,        // FOTA处理程序
     MAX_MY_MOD_TYPE, // 最大模块类型
@@ -220,6 +221,11 @@ typedef enum
     MY_MSG_ADD_RETRANS_QUEUE,
     MY_MSG_LTE_PULSE_START,
     MY_MSG_LTE_PULSE_STOP,
+    MY_MSG_MAGNETIC_UART_REV,
+    MY_MSG_MAGNETIC_UART_IDLE,
+    MY_MSG_MAGNETIC_UART_TX_DONE,
+    MY_MSG_MAGNETIC_UART_TX_ABORTED,
+    MY_MSG_MAGNETIC_UART_SEND,
 
     /* G-Sensor处理程序消息 */
     MY_MSG_GSENSOR_HIGH_POWER,      /* G-Sensor 模式切换进入高性能模式 */
@@ -297,6 +303,7 @@ typedef enum
 #include "my_ble_core.h"
 #include "my_shell.h"
 #include "my_lte.h"
+#include "my_magnetic_uart.h"
 #include "my_gsensor.h"
 // #include "my_gsensor_algorithm.h"
 #include "my_battery.h"

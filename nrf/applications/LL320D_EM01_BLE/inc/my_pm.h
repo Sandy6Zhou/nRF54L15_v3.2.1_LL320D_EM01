@@ -33,6 +33,7 @@ typedef enum
 {
     MY_PM_DEV_GSENSOR, /* G-Sensor模块：I2C21 + LSM6DSV16X */
     MY_PM_DEV_LTE,     /* LTE模块：UART + 电源控制 */
+    MY_PM_DEV_MAGNETIC_UART, /* 磁吸串口模块：UART20 */
     MY_PM_DEV_BATTERY, /* Battery模块：ADC采样 */
     MY_PM_DEV_BLE,     /* BLE模块：由协议栈管理，仅作状态同步 */
     MY_PM_DEV_PWM,     /* Control模块：蜂鸣器 */

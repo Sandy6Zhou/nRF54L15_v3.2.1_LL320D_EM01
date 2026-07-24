@@ -39,6 +39,9 @@ LOG_MODULE_REGISTER(my_pm, LOG_LEVEL_INF);
 /* ========== LTE UART 总线设备节点 ========== */
 #define LTE_UART_NODE DT_ALIAS(lte_uart)
 
+/* ========== 磁吸 UART20 总线设备节点 ========== */
+#define MAGNETIC_UART_NODE DT_ALIAS(magnetic_uart)
+
 /* ========== Battery ADC 设备节点 ========== */
 #define BATTERY_ADC_NODE DT_PATH(zephyr_user)
 
@@ -135,6 +138,19 @@ static const struct device *my_pm_get_lte_uart_device(void)
 }
 
 /********************************************************************
+**函数名称:  my_pm_get_magnetic_uart_device
+**入口参数:  无
+**出口参数:  无
+**函数功能:  获取磁吸 UART 设备句柄
+**返 回 值:  UART 设备指针，未就绪返回 NULL
+*********************************************************************/
+static const struct device *my_pm_get_magnetic_uart_device(void)
+{
+    const struct device *dev = DEVICE_DT_GET_OR_NULL(MAGNETIC_UART_NODE);
+    return dev;
+}
+
+/********************************************************************
 **函数名称:  my_pm_lte_uart_resume
 **入口参数:  无
 **出口参数:  无
@@ -189,6 +205,64 @@ static int my_pm_lte_uart_suspend(void)
     }
 
     MY_LOG_DBG("LTE UART runtime put OK");
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  my_pm_magnetic_uart_resume
+**入口参数:  无
+**出口参数:  无
+**函数功能:  恢复磁吸 UART 总线（使用 Runtime PM API）
+**返 回 值:  0 表示成功，负值表示错误码
+*********************************************************************/
+static int my_pm_magnetic_uart_resume(void)
+{
+    const struct device *dev = my_pm_get_magnetic_uart_device();
+    int ret = 0;
+
+    if (dev == NULL)
+    {
+        MY_LOG_ERR("Magnetic UART device not found");
+        return -ENODEV;
+    }
+
+    ret = pm_device_runtime_get(dev);
+    if (ret < 0)
+    {
+        MY_LOG_ERR("Magnetic UART runtime get failed: %d", ret);
+        return ret;
+    }
+
+    MY_LOG_DBG("Magnetic UART runtime get OK");
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  my_pm_magnetic_uart_suspend
+**入口参数:  无
+**出口参数:  无
+**函数功能:  挂起磁吸 UART 总线（使用 Runtime PM API）
+**返 回 值:  0 表示成功，负值表示错误码
+*********************************************************************/
+static int my_pm_magnetic_uart_suspend(void)
+{
+    const struct device *dev = my_pm_get_magnetic_uart_device();
+    int ret = 0;
+
+    if (dev == NULL)
+    {
+        MY_LOG_ERR("Magnetic UART device not found");
+        return -ENODEV;
+    }
+
+    ret = pm_device_runtime_put(dev);
+    if (ret < 0)
+    {
+        MY_LOG_ERR("Magnetic UART runtime put failed: %d", ret);
+        return ret;
+    }
+
+    MY_LOG_DBG("Magnetic UART runtime put OK");
     return 0;
 }
 
@@ -392,6 +466,10 @@ int my_pm_device_register(my_pm_dev_id_t dev_id, const pm_device_ops_t *ops)
                 ret = my_pm_lte_uart_resume();
                 break;
 
+            case MY_PM_DEV_MAGNETIC_UART:
+                ret = my_pm_magnetic_uart_resume();
+                break;
+
             case MY_PM_DEV_BATTERY:
                 ret = my_pm_battery_adc_resume();
                 break;
@@ -420,6 +498,10 @@ int my_pm_device_register(my_pm_dev_id_t dev_id, const pm_device_ops_t *ops)
 
             case MY_PM_DEV_LTE:
                 ret = my_pm_lte_uart_suspend();
+                break;
+
+            case MY_PM_DEV_MAGNETIC_UART:
+                ret = my_pm_magnetic_uart_suspend();
                 break;
 
             case MY_PM_DEV_BATTERY:
@@ -507,6 +589,10 @@ int my_pm_device_resume(my_pm_dev_id_t dev_id)
             ret = my_pm_lte_uart_resume();
             break;
 
+        case MY_PM_DEV_MAGNETIC_UART:
+            ret = my_pm_magnetic_uart_resume();
+            break;
+
         case MY_PM_DEV_BATTERY:
             ret = my_pm_battery_adc_resume();
             break;
@@ -544,6 +630,10 @@ int my_pm_device_resume(my_pm_dev_id_t dev_id)
 
                 case MY_PM_DEV_LTE:
                     ret = my_pm_lte_uart_suspend();
+                    break;
+
+                case MY_PM_DEV_MAGNETIC_UART:
+                    ret = my_pm_magnetic_uart_suspend();
                     break;
 
                 case MY_PM_DEV_PWM:
@@ -629,6 +719,10 @@ int my_pm_device_suspend(my_pm_dev_id_t dev_id)
 
         case MY_PM_DEV_LTE:
             ret = my_pm_lte_uart_suspend();
+            break;
+
+        case MY_PM_DEV_MAGNETIC_UART:
+            ret = my_pm_magnetic_uart_suspend();
             break;
 
         case MY_PM_DEV_BATTERY:

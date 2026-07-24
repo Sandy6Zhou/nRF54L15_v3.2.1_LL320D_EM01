@@ -12,7 +12,19 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260717"
+#define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260721"
+/* 软件版本:        V1.0
+** 完成日期:        2026.07.21
+** 作    者:       周森达 (zhousenda@jimiiot.com)
+** 修改内容:        新增磁吸串口UART20模块并完成系统集成
+                   1)新增my_magnetic_uart模块，支持UART20异步收发
+                   2)增加磁吸串口设备树别名、引脚复用和串口参数配置
+                   3)接入主流程初始化、任务管理和统一消息分发机制
+                   4)实现双缓冲接收、环形缓冲区处理及独立线程分发
+                   5)接入统一PM框架，支持磁吸串口挂起、恢复和空闲管理(默认resume uart)
+***/
+
+// #define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260717"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.07.17
 ** 作    者:       周森达 (zhousenda@jimiiot.com)

@@ -29,6 +29,7 @@ target_sources(app PRIVATE
   src/my_shell.c
   src/my_ble_core.c
   src/my_lte.c
+  src/my_magnetic_uart.c
   src/my_gsensor.c
 #  src/my_gsensor_algorithm.c
   src/my_ctrl.c

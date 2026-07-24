@@ -33,8 +33,9 @@
 #define BLE_LOG_MOD_PARAM   10 /* 参数模块 */
 #define BLE_LOG_MOD_WDT     11 /* 看门狗模块 */
 #define BLE_LOG_MOD_ALGORITHM 12 /* 算法模块 */
-#define BLE_LOG_MOD_OTHER   13 /* 其他模块 */
-#define BLE_LOG_MOD_MAX     14 /* 最大模块数 */
+#define BLE_LOG_MOD_MAGNETIC_UART 13 /* 磁吸串口模块 */
+#define BLE_LOG_MOD_OTHER   14 /* 其他模块 */
+#define BLE_LOG_MOD_MAX     15 /* 最大模块数 */
 
 /* 获取指定模块在 mod_en bitmap 中的开关状态
  * 使用32位bitmap，mod_id 直接对应位位置 (0-31) */
