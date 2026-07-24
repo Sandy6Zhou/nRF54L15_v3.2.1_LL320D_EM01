@@ -60,12 +60,23 @@ typedef struct
     bool state;                 /* 当前光感状态（true=有光，false=无光） */
 } light_sensor_t;
 
+typedef enum
+{
+    LOW_PATM_TEMP_ALARM,
+    NORMAL_PATM_TEMP_ALARM,
+    HIGH_PATM_TEMP_ALARM,
+} my_alarm_type_t;
+
 static light_sensor_t light_tamper_sensor;
 static light_sensor_t light_pull_sensor;
 
 static buzzer_ctrl_t s_buzzer_ctrl = { 0 };
 fs_temp_humi_record_t g_temp_humi_sample = { 0 };
 fs_barometer_record_t g_barometer_sample = { 0 };
+
+static my_alarm_type_t s_barometer_alarm_state = NORMAL_PATM_TEMP_ALARM;    // 气压告警状态
+static my_alarm_type_t s_temp_alarm_state = NORMAL_PATM_TEMP_ALARM;         // 温度告警状态
+static my_alarm_type_t s_humi_alarm_state = NORMAL_PATM_TEMP_ALARM;         // 湿度告警状态
 
 /* 定时器回调前向声明 */
 static void key_timer_handler(struct k_timer *timer);
@@ -330,13 +341,179 @@ static void sensor_sample_send_to_ble(uint32_t msg_id, const void *data_ptr, uin
 }
 
 /********************************************************************
+**函数名称:  sensor_barometer_alarm_check
+**入口参数:  pressure_pa     ---        气压值（输入）
+**出口参数:  无
+**函数功能:  检查气压是否超出阈值并触发报警
+**返 回 值:  无
+*********************************************************************/
+void sensor_barometer_alarm_check(int32_t pressure_pa, uint32_t timestamp)
+{
+    static uint32_t s_last_timestamp = 0;
+    uint32_t timestamp_diff = 0;
+
+    if (gConfigParam.patalm_config.patalm_sw == 1)
+    {
+        timestamp_diff = timestamp - s_last_timestamp;
+        if (gConfigParam.patalm_config.patalm_low_threshold != 255 && pressure_pa < gConfigParam.patalm_config.patalm_low_threshold * 1000)
+        {
+            if ((gConfigParam.device_workmode_config.workmode_config.current_mode == MY_MODE_CONTINUOUS ||
+                gConfigParam.device_workmode_config.workmode_config.current_mode == MY_MODE_ALWAYS_ONLINE) &&
+                timestamp_diff >= gConfigParam.patalm_config.patalm_report_interval * 60 &&
+                gConfigParam.patalm_config.patalm_report_interval != 0)
+            {
+                s_barometer_alarm_state = NORMAL_PATM_TEMP_ALARM;
+            }
+
+            if (s_barometer_alarm_state != LOW_PATM_TEMP_ALARM)
+            {
+                s_barometer_alarm_state = LOW_PATM_TEMP_ALARM;
+                s_last_timestamp = timestamp;
+                send_alarm_message_to_lte(ALARM_LOW_PATM, NULL);
+            }
+        }
+        else if (gConfigParam.patalm_config.patalm_high_threshold != 255 && pressure_pa > gConfigParam.patalm_config.patalm_high_threshold * 1000)
+        {
+            if ((gConfigParam.device_workmode_config.workmode_config.current_mode == MY_MODE_CONTINUOUS ||
+                gConfigParam.device_workmode_config.workmode_config.current_mode == MY_MODE_ALWAYS_ONLINE) &&
+                timestamp_diff >= gConfigParam.patalm_config.patalm_report_interval * 60 &&
+                gConfigParam.patalm_config.patalm_report_interval != 0)
+            {
+                s_barometer_alarm_state = NORMAL_PATM_TEMP_ALARM;
+            }
+
+            if (s_barometer_alarm_state != HIGH_PATM_TEMP_ALARM)
+            {
+                s_barometer_alarm_state = HIGH_PATM_TEMP_ALARM;
+                s_last_timestamp = timestamp;
+                send_alarm_message_to_lte(ALARM_HIGH_PATM, NULL);
+            }
+        }
+        else
+        {
+            s_barometer_alarm_state = NORMAL_PATM_TEMP_ALARM;
+        }
+
+    }
+    else
+    {
+        s_barometer_alarm_state = NORMAL_PATM_TEMP_ALARM;
+    }
+}
+
+/********************************************************************
+**函数名称:  sensor_temp_humi_alarm_check
+**入口参数:  temp_humi     ---        温湿度湿度值（输入）
+**出口参数:  无
+**函数功能:  检查温度湿度是否超出阈值并触发报警
+**返 回 值:  无
+*********************************************************************/
+void sensor_temp_humi_alarm_check(int32_t temp_humi, uint32_t timestamp)
+{
+    int16_t temp_val = temp_humi & 0xFFFF;
+    int16_t humi_val = temp_humi >> 16;
+    static uint32_t s_last_temp_timestamp = 0;
+    static uint32_t s_last_humi_timestamp = 0;
+    uint32_t timestamp_diff = 0;
+
+    if (gConfigParam.tempalm_config.tempalm_sw == 1)
+    {
+        timestamp_diff = timestamp - s_last_temp_timestamp;
+        if (gConfigParam.tempalm_config.temp_low_threshold != 255 && temp_val < gConfigParam.tempalm_config.temp_low_threshold * 10)
+        {
+            if ((gConfigParam.device_workmode_config.workmode_config.current_mode == MY_MODE_CONTINUOUS ||
+                gConfigParam.device_workmode_config.workmode_config.current_mode == MY_MODE_ALWAYS_ONLINE) &&
+                timestamp_diff >= gConfigParam.tempalm_config.tempalm_report_interval * 60 &&
+                gConfigParam.tempalm_config.tempalm_report_interval != 0)
+            {
+                s_temp_alarm_state = NORMAL_PATM_TEMP_ALARM;
+            }
+
+            if (s_temp_alarm_state != LOW_PATM_TEMP_ALARM)
+            {
+                s_temp_alarm_state = LOW_PATM_TEMP_ALARM;
+                s_last_temp_timestamp = timestamp;
+                send_alarm_message_to_lte(ALARM_LOW_TEMP, NULL);
+            }
+        }
+        else if (gConfigParam.tempalm_config.temp_high_threshold != 255 && temp_val > gConfigParam.tempalm_config.temp_high_threshold * 10)
+        {
+            if ((gConfigParam.device_workmode_config.workmode_config.current_mode == MY_MODE_CONTINUOUS ||
+                gConfigParam.device_workmode_config.workmode_config.current_mode == MY_MODE_ALWAYS_ONLINE) &&
+                timestamp_diff >= gConfigParam.tempalm_config.tempalm_report_interval * 60 &&
+                gConfigParam.tempalm_config.tempalm_report_interval != 0)
+            {
+                s_temp_alarm_state = NORMAL_PATM_TEMP_ALARM;
+            }
+
+            if (s_temp_alarm_state != HIGH_PATM_TEMP_ALARM)
+            {
+                s_temp_alarm_state = HIGH_PATM_TEMP_ALARM;
+                s_last_temp_timestamp = timestamp;
+                send_alarm_message_to_lte(ALARM_HIGH_TEMP, NULL);
+            }
+        }
+        else
+        {
+            s_temp_alarm_state = NORMAL_PATM_TEMP_ALARM;
+        }
+
+        timestamp_diff = timestamp - s_last_humi_timestamp;
+        if (gConfigParam.tempalm_config.humi_low_threshold != 255 && humi_val < gConfigParam.tempalm_config.humi_low_threshold * 10)
+        {
+            if ((gConfigParam.device_workmode_config.workmode_config.current_mode == MY_MODE_CONTINUOUS ||
+                gConfigParam.device_workmode_config.workmode_config.current_mode == MY_MODE_ALWAYS_ONLINE) &&
+                timestamp_diff >= gConfigParam.tempalm_config.tempalm_report_interval * 60 &&
+                gConfigParam.tempalm_config.tempalm_report_interval != 0)
+            {
+                s_humi_alarm_state = NORMAL_PATM_TEMP_ALARM;
+            }
+            if (s_humi_alarm_state != LOW_PATM_TEMP_ALARM)
+            {
+                s_humi_alarm_state = LOW_PATM_TEMP_ALARM;
+                s_last_humi_timestamp = timestamp;
+                send_alarm_message_to_lte(ALARM_LOW_HUMI, NULL);
+            }
+        }
+        else if (gConfigParam.tempalm_config.humi_high_threshold != 255 && humi_val > gConfigParam.tempalm_config.humi_high_threshold * 10)
+        {
+            if ((gConfigParam.device_workmode_config.workmode_config.current_mode == MY_MODE_CONTINUOUS ||
+                gConfigParam.device_workmode_config.workmode_config.current_mode == MY_MODE_ALWAYS_ONLINE) &&
+                timestamp_diff >= gConfigParam.tempalm_config.tempalm_report_interval * 60 &&
+                gConfigParam.tempalm_config.tempalm_report_interval != 0)
+            {
+                s_humi_alarm_state = NORMAL_PATM_TEMP_ALARM;
+            }
+
+            if (s_humi_alarm_state != HIGH_PATM_TEMP_ALARM)
+            {
+                s_humi_alarm_state = HIGH_PATM_TEMP_ALARM;
+                s_last_humi_timestamp = timestamp;
+                send_alarm_message_to_lte(ALARM_HIGH_HUMI, NULL);
+            }
+        }
+        else
+        {
+            s_humi_alarm_state = NORMAL_PATM_TEMP_ALARM;
+
+        }
+    }
+    else
+    {
+        s_temp_alarm_state = NORMAL_PATM_TEMP_ALARM;
+        s_humi_alarm_state = NORMAL_PATM_TEMP_ALARM;
+    }
+}
+
+/********************************************************************
 **函数名称:  sensor_collect_barometer
 **入口参数:  无
 **出口参数:  无
 **函数功能:  采集一次气压并执行业务处理
-**返 回 值:  无
+**返 回 值:  气压值，单位为帕斯卡（Pa）
+**          失败返回-1
 *********************************************************************/
-static void sensor_collect_barometer(void)
+static int32_t sensor_collect_barometer(void)
 {
     struct barometer_data data;
     fs_barometer_record_t record;
@@ -349,19 +526,23 @@ static void sensor_collect_barometer(void)
     if (ret != BARO_SUCCESS)
     {
         MY_LOG_ERR("barometer set mode fail:%d", ret);
-        return;
+        return -1;
     }
 
     ret = barometer_read(&data);
     if (ret != BARO_SUCCESS)
     {
         MY_LOG_ERR("barometer read fail:%d", ret);
-        return;
+        return -1;
     }
 
     record.timestamp = (uint32_t)my_get_system_time_sec();
     record.pressure_pa = (uint32_t)data.pressure_pa;
     sensor_sample_send_to_ble(MY_MSG_BLE_SENSOR_BP_SAMPLE, &record, sizeof(record));
+
+    sensor_barometer_alarm_check(record.pressure_pa, record.timestamp);
+
+    return record.pressure_pa;
 }
 
 /********************************************************************
@@ -369,9 +550,10 @@ static void sensor_collect_barometer(void)
 **入口参数:  无
 **出口参数:  无
 **函数功能:  采集一次温湿度并执行业务处理
-**返 回 值:  无
+**返 回 值:  温湿度值（uint32_t）
+**          失败返回-1
 *********************************************************************/
-static void sensor_collect_temp_humi(void)
+static int32_t sensor_collect_temp_humi(void)
 {
     temp_humi_data_t data;
     fs_temp_humi_record_t record;
@@ -384,15 +566,65 @@ static void sensor_collect_temp_humi(void)
     if (ret != TEMP_HUMI_SUCCESS)
     {
         MY_LOG_ERR("temp_humi read fail:%d", ret);
-        return;
+        return -1;
     }
 
     record.timestamp = (uint32_t)my_get_system_time_sec();
     record.temperature_x10 = data.temperature / 10;
     record.humidity_x10 = (uint16_t)(data.humidity / 10);
     sensor_sample_send_to_ble(MY_MSG_BLE_SENSOR_TH_SAMPLE, &record, sizeof(record));
+
+    sensor_temp_humi_alarm_check(((record.humidity_x10 << 16) | (record.temperature_x10 & 0xFFFF)), record.timestamp);
+
+    return ((record.humidity_x10 << 16) | (record.temperature_x10 & 0xFFFF));
 }
 
+/********************************************************************
+**函数名称:  sensor_patm_read
+**入口参数:  无
+**出口参数:  无
+**函数功能:  读取当前气压值并发送到BLE
+**返 回 值:  无
+*********************************************************************/
+static void sensor_patm_read(void)
+{
+    float pressure_pa;
+    uint8_t resp_msg[40];
+
+    pressure_pa = sensor_collect_barometer();
+    if (pressure_pa < 0)
+    {
+        MY_LOG_ERR("sensor_collect_barometer fail");
+        ble_packet_trans_send((uint8_t *)"NO Data!", strlen("NO Data!"));
+        return;
+    }
+    pressure_pa /= 1000.0f;
+    snprintf(resp_msg, sizeof(resp_msg), "Atmospheric Pressure %.2f Kpa", pressure_pa);
+    send_ble_msg(resp_msg, strlen(resp_msg));
+}
+
+/********************************************************************
+**函数名称:  sensor_temp_read
+**入口参数:  无
+**出口参数:  无
+**函数功能:  读取当前温度湿度值并发送到BLE
+**返 回 值:  无
+*********************************************************************/
+static void sensor_temp_read(void)
+{
+    int32_t temp_humi = 0;
+    uint8_t resp_msg[70];
+
+    temp_humi = sensor_collect_temp_humi();
+    if (temp_humi < 0)
+    {
+        MY_LOG_ERR("sensor_collect_temp_humi fail");
+        ble_packet_trans_send((uint8_t *)"NO Data!", strlen("NO Data!"));
+        return;
+    }
+    snprintf(resp_msg, sizeof(resp_msg), "Temperature: %.1f degrees Celsius,Humidity: %.1f %%", (temp_humi & 0xFFFF) * 0.1f, (temp_humi >> 16) * 0.1f);
+    send_ble_msg(resp_msg, strlen(resp_msg));
+}
 
 /********************************************************************
 **函数名称:  sensor_module_init
@@ -1377,6 +1609,14 @@ static void my_ctrl_task(void *p1, void *p2, void *p3)
 
             case MY_MSG_CTRL_TEMP_RELOAD:
                 sensor_temp_timer_reload();
+                break;
+
+            case MY_MSG_CTRL_PATM_READ:
+                sensor_patm_read();
+                break;
+
+            case MY_MSG_CTRL_TEMP_READ:
+                sensor_temp_read();
                 break;
 
             case MY_MSG_LED_CTRL_MODE:

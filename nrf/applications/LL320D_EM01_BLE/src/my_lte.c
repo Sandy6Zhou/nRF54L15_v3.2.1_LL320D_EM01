@@ -2812,6 +2812,33 @@ bool my_check_location_valid(location_storage_t *point)
     return true;
 }
 
+/********************************************************************
+**函数名称:  send_ble_msg
+**入口参数:  send_str    ---   要发送的字符串
+**出口参数:  无
+**函数功能:  发送BLE消息到蓝牙模块
+**返 回 值:  无
+*********************************************************************/
+void send_ble_msg(char *send_str, int len)
+{
+    msg_t msg;
+    char *send_data;
+
+    MY_MALLOC_BUFFER(send_data, len + 1);
+    if (send_data == NULL)
+    {
+        MY_LOG_ERR("send_data malloc failed");
+        return;
+    }
+
+    strcpy(send_data, send_str);
+
+    // 将数据透传指令放到与蓝牙同线程
+    msg.msgID = MY_MSG_BLE_TX;
+    msg.pData = send_data;
+    msg.DataLen = len;
+    my_send_msg_data(MOD_LTE, MOD_BLE, &msg);
+}
 
 /*
  * 处理各个协议指令
@@ -2826,7 +2853,6 @@ int my_lte_parse_cmd(char *cmd, int cmd_len)
     int argc, num_commands;
     msg_t msg;
     char *lte_cmd;
-    char *ble_cmd;
 
     if (0 == strlen(cmd) || 0 == cmd_len)
     {
@@ -2932,19 +2958,9 @@ int my_lte_parse_cmd(char *cmd, int cmd_len)
     }
     else if (CMD_MATCHED(cmd, BLE_CMD))
     {
-        MY_MALLOC_BUFFER(ble_cmd, strlen(cmd) + 1 - strlen(BLE_CMD));
-        if (ble_cmd == NULL)
-        {
-            MY_LOG_ERR("ble_cmd malloc failed");
-            return 0;
-        }
 
-        strcpy(ble_cmd, cmd + strlen(BLE_CMD));
+        send_ble_msg(cmd + strlen(BLE_CMD), strlen(cmd) - strlen(BLE_CMD));
 
-        msg.msgID = MY_MSG_BLE_CMD;
-        msg.pData = ble_cmd;
-        msg.DataLen = strlen(ble_cmd);
-        my_send_msg_data(MOD_LTE, MOD_BLE, &msg);
         goto END;
     }
     //处理4G应答

@@ -73,7 +73,9 @@ static int modeparam_cmd_handler(at_cmd_t* msg);
 static int bt_parmac_cmd_handler(at_cmd_t* msg);
 static int status_cmd_handler(at_cmd_t* msg);
 static int patmtimer_cmd_handler(at_cmd_t* msg);
+static int patm_cmd_handler(at_cmd_t* msg);
 static int temptimer_cmd_handler(at_cmd_t* msg);
+static int temp_cmd_handler(at_cmd_t* msg);
 
 static const at_cmd_attr_t at_cmd_attr_table[] =
 {
@@ -110,7 +112,9 @@ static const at_cmd_attr_t at_cmd_attr_table[] =
     {"BT_PARMAC",      bt_parmac_cmd_handler},
     {"STATUS",         status_cmd_handler},
     {"PATMTIMER",      patmtimer_cmd_handler},
+    {"PATM",           patm_cmd_handler},
     {"TEMPTIMER",      temptimer_cmd_handler},
+    {"TEMP",           temp_cmd_handler},
 };
 
 static const char* lte_cmd_attr_table[] =
@@ -3847,6 +3851,37 @@ param_invalid:
 }
 
 /********************************************************************
+**函数名称:  patm_cmd_handler
+**入口参数:  msg      ---        AT指令结构体指针
+**出口参数:  无
+**函数功能:  处理气压读取指令
+**指令格式:  PATM#
+**返 回 值:  BLE_DATA_TYPE_PACKET_MULTIPLE
+*********************************************************************/
+static int patm_cmd_handler(at_cmd_t* msg)
+{
+    uint16_t remaining;  // 响应消息缓冲区的剩余空间
+
+    remaining = RESP_STRING_LENGTH_MAX;  // 计算响应消息缓冲区的大小
+
+    /* 检查参数数量：应为0 */
+    if (msg->parm_count == 0)  // 检查命令是否有参数
+    {
+        LOG_INF("%s=>%s", __func__, msg->parm[0]);  // 输出函数名和命令名
+        // 通知CTRL线程读取气压数据
+        my_send_msg(MOD_BLE, MOD_CTRL, MY_MSG_CTRL_PATM_READ);
+    }
+    else  // 参数数量错误
+    {
+        // 输出参数数量错误信息
+        LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+        // 生成失败响应消息
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
+    }
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;  // 返回 BLE 数据类型
+}
+
+/********************************************************************
 **函数名称:  temptimer_cmd_handler
 **入口参数:  msg      ---        AT指令结构体指针
 **出口参数:  无
@@ -3913,6 +3948,37 @@ static int temptimer_cmd_handler(at_cmd_t* msg)
 param_invalid:
     msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
+}
+
+/********************************************************************
+**函数名称:  temp_cmd_handler
+**入口参数:  msg      ---        AT指令结构体指针
+**出口参数:  无
+**函数功能:  处理温湿度读取指令
+**指令格式:  TEMP#
+**返 回 值:  BLE_DATA_TYPE_PACKET_MULTIPLE
+*********************************************************************/
+static int temp_cmd_handler(at_cmd_t* msg)
+{
+    uint16_t remaining;  // 响应消息缓冲区的剩余空间
+
+    remaining = RESP_STRING_LENGTH_MAX;  // 计算响应消息缓冲区的大小
+
+    /* 检查参数数量：应为0 */
+    if (msg->parm_count == 0)  // 检查命令是否有参数
+    {
+        LOG_INF("%s=>%s", __func__, msg->parm[0]);  // 输出函数名和命令名
+        // 通知CTRL线程读取温湿度数据
+        my_send_msg(MOD_BLE, MOD_CTRL, MY_MSG_CTRL_TEMP_READ);
+    }
+    else  // 参数数量错误
+    {
+        // 输出参数数量错误信息
+        LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+        // 生成失败响应消息
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
+    }
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;  // 返回 BLE 数据类型
 }
 
 /********************************************************************

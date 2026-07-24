@@ -1313,7 +1313,7 @@ static void my_ble_task(void *p1, void *p2, void *p3)
                 break;
 
             // 处理BLE+CMD回复指令
-            case MY_MSG_BLE_CMD:
+            case MY_MSG_BLE_TX:
                 ble_packet_trans_send(msg.pData, msg.DataLen);
                 // 释放动态分配的内存
                 if(msg.pData != NULL)

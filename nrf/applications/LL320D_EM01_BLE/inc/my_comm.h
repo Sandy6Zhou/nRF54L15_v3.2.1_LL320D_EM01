@@ -246,12 +246,15 @@ typedef enum
     MY_MSG_CTRL_TEMP_TIMER,            /* 温湿度定时上传触发消息 */
     MY_MSG_CTRL_PATM_RELOAD,           /* 气压定时器配置更新消息 */
     MY_MSG_CTRL_TEMP_RELOAD,           /* 温湿度定时器配置更新消息 */
+    MY_MSG_CTRL_PATM_READ,             /* 读取气压数据消息 */
+    MY_MSG_CTRL_TEMP_READ,             /* 读取温度湿度数据消息 */
     MY_MSG_LED_CTRL_MODE,              /* LED 控制 */
     MY_MSG_LED_ENABLE,                 /* LED使能 */
     MY_MSG_LED_DISABLE,                /* LED禁用 */
 
     /* BLE 处理程序消息 */
     MY_MSG_BLE_RX,
+    MY_MSG_BLE_TX,                  /* 向蓝牙发送消息 */
     MY_MSG_BLE_OPEN_ADV,            /* 开启可连接广播 */
     MY_MSG_BLE_CLOSE_ADV,           /* 关闭可连接广播 */
     MY_MSG_BLE_SENSOR_TH_SAMPLE,    /* 温湿度采样结果消息 */
@@ -270,8 +273,6 @@ typedef enum
     MY_MSG_DFU_TIMEOUT,  /* DFU OTA 超时退出 */
     MY_MSG_DFU_COMPLETE, /* DFU OTA 完成 */
     MY_MSG_DFU_FAIL,     /* DFU OTA 失败 */
-
-    MY_MSG_BLE_CMD,             /* 指令透传回复消息 */
 
     MY_MSG_LTE_BLE_DATA,        /* 蓝牙指令数据 */
     MY_MSG_BLE_PACKET_TIMEOUT,  /* BLE包传输应答超时 */

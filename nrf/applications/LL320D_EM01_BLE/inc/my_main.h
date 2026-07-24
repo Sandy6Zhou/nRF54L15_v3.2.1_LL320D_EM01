@@ -19,7 +19,7 @@
 /* 任务栈大小定义 */
 #define MY_MAIN_TASK_STACK_SIZE    4 * 1024 // 先改为4K，未来开发过程中不够再调整
 #define MY_BLE_TASK_STACK_SIZE     4 * 1024 // 2K测试空间不够，暂修改为4K
-#define MY_CTRL_TASK_STACK_SIZE    1 * 1024 // 先改为4K，未来开发过程中不够再调整
+#define MY_CTRL_TASK_STACK_SIZE    2 * 1024 // 先改为2K，未来开发过程中不够再调整
 #define MY_LTE_TASK_STACK_SIZE     8 * 1024
 #define MY_MAG_TASK_STACK_SIZE     2 * 1024
 #define MY_GSENSOR_TASK_STACK_SIZE 4 * 1024 // 先改为4K，未来开发过程中不够再调整
