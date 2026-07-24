@@ -942,10 +942,10 @@ static int patalm_cmd_handler(at_cmd_t* msg)
     uint16_t remaining;
     uint8_t no_count = 0;
     int sw_value;
-    uint8_t low_threshold;
-    uint8_t high_threshold;
-    uint8_t report_type;
-    uint8_t report_interval;
+    int low_threshold;
+    int high_threshold;
+    int report_type;
+    int report_interval;
 
     remaining = RESP_STRING_LENGTH_MAX;
 
@@ -1105,10 +1105,10 @@ static int tempalm_cmd_handler(at_cmd_t* msg)
     int sw_value;
     int temp_low_threshold;
     int temp_high_threshold;
-    uint8_t humi_low_threshold;
-    uint8_t humi_high_threshold;
-    uint8_t report_type;
-    uint8_t report_interval;
+    int humi_low_threshold;
+    int humi_high_threshold;
+    int report_type;
+    int report_interval;
 
     remaining = RESP_STRING_LENGTH_MAX;
 
@@ -1256,7 +1256,7 @@ static int tempalm_cmd_handler(at_cmd_t* msg)
 
     /* 所有参数验证通过,统一赋值 */
     gConfigParam.tempalm_config.flag = FLAG_VALID;
-    gConfigParam.tempalm_config.tempalm_sw = (uint8_t)sw_value;
+    gConfigParam.tempalm_config.tempalm_sw = sw_value;
     gConfigParam.tempalm_config.temp_low_threshold = temp_low_threshold;
     gConfigParam.tempalm_config.temp_high_threshold = temp_high_threshold;
     gConfigParam.tempalm_config.humi_low_threshold = humi_low_threshold;
@@ -1764,8 +1764,8 @@ param_invalid:
 static int lprunning_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
-    uint8_t threshold;
-    uint8_t interval;
+    int threshold;
+    int interval;
     uint8_t no_count = 0;
 
     remaining = RESP_STRING_LENGTH_MAX;
@@ -2136,9 +2136,9 @@ static int bt_updata_cmd_handler(at_cmd_t* msg)
     uint16_t remaining;
     uint8_t no_count = 0;
     int mode_value;
-    uint32_t scan_interval_value;
-    uint32_t scan_length_value;
-    uint32_t updata_interval_value;
+    int scan_interval_value;
+    int scan_length_value;
+    int updata_interval_value;
 
     remaining = RESP_STRING_LENGTH_MAX;
 
@@ -2292,9 +2292,9 @@ static int bluetooth_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
     uint8_t no_count = 0;
-    uint8_t sw = 0;
-    uint8_t a = 0;
-    uint8_t b = 0;
+    int sw = 0;
+    int a = 0;
+    int b = 0;
 
     remaining = RESP_STRING_LENGTH_MAX;
 
@@ -2431,7 +2431,7 @@ static int btconnect_cmd_handler(at_cmd_t* msg)
     uint16_t remaining;
     uint8_t no_count = 0;
     int sw_value;
-    uint16_t interval_value;
+    int interval_value;
     int report_value;
 
     remaining = RESP_STRING_LENGTH_MAX;
@@ -2869,7 +2869,7 @@ static int led_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
     uint8_t no_count = 0;
-    uint8_t mode = 0;
+    int mode = 0;
 
     remaining = RESP_STRING_LENGTH_MAX;
 
@@ -2889,7 +2889,7 @@ static int led_cmd_handler(at_cmd_t* msg)
 
     no_count = string_check_is_number(0, msg->parm[1]);
 
-    if (no_count == 0 || no_count > 2)
+    if (no_count == 0 || no_count > 9)
     {
         LOG_INF("%s=>invalid A param: %s", __func__, msg->parm[1]);
         goto param_invalid;
@@ -2955,7 +2955,7 @@ param_invalid:
 static int ltint_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
-    uint16_t T1, T2;
+    int T1, T2;
     uint8_t no_count = 0;
 
     remaining = RESP_STRING_LENGTH_MAX;
@@ -3059,7 +3059,7 @@ static int buzzer_cmd_handler(at_cmd_t* msg)
     }
 
     no_count = string_check_is_number(0, msg->parm[1]);
-    if (no_count == 0 || no_count > 6)
+    if (no_count == 0 || no_count > 9)
     {
         LOG_INF("%s=>invalid Operater param: %s", __func__, msg->parm[1]);
         goto param_invalid;
@@ -3233,10 +3233,10 @@ static int modeset_cmd_handler(at_cmd_t* msg)
     uint8_t no_count = 0;
     uint16_t remaining;
     device_work_mode_config_t param_work_mode_config;
-    uint8_t gnss_sw;
-    uint8_t sub_mode_val;
-    uint32_t static_int_val;
-    uint32_t moving_int_val;
+    int gnss_sw;
+    int sub_mode_val;
+    int static_int_val;
+    int moving_int_val;
 
     remaining = RESP_STRING_LENGTH_MAX;  // 计算响应消息缓冲区的大小
 
@@ -3788,8 +3788,8 @@ static int patmtimer_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
     uint8_t no_count;
-    uint16_t interval_min;
-    uint8_t wakeup_sw;
+    int interval_min;
+    int wakeup_sw;
 
     remaining = RESP_STRING_LENGTH_MAX;
 
@@ -3857,8 +3857,8 @@ static int temptimer_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;
     uint8_t no_count;
-    uint16_t interval_min;
-    uint8_t wakeup_sw;
+    int interval_min;
+    int wakeup_sw;
 
     remaining = RESP_STRING_LENGTH_MAX;
 

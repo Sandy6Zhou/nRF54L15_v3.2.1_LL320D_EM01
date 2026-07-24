@@ -1352,7 +1352,7 @@ static void my_ctrl_task(void *p1, void *p2, void *p3)
 
             case MY_MSG_CTRL_LIGHT_PULL_SENSOR_BRIGHT:
                 MY_LOG_INF("Light pull sensor detected: BRIGHT");
-                // TODO: 上报拆卸报警
+                // 上报拆卸报警
                 if(gConfigParam.pullalm_config.pullalm_sw)
                 {
                     send_alarm_message_to_lte(ALARM_REMOVE, NULL);
