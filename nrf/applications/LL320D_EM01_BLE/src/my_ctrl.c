@@ -108,6 +108,18 @@ bool get_light_tamper_state(void)
     return light_tamper_sensor.state;
 }
 
+/************************************************************
+**函数名称:  get_light_pull_state
+**入口参数:  无
+**出口参数:  无
+**函数功能:  获取当前拆卸光感状态
+**返回值:    光感状态（true=有光，false=无光）
+*********************************************************************/
+bool get_light_pull_state(void)
+{
+    return light_pull_sensor.state;
+}
+
 /********************************************************************
 **函数名称:  send_alarm_message_to_lte
 **入口参数:  alarm_type    ---    告警类型枚举(输入)
@@ -595,7 +607,7 @@ static void sensor_patm_read(void)
     if (pressure_pa < 0)
     {
         MY_LOG_ERR("sensor_collect_barometer fail");
-        ble_packet_trans_send((uint8_t *)"NO Data!", strlen("NO Data!"));
+        send_ble_msg("NO Data!", strlen("NO Data!"));
         return;
     }
     pressure_pa /= 1000.0f;
@@ -619,11 +631,118 @@ static void sensor_temp_read(void)
     if (temp_humi < 0)
     {
         MY_LOG_ERR("sensor_collect_temp_humi fail");
-        ble_packet_trans_send((uint8_t *)"NO Data!", strlen("NO Data!"));
+        send_ble_msg("NO Data!", strlen("NO Data!"));
         return;
     }
     snprintf(resp_msg, sizeof(resp_msg), "Temperature: %.1f degrees Celsius,Humidity: %.1f %%", (temp_humi & 0xFFFF) * 0.1f, (temp_humi >> 16) * 0.1f);
     send_ble_msg(resp_msg, strlen(resp_msg));
+}
+
+/********************************************************************
+**函数名称:  device_status_read
+**入口参数:  无
+**出口参数:  无
+**函数功能:  读取当前设备状态并发送到BLE
+**返 回 值:  无
+*********************************************************************/
+static void device_status_read(void)
+{
+    char send_buf[256];
+    char motion[20];        // 运动状态
+    char net_signal[10];    // 网络信号
+    char gnss_signal[15];   // GNSS信号
+    char temperature_str[30]; // 温度字符串
+    char humidity_str[30]; // 湿度字符串
+    char pressure_str[30]; // 气压字符串
+    int32_t temp_humi = sensor_collect_temp_humi();
+    int32_t pressure_pa = sensor_collect_barometer();
+
+    if (temp_humi < 0)
+    {
+        snprintf(temperature_str, sizeof(temperature_str), "-");
+        snprintf(humidity_str, sizeof(humidity_str), "-");
+    }
+    else
+    {
+        snprintf(temperature_str, sizeof(temperature_str), "%.1f(degrees Celsius)", (temp_humi & 0xFFFF) * 0.1f);
+        snprintf(humidity_str, sizeof(humidity_str), "%.1f%%(%%RH)", (temp_humi >> 16) * 0.1f);
+    }
+    if (pressure_pa < 0)
+    {
+        snprintf(pressure_str, sizeof(pressure_str), "-");
+    }
+    else
+    {
+        snprintf(pressure_str, sizeof(pressure_str), "%.2f(kPa)", pressure_pa / 1000.0f);
+    }
+
+    switch (g_lte_net_signal_level)
+        {
+            case 0:
+                memcpy(net_signal, "NA", sizeof("NA"));
+                break;
+
+            case 1:
+            case 2:
+                memcpy(net_signal, "Weak", sizeof("Weak"));
+                break;
+
+            case 3:
+                memcpy(net_signal, "Normal", sizeof("Normal"));
+                break;
+
+            case 4:
+                memcpy(net_signal, "Strong", sizeof("Strong"));
+                break;
+
+            default:
+                memcpy(net_signal, "Unknown", sizeof("Unknown"));
+                break;
+        }
+
+        switch (g_lte_gps_state)
+        {
+            case 0:
+                memcpy(gnss_signal, "OFF", sizeof("OFF"));
+                break;
+            case 1:
+                memcpy(gnss_signal, "Searching", sizeof("Searching"));
+                break;
+            case 2:
+                memcpy(gnss_signal, "Fix", sizeof("Fix"));
+                break;
+            default:
+                memcpy(gnss_signal, "Unknown", sizeof("Unknown"));
+                break;
+        }
+
+        switch (g_gsensor_runtime_ctx.current_gsensor_state)
+        {
+            case STATE_STATIC:
+                memcpy(motion, "Static", sizeof("Static"));
+                break;
+
+            case STATE_MOTION:
+                memcpy(motion, "Motion", sizeof("Motion"));
+                break;
+
+            default:
+                memcpy(motion, "Unknown", sizeof("Unknown"));
+                break;
+        }
+
+        snprintf(send_buf, sizeof(send_buf), "Battery:%d%%(%s);Network:%s(%s);GNSS:%s(%s); \
+            Tamper:%s;Pull:%s;Motion:%s(%.2f KM/h);Temperature:%s;Humidity:%s;Pressure:%s",
+            get_show_percent(),
+            g_charg_state == NO_CHARGING ? "Discharging" : "Charging",
+            g_lte_net_flag == 0 ? "Disconnect" : "Connect",
+            net_signal, gnss_signal, g_lte_gps_signal,
+            get_light_tamper_state() ? "Remove" : "Normal",
+            get_light_pull_state() ? "Remove" : "Normal",
+            motion, g_location_point.speed,
+            temperature_str, humidity_str, pressure_str);
+
+        send_ble_msg(send_buf, strlen(send_buf));
 }
 
 /********************************************************************
@@ -1617,6 +1736,10 @@ static void my_ctrl_task(void *p1, void *p2, void *p3)
 
             case MY_MSG_CTRL_TEMP_READ:
                 sensor_temp_read();
+                break;
+
+            case MY_MSG_CTRL_STATUS_READ:
+                device_status_read();
                 break;
 
             case MY_MSG_LED_CTRL_MODE:

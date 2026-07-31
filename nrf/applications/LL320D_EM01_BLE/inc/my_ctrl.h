@@ -150,6 +150,15 @@ void go_to_system_off(void);
 *********************************************************************/
 bool get_light_tamper_state(void);
 
+/************************************************************
+**函数名称:  get_light_pull_state
+**入口参数:  无
+**出口参数:  无
+**函数功能:  获取当前拆卸光感状态
+**返回值:    光感状态（true=有光，false=无光）
+*********************************************************************/
+bool get_light_pull_state(void);
+
 extern fs_temp_humi_record_t g_temp_humi_sample;
 extern fs_barometer_record_t g_barometer_sample;
 

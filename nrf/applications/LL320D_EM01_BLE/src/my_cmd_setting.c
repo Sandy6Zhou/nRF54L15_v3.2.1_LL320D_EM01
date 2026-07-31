@@ -130,7 +130,8 @@ static const char* lte_cmd_attr_table[] =
     "SIMPRI",
     "DEEPSLEEPDT",
     "CENTER",
-    "SECOND_SERVER"
+    "SECOND_SERVER",
+    "CHECK"
 };
 
 /*********************************************************************
@@ -3992,10 +3993,6 @@ static int temp_cmd_handler(at_cmd_t* msg)
 static int status_cmd_handler(at_cmd_t* msg)
 {
     uint16_t remaining;     // 响应消息缓冲区的剩余空间
-    int ret;                // snprintf 函数的返回值
-    char motion[20];        // 运动状态
-    char net_signal[10];    // 网络信号
-    char gnss_signal[15];   // GNSS信号
 
     remaining = RESP_STRING_LENGTH_MAX;  // 计算响应消息缓冲区的大小
 
@@ -4004,74 +4001,8 @@ static int status_cmd_handler(at_cmd_t* msg)
     {
         LOG_INF("%s=>%s", __func__, msg->parm[0]);  // 输出函数名和命令名
 
-        switch (g_lte_net_signal_level)
-        {
-            case 0:
-                memcpy(net_signal, "NA", sizeof("NA"));
-                break;
-            case 1:
-            case 2:
-                memcpy(net_signal, "Weak", sizeof("Weak"));
-                break;
-            case 3:
-                memcpy(net_signal, "Normal", sizeof("Normal"));
-                break;
-            case 4:
-                memcpy(net_signal, "Strong", sizeof("Strong"));
-                break;
-            default:
-                memcpy(net_signal, "Unknown", sizeof("Unknown"));
-                break;
-        }
-
-        switch (g_lte_gps_state)
-        {
-            case 0:
-                memcpy(gnss_signal, "OFF", sizeof("OFF"));
-                break;
-            case 1:
-                memcpy(gnss_signal, "Searching", sizeof("Searching"));
-                break;
-            case 2:
-                memcpy(gnss_signal, "Fix", sizeof("Fix"));
-                break;
-            default:
-                memcpy(gnss_signal, "Unknown", sizeof("Unknown"));
-                break;
-        }
-
-        switch (g_gsensor_runtime_ctx.current_gsensor_state)
-        {
-            case STATE_STATIC:
-                memcpy(motion, "Static", sizeof("Static"));
-                break;
-
-            default:
-                memcpy(motion, "Unknown", sizeof("Unknown"));
-                break;
-        }
-
-        // TODO: Network,GNSS采用的默认值，后续需要根据实际情况修改
-        /* 生成响应消息，格式：[VERSION]%s*/
-        ret = snprintf(msg->resp_msg, remaining, "Battery:%d%%(%s);Network:%s(%s);GNSS:%s(%s); \
-            Tamper:%s;Motion:%s(%.2f KM/h)",
-            get_show_percent(),
-            g_charg_state == NO_CHARGING ? "Discharging" : "Charging",
-            g_lte_net_flag == 0 ? "Disconnect" : "Connect",
-            net_signal, gnss_signal, g_lte_gps_signal,
-            get_light_tamper_state() ? "Remove" : "Noemal",
-            motion, g_location_point.speed);
-
-        if (ret > 0 && ret < remaining)  // 检查响应消息是否生成成功
-        {
-            msg->resp_length = ret;  // 设置响应消息的长度
-            LOG_INF("STATUS: %s", msg->resp_msg);  // 输出状态信息
-        }
-        else  // 响应消息生成失败
-        {
-            // 生成失败响应消息
-            msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
-        }
+        // 通知CTRL线程读取查询status#状态
+        my_send_msg(MOD_BLE, MOD_CTRL, MY_MSG_CTRL_STATUS_READ);
     }
     else  // 参数数量错误
     {

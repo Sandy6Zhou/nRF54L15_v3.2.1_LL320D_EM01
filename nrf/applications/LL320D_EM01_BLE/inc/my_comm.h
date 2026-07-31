@@ -249,6 +249,7 @@ typedef enum
     MY_MSG_CTRL_TEMP_RELOAD,           /* 温湿度定时器配置更新消息 */
     MY_MSG_CTRL_PATM_READ,             /* 读取气压数据消息 */
     MY_MSG_CTRL_TEMP_READ,             /* 读取温度湿度数据消息 */
+    MY_MSG_CTRL_STATUS_READ,           /* 读取状态信息消息 */
     MY_MSG_LED_CTRL_MODE,              /* LED 控制 */
     MY_MSG_LED_ENABLE,                 /* LED使能 */
     MY_MSG_LED_DISABLE,                /* LED禁用 */

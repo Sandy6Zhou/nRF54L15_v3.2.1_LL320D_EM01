@@ -1402,6 +1402,7 @@ static void sensor_process_temp_humi_sample(const fs_temp_humi_record_t *record_
     {
         return;
     }
+
     // LOG_INF("%s:%d,%u,%d,%d", __func__, g_bLteReady, record_ptr->timestamp, record_ptr->temperature_x10, record_ptr->humidity_x10);
 
     if (g_bLteReady)
@@ -1443,6 +1444,7 @@ static void sensor_process_barometer_sample(const fs_barometer_record_t *record_
     {
         return;
     }
+
     // LOG_INF("%s:%d,%u,%u", __func__, g_bLteReady, record_ptr->timestamp, record_ptr->pressure_pa);
 
     if (g_bLteReady)
