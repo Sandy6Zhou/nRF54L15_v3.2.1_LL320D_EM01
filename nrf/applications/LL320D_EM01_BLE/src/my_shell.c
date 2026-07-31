@@ -83,6 +83,7 @@ static int cmd_mem_stat(const struct shell *shell, size_t argc, char **argv)
 static int cmd_reboot(const struct shell *shell, size_t argc, char **argv)
 {
     shell_print(shell, "System rebooting...");
+    my_gsensor_save_imu_bias();
     k_sleep(K_MSEC(500));
     sys_reboot(SYS_REBOOT_WARM);
     return 0;

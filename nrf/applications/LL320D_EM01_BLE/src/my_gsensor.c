@@ -45,6 +45,8 @@ static const struct gpio_dt_spec gsensor_pwr_gpio = GPIO_DT_SPEC_GET(GSENSOR_PWR
 #define MY_BMI325_ID 0x45
 #define TIMESTAMP_QUEUE_SIZE  500   // 队列大小（预留足够空间）
 
+#define MY_IMU_ODR IMU_ODR_100HZ // IMU采样率100Hz
+
 /* 消息队列定义 */
 K_MSGQ_DEFINE(my_gsensor_msgq, sizeof(msg_t), 10, 4);
 
@@ -103,6 +105,28 @@ static sliding_window_t g_int_window =
     .head = 0,
     .tail = 0,
 };
+
+static attitude_ctx_t s_attitude_ctx = {0}; // 存储当前姿态信息
+
+/********************************************************************
+**函数名称:  my_gsensor_save_imu_bias
+**入口参数:  无
+**出口参数:  无
+**函数功能:  保存当前 IMU 偏置值到用户数据存储
+**返 回 值:  无
+*********************************************************************/
+void my_gsensor_save_imu_bias(void)
+{
+    if (g_gsensor_runtime_ctx.sensor_ready == false)
+    {
+        return;
+    }
+
+    gConfigParam.imu_zero_bias_config.gyro_bias_x = s_attitude_ctx.gyro_bias_x;
+    gConfigParam.imu_zero_bias_config.gyro_bias_y = s_attitude_ctx.gyro_bias_y;
+    gConfigParam.imu_zero_bias_config.gyro_bias_z = s_attitude_ctx.gyro_bias_z;
+    my_user_data_write(ZMS_ID_IMU_ZERO_BIAS_CONFIG, &gConfigParam.imu_zero_bias_config, sizeof(imu_zero_bias_config_t));
+}
 
 /********************************************************************
 **函数名称:  gsensor_is_required_mode
@@ -177,6 +201,44 @@ void gsensor_algorithm_timer_cb(void *param)
     my_send_msg(MOD_GSENSOR, MOD_GSENSOR, MY_MSG_READ_GSENSOR_DATA);
 }
 
+
+/********************************************************************
+**函数名称:  imu_odr_to_hz
+**入口参数:  odr      ---        IMU 采样率
+**出口参数:  无
+**函数功能:  读取当前配置的 IMU 采样率
+**返 回 值:  IMU 采样率（Hz）
+*********************************************************************/
+uint16_t imu_odr_to_hz(imu_odr_t odr)
+{
+    switch (odr)
+    {
+        case IMU_ODR_25HZ:
+            return 25;
+
+        case IMU_ODR_50HZ:
+            return 50;
+
+        case IMU_ODR_100HZ:
+            return 100;
+
+        case IMU_ODR_200HZ:
+            return 200;
+
+        case IMU_ODR_400HZ:
+            return 400;
+
+        case IMU_ODR_800HZ:
+            return 800;
+
+        case IMU_ODR_1600HZ:
+            return 1600;
+
+        default:
+            return 1;
+    }
+}
+
 /********************************************************************
 **函数名称:  gsensor_motion_int_config
 **入口参数:  无
@@ -191,9 +253,9 @@ static int gsensor_motion_int_config(void)
     struct imu_int_config imu_int_cfg = { 0 };
     struct imu_any_motion_config imu_motion_cfg = { 0 };
 
-    imu_cfg.acc_odr = IMU_ODR_100HZ;
+    imu_cfg.acc_odr = MY_IMU_ODR;
     imu_cfg.acc_range = IMU_ACC_RANGE_2G;
-    imu_cfg.gyr_odr = IMU_ODR_100HZ;
+    imu_cfg.gyr_odr = MY_IMU_ODR;
     imu_cfg.gyr_range = IMU_GYR_RANGE_250DPS;
     imu_cfg.power_mode = IMU_POWER_LOW_POWER;
     ret = imu_set_config(&imu_cfg);
@@ -223,12 +285,13 @@ static int gsensor_motion_int_config(void)
     ret = imu_register_int_callback(imu_int_callback);
     GSENSOR_REG_CHECK(ret);
 
+    // 等待陀螺仪稳定，确保数据采集准确,不然会导致姿态解算错误，上电不稳定偏航角会直接漂移16度
+    k_sleep(K_MSEC(50));
+
     // 启动状态检测定时器
     my_start_timer(MY_TIMER_GSENSOR_STATE_CHECK, 2000, true, gsensor_state_check_timer_cb);
-    // 等待陀螺仪稳定，确保数据采集准确,不然会导致姿态解算错误，上电偏航角会偏移16度
-    k_sleep(K_MSEC(50));
     // 启动算法定时器
-    my_start_timer(MY_TIMER_GSENSOR_ALGORITHM, 10, true, gsensor_algorithm_timer_cb);
+    my_start_timer(MY_TIMER_GSENSOR_ALGORITHM, 1000/imu_odr_to_hz(MY_IMU_ODR), true, gsensor_algorithm_timer_cb);
 
     return 0;
 }
@@ -392,16 +455,12 @@ static int gsensor_pm_suspend(void)
 {
     int ret = 0;
 
-    if (gsensor_is_required_mode() == true)
-    {
-        // TODO: 保持传感器供电
-        return 0;
-    }
 #ifdef GSENSOR_DUTY_PROJECT
     my_stop_timer(MY_TIMER_IMU_INT_DITHER);
 #endif
     g_gsensor_runtime_ctx.sensor_ready = false;
     my_stop_timer(MY_TIMER_GSENSOR_STATE_CHECK);
+    my_stop_timer(MY_TIMER_GSENSOR_ALGORITHM);
     // 其它模式关闭 G-Sensor 电源
     my_gsensor_pwr_on(false);
 
@@ -430,12 +489,6 @@ static int gsensor_pm_resume(void)
 {
     int result;         // 初始化结果
     int retry_count = 0; // 重试计数
-
-    if (g_gsensor_runtime_ctx.sensor_ready == true)
-    {
-        // TODO: 智能模式下，无需完整初始化
-        return 0;
-    }
 
     // 打开 G-Sensor 电源
     my_gsensor_pwr_on(true);
@@ -605,6 +658,58 @@ void gsensor_int_handler(void)
 }
 
 /********************************************************************
+**函数名称:  my_gsensor_overturn_check
+**入口参数:  euler_angle --- 欧拉角指针（输入）
+**出口参数:  无
+**函数功能:  检查是否发生翻转
+**返 回 值:  无
+*********************************************************************/
+void my_gsensor_overturn_check(euler_angle_t *euler_angle)
+{
+    static int time_count = 0;
+    static bool s_is_over_turn = false;
+
+    if (gConfigParam.imu_alm_config.imu_alm_sw == 0)
+    {
+        s_is_over_turn = false;
+        time_count = 0;
+        return;
+    }
+    if ((s_is_over_turn == false) &&
+        ((fabsf(euler_angle->roll) > gConfigParam.imu_alm_config.imu_roll_threshold && gConfigParam.imu_alm_config.imu_roll_threshold != 255) ||
+        (fabsf(euler_angle->pitch) > gConfigParam.imu_alm_config.imu_pitch_threshold && gConfigParam.imu_alm_config.imu_pitch_threshold != 255) ||
+        (fabsf(euler_angle->yaw) > gConfigParam.imu_alm_config.imu_yaw_threshold && gConfigParam.imu_alm_config.imu_yaw_threshold != 255)))
+    {
+        time_count++;
+        if (time_count > gConfigParam.imu_alm_config.imu_duration_time * imu_odr_to_hz(MY_IMU_ODR))
+        {
+            s_is_over_turn = true;
+            time_count = 0;
+            send_alarm_message_to_lte(ALARM_FILP, NULL);
+            LOG_INF("IMU Over Turn Alarm");
+        }
+    }
+    else if ((s_is_over_turn == true) &&
+            ((fabsf(euler_angle->roll) < gConfigParam.imu_alm_config.imu_roll_threshold || gConfigParam.imu_alm_config.imu_roll_threshold == 255) &&
+            (fabsf(euler_angle->pitch) < gConfigParam.imu_alm_config.imu_pitch_threshold || gConfigParam.imu_alm_config.imu_pitch_threshold == 255) &&
+            (fabsf(euler_angle->yaw) < gConfigParam.imu_alm_config.imu_yaw_threshold || gConfigParam.imu_alm_config.imu_yaw_threshold == 255)))
+    {
+        time_count++;
+        if (time_count > gConfigParam.imu_alm_config.recover_time * imu_odr_to_hz(MY_IMU_ODR))
+        {
+            s_is_over_turn = false;
+            time_count = 0;
+            send_alarm_message_to_lte(ALARM_FILP_BACK, NULL);
+            LOG_INF("IMU Reversal Recovery Alarm");
+        }
+    }
+    else
+    {
+        time_count = 0;
+    }
+}
+
+/********************************************************************
 **函数名称:  my_gsensor_read_data
 **入口参数:  无
 **出口参数:  无
@@ -613,14 +718,19 @@ void gsensor_int_handler(void)
 *********************************************************************/
 void my_gsensor_read_data(void)
 {
-    static attitude_ctx_t s_attitude_ctx = {0};
+    int ret = 0;
     euler_angle_t euler_angle = {0};
 
-    attitude_read_imu_and_update(&s_attitude_ctx, &euler_angle);
+    ret =  attitude_read_imu_and_update(&s_attitude_ctx, &euler_angle, imu_odr_to_hz(MY_IMU_ODR));
+    if (ret < 0)
+    {
+        return;
+    }
     // 打印欧拉角（可选）, 单位：度
     // 注意：欧拉角的顺序是 roll, pitch, yaw
     // 要查看角度时打开日志打印注释
     // LOG_INF("euler_angle: %f, %f, %f", euler_angle.roll, euler_angle.pitch, euler_angle.yaw);
+    my_gsensor_overturn_check(&euler_angle);
 }
 
 /********************************************************************
@@ -651,7 +761,7 @@ void my_gsensor_motion_state_check()
         get_motion_status();
         LOG_INF("current_gsensor_state: %d", g_gsensor_runtime_ctx.current_gsensor_state);
     }
-    LOG_INF("current_gsensor_state: %d, int_count: %d", g_gsensor_runtime_ctx.current_gsensor_state, int_count);
+    // LOG_INF("current_gsensor_state: %d, int_count: %d", g_gsensor_runtime_ctx.current_gsensor_state, int_count);
 }
 
 /********************************************************************
@@ -682,6 +792,11 @@ static void my_gsensor_task(void *p1, void *p2, void *p3)
         MY_LOG_INF("G-Sensor PM registered successfully");
     }
 
+    if (gsensor_is_required_mode() == true)
+    {
+        my_pm_device_resume(MY_PM_DEV_GSENSOR);
+    }
+
     MY_LOG_INF("G-Sensor thread started");
 
     LOG_INF("Training complete!\n");
@@ -698,23 +813,7 @@ static void my_gsensor_task(void *p1, void *p2, void *p3)
                 break;
 
             case MY_MSG_GSENSOR_LOW_POWER:
-                // 智能模式静止挂起后，设备状态可能已经是 SUSPENDED，但传感器仍处于带电唤醒待机态
-                if (my_pm_device_get_state(MY_PM_DEV_GSENSOR) == MY_PM_STATE_SUSPENDED)
-                {
-#ifdef GSENSOR_DUTY_PROJECT
-                    // 关闭 IMU 中断去抖定时器
-                    my_stop_timer(MY_TIMER_IMU_INT_DITHER);
-#endif
-                    g_gsensor_runtime_ctx.sensor_ready = false;
-                    my_stop_timer(MY_TIMER_GSENSOR_STATE_CHECK);
-                    // 关闭传感器供电
-                    my_gsensor_pwr_on(false);
-                }
-                else
-                {
-                    // 通过电源管理模块挂起 G-Sensor 设备（会自动挂起 I2C21 总线），会调用 gsensor_pm_suspend
                     my_pm_device_suspend(MY_PM_DEV_GSENSOR);
-                }
                 break;
 
             case MY_MSG_GSENSOR_INT:
@@ -859,24 +958,16 @@ int my_gsensor_init(k_tid_t *tid)
     // 同步更新gsensor电源状态
     my_gsensor_pwr_on(true);
 
-    /* 3. 初始化 BMI325 传感器 */
-    err = my_bmi325_init();
-    if (err != 0)
-    {
-        my_gsensor_pwr_on(false);
-        return err;
-    }
-
-    /* 4. 初始化消息队列 */
+    /* 3. 初始化消息队列 */
     my_init_msg_handler(MOD_GSENSOR, &my_gsensor_msgq);
 
-    /* 5. 启动 G-Sensor 线程 */
+    /* 4. 启动 G-Sensor 线程 */
     *tid = k_thread_create(&s_my_gsensor_task_data, my_gsensor_task_stack,
                            K_THREAD_STACK_SIZEOF(my_gsensor_task_stack),
                            my_gsensor_task, NULL, NULL, NULL,
                            MY_GSENSOR_TASK_PRIORITY, 0, K_NO_WAIT);
 
-    /* 6. 设置线程名称 */
+    /* 5. 设置线程名称 */
     k_thread_name_set(*tid, "MY_GSENSOR");
 
     MY_LOG_INF("G-Sensor module initialized");

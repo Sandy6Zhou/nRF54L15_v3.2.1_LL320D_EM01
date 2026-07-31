@@ -119,10 +119,10 @@ int attitude_init(attitude_ctx_t *ctx)
     ctx->acc_lpf_y = 0.0f;
     ctx->acc_lpf_z = 0.0f;
 
-    /* 陀螺仪零偏初始值: 从零开始, 在线逐步追踪 */
-    ctx->gyro_bias_x = 0.0f;
-    ctx->gyro_bias_y = 0.0f;
-    ctx->gyro_bias_z = 0.0f;
+    /* 陀螺仪零偏初始值: 从配置中获取, 在线逐步追踪 */
+    ctx->gyro_bias_x = gConfigParam.imu_zero_bias_config.gyro_bias_x;
+    ctx->gyro_bias_y = gConfigParam.imu_zero_bias_config.gyro_bias_y;
+    ctx->gyro_bias_z = gConfigParam.imu_zero_bias_config.gyro_bias_z;
 
     MY_LOG_INF("Attitude algorithm initialized (Mahony filter for transport, kp=%.2f, ki=%.4f)",
                ctx->kp, ctx->ki);
@@ -355,13 +355,14 @@ int attitude_get_quaternion(const attitude_ctx_t *ctx, quaternion_t *quat)
 /********************************************************************
 **函数名称:  attitude_read_imu_and_update
 **入口参数:  ctx      ---        姿态解算上下文指针
+**入口参数:  odr      ---        IMU 采样率
 **出口参数:  euler    ---        输出当前欧拉角 (度)，可为 NULL
 **函数功能:  读取 BMI325 IMU 数据并更新姿态 (便捷接口)
 **返 回 值:  0 表示成功，负值表示失败
 **注意事项:  内部调用 imu_read() 获取数据，自动将单位从
 **           mg -> m/s^2, mdps -> rad/s 进行换算
 *********************************************************************/
-int attitude_read_imu_and_update(attitude_ctx_t *ctx, euler_angle_t *euler)
+int attitude_read_imu_and_update(attitude_ctx_t *ctx, euler_angle_t *euler, uint16_t odr)
 {
     struct imu_data data;
     imu_reading_t reading;
@@ -393,7 +394,7 @@ int attitude_read_imu_and_update(attitude_ctx_t *ctx, euler_angle_t *euler)
 
     /* 根据 IMU 配置的 ODR 计算采样间隔
      * 当前默认 100Hz ODR -> dt = 0.01s */
-    dt = 0.01f;
+    dt = 1.0f / (float)odr;
 
     /* 更新姿态 */
     ret = attitude_update(ctx, &reading, dt);

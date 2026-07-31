@@ -266,6 +266,28 @@ const temp_timer_config_t gDefaultTempTimerConfig =
     .wakeup_cell_sw = 0,        // 默认不因温湿度缓存主动拉起LTE
 };
 
+const imu_alm_config_t gDefaultImuAlmConfig =
+{
+    .flag = FLAG_VALID,             // 默认配置有效
+    .imu_alm_sw = 1,                // 默认开启
+    .imu_alm_report = 1,            // 默认GPRS
+    .imu_roll_threshold = 30,       // 默认报警阈值30度
+    .imu_pitch_threshold = 25,      // 默认报警阈值25度
+    .imu_yaw_threshold = 255,       // 默认不报警
+    .imu_duration_time = 3,         // 默认3秒
+    .imu_duration_count = 3,        // 默认3次
+    .recover_time = 10,             // 默认10秒
+};
+
+const imu_zero_bias_config_t gDefaultImuZeroBiasConfig =
+{
+    .flag = FLAG_VALID,             // 默认配置有效
+    .gyro_bias_x = 0.0f,            // 默认陀螺仪零偏估计 X (rad/s, 在线逐步追踪)
+    .gyro_bias_y = 0.0f,            // 默认陀螺仪零偏估计 Y (rad/s)
+    .gyro_bias_z = 0.0f,            // 默认陀螺仪零偏估计 Z (rad/s)
+};
+
+
 /**
 /********************************************************************
 **函数名称:  my_user_data_storage_init
@@ -802,6 +824,38 @@ void my_param_load_config(void)
         MY_LOG_INF("Temp timer config loaded:T(%d), C(%d)",
                    gConfigParam.temp_timer_config.interval_min,
                    gConfigParam.temp_timer_config.wakeup_cell_sw);
+    }
+
+    //--------Load Imu Alm Config ---------------------
+    length = sizeof(imu_alm_config_t);
+    ret = my_user_data_read(ZMS_ID_IMU_ALM_CONFIG, &gConfigParam.imu_alm_config, length);
+    if (ret != length)
+    {
+        memcpy(&gConfigParam.imu_alm_config, &gDefaultImuAlmConfig, length);
+        MY_LOG_INF("Imu alm config not found. Use default.");
+    }
+    else
+    {
+        MY_LOG_INF("Imu alm config loaded");
+    }
+
+    //--------Load Imu Zero Bias Config ---------------------
+    length = sizeof(imu_zero_bias_config_t);
+    ret = my_user_data_read(ZMS_ID_IMU_ZERO_BIAS_CONFIG, &gConfigParam.imu_zero_bias_config, length);
+    if (ret != length)
+    {
+        memcpy(&gConfigParam.imu_zero_bias_config, &gDefaultImuZeroBiasConfig, length);
+        MY_LOG_INF("Imu zero bias config not found. Use default: gyro_bias_x(%f), gyro_bias_y(%f), gyro_bias_z(%f)",
+                   gConfigParam.imu_zero_bias_config.gyro_bias_x,
+                   gConfigParam.imu_zero_bias_config.gyro_bias_y,
+                   gConfigParam.imu_zero_bias_config.gyro_bias_z);
+    }
+    else
+    {
+        MY_LOG_INF("Imu zero bias config loaded: gyro_bias_x(%f), gyro_bias_y(%f), gyro_bias_z(%f)",
+                   gConfigParam.imu_zero_bias_config.gyro_bias_x,
+                   gConfigParam.imu_zero_bias_config.gyro_bias_y,
+                   gConfigParam.imu_zero_bias_config.gyro_bias_z);
     }
 }
 

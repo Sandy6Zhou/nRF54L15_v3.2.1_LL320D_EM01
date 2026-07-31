@@ -98,11 +98,13 @@ int attitude_get_quaternion(const attitude_ctx_t *ctx, quaternion_t *quat);
 /********************************************************************
 **函数名称:  attitude_read_imu_and_update
 **入口参数:  ctx      ---        姿态解算上下文指针
+**入口参数:  odr      ---        IMU 采样率
 **出口参数:  euler    ---        输出当前欧拉角 (度)，可为 NULL
 **函数功能:  读取 BMI325 IMU 数据并更新姿态 (便捷接口)
 **返 回 值:  0 表示成功，负值表示失败
-**注意事项:  内部调用 imu_read() 获取数据并自动换算单位
+**注意事项:  内部调用 imu_read() 获取数据，自动将单位从
+**           mg -> m/s^2, mdps -> rad/s 进行换算
 *********************************************************************/
-int attitude_read_imu_and_update(attitude_ctx_t *ctx, euler_angle_t *euler);
+int attitude_read_imu_and_update(attitude_ctx_t *ctx, euler_angle_t *euler, uint16_t odr);
 
 #endif

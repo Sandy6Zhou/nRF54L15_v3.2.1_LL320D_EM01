@@ -378,6 +378,10 @@ static void dfu_reset_work_handler(struct k_work *work)
 {
     ARG_UNUSED(work);
 
+    my_gsensor_save_imu_bias(); // 保存 IMU 零偏
+
+    k_sleep(K_MSEC(500));       // 等待数据写入完成
+
     sys_reboot(SYS_REBOOT_WARM);
 }
 

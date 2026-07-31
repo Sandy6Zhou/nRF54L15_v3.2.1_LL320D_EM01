@@ -76,6 +76,7 @@ static int patmtimer_cmd_handler(at_cmd_t* msg);
 static int patm_cmd_handler(at_cmd_t* msg);
 static int temptimer_cmd_handler(at_cmd_t* msg);
 static int temp_cmd_handler(at_cmd_t* msg);
+static int imu_alm_cmd_handler(at_cmd_t* msg);
 
 static const at_cmd_attr_t at_cmd_attr_table[] =
 {
@@ -115,6 +116,7 @@ static const at_cmd_attr_t at_cmd_attr_table[] =
     {"PATM",           patm_cmd_handler},
     {"TEMPTIMER",      temptimer_cmd_handler},
     {"TEMP",           temp_cmd_handler},
+    {"IMU_ALM",        imu_alm_cmd_handler},
 };
 
 static const char* lte_cmd_attr_table[] =
@@ -829,7 +831,7 @@ static int remalm_cmd_handler(at_cmd_t* msg)
     LOG_INF("%s=>%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2]);
 
     /* 生成成功响应 */
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK");
     LOG_INF("REMALM: SW=%d, M=%d", gConfigParam.remalm_config.remalm_sw, gConfigParam.remalm_config.remalm_mode);
 
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
@@ -918,7 +920,7 @@ static int pullalm_cmd_handler(at_cmd_t* msg)
     LOG_INF("%s=>%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2]);
 
     /* 生成成功响应 */
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK");
     LOG_INF("PULLALM: SW=%d, M=%d", gConfigParam.pullalm_config.pullalm_sw, gConfigParam.pullalm_config.pullalm_mode);
 
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
@@ -1072,7 +1074,7 @@ static int patalm_cmd_handler(at_cmd_t* msg)
     LOG_INF("%s=>%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2]);
 
     /* 生成成功响应 */
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK");
     LOG_INF("PATMALM: SW=%d, LOW_THRESHOLD=%d, HIGH_THRESHOLD=%d, REPORT_TYPE=%d, REPORT_INTERVAL=%d",
             gConfigParam.patalm_config.patalm_sw,
             gConfigParam.patalm_config.patalm_low_threshold,
@@ -1376,7 +1378,7 @@ static int motdet_cmd_handler(at_cmd_t* msg)
            msg->parm[2], msg->parm[3], msg->parm[4], msg->parm[5]);
 
     /* 生成成功响应 */
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK");
     LOG_INF("MOTDET: Vibration=%d, Duration=%d",
            gConfigParam.motdet_config.motdet_vibration,
            gConfigParam.motdet_config.motdet_duration);
@@ -1550,7 +1552,7 @@ static int batlevel_cmd_handler(at_cmd_t* msg)
     my_user_data_write(ZMS_ID_BAT_LEVEL_CONFIG, &gConfigParam.batlevel_config, sizeof(bat_level_config_t));
 
     /* 生成成功响应 */
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK");
     LOG_INF("BATLEVEL: Empty RPT=%d, Low RPT=%d, Normal RPT=%d, Fair RPT=%d, High RPT=%d, Full RPT=%d",
            gConfigParam.batlevel_config.batlevel_empty_rpt, gConfigParam.batlevel_config.batlevel_low_rpt,
            gConfigParam.batlevel_config.batlevel_normal_rpt, gConfigParam.batlevel_config.batlevel_fair_rpt,
@@ -1623,7 +1625,7 @@ static int chargesta_cmd_handler(at_cmd_t* msg)
     LOG_INF("%s=>%s,%s", __func__, msg->parm[0], msg->parm[1]);
 
     /* 所有参数验证通过,生成成功响应 */
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK");
     LOG_INF("CHARGESTA: Report=%d", gConfigParam.batlevel_config.chargesta_report);
 
     //TODO 具体逻辑处理
@@ -2516,7 +2518,7 @@ static int btconnect_cmd_handler(at_cmd_t* msg)
     LOG_INF("%s=>%s,%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2], msg->parm[3]);
 
     /* 生成成功响应 */
-    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK", msg->parm[0]);
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK");
     LOG_INF("BTCONNECT: SW=%d, Interval=%d, Report=%d", gConfigParam.btconnect_config.btconnect_sw, gConfigParam.btconnect_config.btconnect_interval, gConfigParam.btconnect_config.btconnect_report);
 
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
@@ -4013,4 +4015,188 @@ static int status_cmd_handler(at_cmd_t* msg)
         return BLE_DATA_TYPE_PACKET_MULTIPLE;
     }
     return BLE_DATA_TYPE_PACKET_MULTIPLE;  // 返回 BLE 数据类型
+}
+
+/********************************************************************
+**函数名称:  imu_alm_cmd_handler
+**入口参数:  msg      ---        AT指令结构体指针
+**出口参数:  msg->resp_msg  ---  响应消息
+**           msg->resp_length --- 响应长度
+**函数功能:  处理IMU_ALM指令：设置IMU倾角报警功能
+**指令格式:  IMU_ALM,<SW>,<REPORT>,<ROLL_THRESHOLD>,<PITCH_THRESHOLD>,<YAW_THRESHOLD>,<DURATION_TIME>,<RECOVER_TIME>#
+**参数说明:  <SW> - 功能开关: ON/OFF
+**           <REPORT> - 报警上报方式: 0-不上报，1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
+**           <ROLL_THRESHOLD> - Roll轴倾角阈值: 5-60度, 255-不报警
+**           <PITCH_THRESHOLD> - Pitch轴倾角阈值: 5-60度, 255-不报警
+**           <YAW_THRESHOLD> - Yaw轴倾角阈值: 5-60度, 255-不报警
+**           <DURATION_TIME> - 持续时间阈值: 1-180秒
+**           <RECOVER_TIME> - 恢复时间: 1-30秒
+**返 回 值:  BLE数据类型
+*********************************************************************/
+static int imu_alm_cmd_handler(at_cmd_t* msg)
+{
+    uint16_t remaining;
+    uint8_t no_count = 0;
+    int sw_value;
+    int imu_alm_report;
+    int roll_threshold;
+    int pitch_threshold;
+    int yaw_threshold;
+    int imu_duration_time;
+    int recover_time;
+
+    remaining = RESP_STRING_LENGTH_MAX;
+
+    //无参数即查询
+    if (msg->parm_count == 0)
+    {
+        // 根据 imu_alm_sw 的值选择 "ON" 或 "OFF"
+        const char* state_str = gConfigParam.imu_alm_config.imu_alm_sw ? "ON" : "OFF";
+
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "%s:%s,%d,%d,%d,%d,%d,%d", msg->parm[0],
+                                    state_str,
+                                    gConfigParam.imu_alm_config.imu_alm_report,
+                                    gConfigParam.imu_alm_config.imu_roll_threshold,
+                                    gConfigParam.imu_alm_config.imu_pitch_threshold,
+                                    gConfigParam.imu_alm_config.imu_yaw_threshold,
+                                    gConfigParam.imu_alm_config.imu_duration_time,
+                                    gConfigParam.imu_alm_config.recover_time);
+        return BLE_DATA_TYPE_PACKET_MULTIPLE;
+    }
+
+    /* 检查参数数量 */
+    if (msg->parm_count != 7)
+    {
+        LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+        goto param_invalid;
+    }
+
+    /* 解析SW参数 */
+    if (my_strcasecmp(msg->parm[1], "ON") == 0)
+    {
+        sw_value = 1;
+    }
+    else if (my_strcasecmp(msg->parm[1], "OFF") == 0)
+    {
+        sw_value = 0;
+    }
+    else
+    {
+        LOG_INF("%s=>invalid SW param: %s", __func__, msg->parm[1]);
+        goto param_invalid;
+    }
+
+    no_count = string_check_is_number(0, msg->parm[2]);
+    if (no_count == 0 || no_count > 9)
+    {
+        LOG_INF("%s=>invalid REPORT param: %s", __func__, msg->parm[2]);
+        goto param_invalid;
+    }
+
+    /* 解析REPORT参数 */
+    imu_alm_report = atoi(msg->parm[2]);
+    if (imu_alm_report < 0 || imu_alm_report > 3)
+    {
+        LOG_INF("%s=>invalid REPORT param: %s", __func__, msg->parm[2]);
+        goto param_invalid;
+    }
+
+    no_count = string_check_is_number(0, msg->parm[3]);
+    if (no_count == 0 || no_count > 9)
+    {
+        LOG_INF("%s=>invalid ROLL_THRESHOLD param: %s", __func__, msg->parm[3]);
+        goto param_invalid;
+    }
+
+    /* 解析ROLL_THRESHOLD参数 */
+    roll_threshold = atoi(msg->parm[3]);
+    if ((roll_threshold < 5 || roll_threshold > 60) && roll_threshold != 255)
+    {
+        LOG_INF("%s=>invalid ROLL_THRESHOLD param: %s", __func__, msg->parm[3]);
+        goto param_invalid;
+    }
+
+    no_count = string_check_is_number(0, msg->parm[4]);
+    if (no_count == 0 || no_count > 9)
+    {
+        LOG_INF("%s=>invalid PITCH_THRESHOLD param: %s", __func__, msg->parm[4]);
+        goto param_invalid;
+    }
+
+    /* 解析PITCH_THRESHOLD参数 */
+    pitch_threshold = atoi(msg->parm[4]);
+    if ((pitch_threshold < 5 || pitch_threshold > 60) && pitch_threshold != 255)
+    {
+        LOG_INF("%s=>invalid PITCH_THRESHOLD param: %s", __func__, msg->parm[4]);
+        goto param_invalid;
+    }
+
+    no_count = string_check_is_number(0, msg->parm[5]);
+    if (no_count == 0 || no_count > 9)
+    {
+        LOG_INF("%s=>invalid YAW_THRESHOLD param: %s", __func__, msg->parm[5]);
+        goto param_invalid;
+    }
+
+    /* 解析YAW_THRESHOLD参数 */
+    yaw_threshold = atoi(msg->parm[5]);
+    if ((yaw_threshold < 5 || yaw_threshold > 60) && yaw_threshold != 255)
+    {
+        LOG_INF("%s=>invalid YAW_THRESHOLD param: %s", __func__, msg->parm[5]);
+        goto param_invalid;
+    }
+
+    no_count = string_check_is_number(0, msg->parm[6]);
+    if (no_count == 0 || no_count > 9)
+    {
+        LOG_INF("%s=>invalid DURATION_TIME param: %s", __func__, msg->parm[6]);
+        goto param_invalid;
+    }
+
+    /* 解析DURATION_TIME参数 */
+    imu_duration_time = atoi(msg->parm[6]);
+    if (imu_duration_time < 1 || imu_duration_time > 180)
+    {
+        LOG_INF("%s=>invalid DURATION_TIME param: %s", __func__, msg->parm[6]);
+        goto param_invalid;
+    }
+
+    no_count = string_check_is_number(0, msg->parm[7]);
+    if (no_count == 0 || no_count > 9)
+    {
+        LOG_INF("%s=>invalid RECOVER_TIME param: %s", __func__, msg->parm[7]);
+        goto param_invalid;
+    }
+
+    /* 解析RECOVER_TIME参数 */
+    recover_time = atoi(msg->parm[7]);
+    if (recover_time < 1 || recover_time > 30)
+    {
+        LOG_INF("%s=>invalid RECOVER_TIME param: %s", __func__, msg->parm[7]);
+        goto param_invalid;
+    }
+
+    /* 所有参数验证通过,统一赋值 */
+    gConfigParam.imu_alm_config.flag = FLAG_VALID;
+    gConfigParam.imu_alm_config.imu_alm_sw = (uint8_t)sw_value;
+    gConfigParam.imu_alm_config.imu_alm_report = (uint8_t)imu_alm_report;
+    gConfigParam.imu_alm_config.imu_roll_threshold = (uint8_t)roll_threshold;
+    gConfigParam.imu_alm_config.imu_pitch_threshold = (uint8_t)pitch_threshold;
+    gConfigParam.imu_alm_config.imu_yaw_threshold = (uint8_t)yaw_threshold;
+    gConfigParam.imu_alm_config.imu_duration_time = (uint8_t)imu_duration_time;
+    gConfigParam.imu_alm_config.recover_time = (uint8_t)recover_time;
+
+    /* 保存配置 */
+    my_user_data_write(ZMS_ID_IMU_ALM_CONFIG, &gConfigParam.imu_alm_config, sizeof(imu_alm_config_t));
+
+    LOG_INF("%s=>%s,%s,%s", __func__, msg->parm[0], msg->parm[1], msg->parm[2]);
+
+    /* 生成成功响应 */
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK");
+
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
+
+param_invalid:
+    msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }

@@ -75,6 +75,8 @@ typedef enum                           // 参数ID定义
     ZMS_ID_BLE_MAC_STORE_META,         // BLE 透传MAC扫描数据循环存储区元数据ID
     ZMS_ID_PATM_TIMER_CONFIG,          // 气压定时上传配置参数ID
     ZMS_ID_TEMP_TIMER_CONFIG,          // 温湿度定时上传配置参数ID
+    ZMS_ID_IMU_ALM_CONFIG,             // IMU翻转报警配置参数ID
+    ZMS_ID_IMU_ZERO_BIAS_CONFIG,       // IMU零偏配置参数ID
     ZMS_ID_BLE_TH_STORE_META,          // BLE 温湿度循环存储区元数据ID
     ZMS_ID_BLE_BP_STORE_META,          // BLE 气压循环存储区元数据ID
 } my_zms_id_t;
@@ -286,6 +288,27 @@ typedef struct                              // 存储的温湿度定时上传配
     uint8_t wakeup_cell_sw;                 // 4G离线时是否唤醒: 0-OFF, 1-ON
 } temp_timer_config_t;
 
+typedef struct                              // 存储的IMU翻转报警配置参数
+{
+    uint8_t flag;                           // 参数有效标志
+    uint8_t imu_alm_sw;                     // IMU翻转报警开关: 0-OFF, 1-ON
+    uint8_t imu_alm_report;                 // IMU翻转报警上报方式: 0-不上报, 1-GPRS, 2-GPRS+SMS, 3-GPRS+SMS+CALL
+    uint8_t imu_roll_threshold;             // IMU横滚角报警阈值: 5~60度，若设置255则关闭该维度的角度检测
+    uint8_t imu_pitch_threshold;            // IMU俯仰角报警阈值: 5~60度，若设置255则关闭该维度的角度检测
+    uint8_t imu_yaw_threshold;              // IMU偏航角报警阈值: 5~60度，若设置255则关闭该维度的角度检测
+    uint8_t imu_duration_time;              // IMU超过阈值持续时间: 1~180s
+    uint8_t imu_duration_count;             // IMU超过阈值持续次数: 1~10次,预留接口
+    uint8_t recover_time;                   // 恢复时间: 1~30s
+} imu_alm_config_t;
+
+typedef struct                              // 存储的IMU零偏配置参数
+{
+    uint8_t flag;                           // 参数有效标志
+    float gyro_bias_x;                      // 陀螺仪零偏估计 X (rad/s, 在线逐步追踪)
+    float gyro_bias_y;                      // 陀螺仪零偏估计 Y (rad/s)
+    float gyro_bias_z;                      // 陀螺仪零偏估计 Z (rad/s)
+} imu_zero_bias_config_t;
+
 typedef struct
 {
     lic_ff_t                    lic_ff;                     // 存储的LICENSE FF信息
@@ -317,6 +340,8 @@ typedef struct
     bparmac_config_t            bparmac_config;             // 透传mac地址配置
     patm_timer_config_t         patm_timer_config;          // 气压定时上传配置
     temp_timer_config_t         temp_timer_config;          // 温湿度定时上传配置
+    imu_alm_config_t            imu_alm_config;             // IMU翻转报警配置
+    imu_zero_bias_config_t      imu_zero_bias_config;       // IMU零偏配置
 } config_param_t;
 
 extern config_param_t    gConfigParam;

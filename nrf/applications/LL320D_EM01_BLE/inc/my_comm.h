@@ -128,6 +128,8 @@ typedef enum
     ALARM_LOW_TEMP,             // 低温告警
     ALARM_HIGH_HUMI,            // 高湿告警
     ALARM_LOW_HUMI,             // 低湿告警
+    ALARM_FILP,                 // 翻转告警
+    ALARM_FILP_BACK,            // 翻转恢复告警
     ALARM_LOW_BAT,              // 内置电池低电报警
     ALARM_OTHER,                // 其他类型告警
 } alarm_type_t;

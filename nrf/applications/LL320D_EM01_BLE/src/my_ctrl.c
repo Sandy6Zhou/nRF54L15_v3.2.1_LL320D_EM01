@@ -212,6 +212,11 @@ void send_alarm_message_to_lte(alarm_type_t alarm_type, const char *additional_i
             rpt = gConfigParam.tempalm_config.tempalm_report_type;
             break;
 
+        case ALARM_FILP:                // 翻转告警
+        case ALARM_FILP_BACK:           // 翻转恢复告警
+            rpt = gConfigParam.imu_alm_config.imu_alm_report;
+            break;
+
         default:
             MY_LOG_ERR("unknown alarm type");
             return;
@@ -833,6 +838,8 @@ static void enable_wakeup_pin(void)
 void go_to_system_off(void)
 {
     MY_LOG_INF("Config wakeup pin and enter System OFF");
+
+    my_gsensor_save_imu_bias();
 
     k_sleep(K_SECONDS(2));// 确保上面的日志有打印出来
 
