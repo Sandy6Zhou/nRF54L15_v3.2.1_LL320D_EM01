@@ -34,6 +34,9 @@
 
 LOG_MODULE_REGISTER(my_cmd_setting, LOG_LEVEL_INF);
 
+// 出厂关机标志位
+bool g_factory_mode = false;
+
 // 标记lte_cmd来的,用于区分蓝牙下发的还是lte过来的(某些指令只能网络发蓝牙不能执行)
 uint8_t g_lte_cmdSource = 0;
 
@@ -77,6 +80,8 @@ static int patm_cmd_handler(at_cmd_t* msg);
 static int temptimer_cmd_handler(at_cmd_t* msg);
 static int temp_cmd_handler(at_cmd_t* msg);
 static int imu_alm_cmd_handler(at_cmd_t* msg);
+static int factory_cmd_handler(at_cmd_t* msg);
+static int factoryall_cmd_handler(at_cmd_t* msg);
 
 static const at_cmd_attr_t at_cmd_attr_table[] =
 {
@@ -117,6 +122,8 @@ static const at_cmd_attr_t at_cmd_attr_table[] =
     {"TEMPTIMER",      temptimer_cmd_handler},
     {"TEMP",           temp_cmd_handler},
     {"IMU_ALM",        imu_alm_cmd_handler},
+    {"FACTORY",        factory_cmd_handler},
+    {"FACTORYALL",     factoryall_cmd_handler},
 };
 
 static const char* lte_cmd_attr_table[] =
@@ -4198,5 +4205,59 @@ static int imu_alm_cmd_handler(at_cmd_t* msg)
 
 param_invalid:
     msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
+}
+
+/*********************************************************************
+**函数名称:  factory_cmd_handler
+**入口参数:  msg              ---    指向AT_cmd_t结构体的指针
+**出口参数:  无
+**函数功能:  处理FACTORY指令
+*********************************************************************/
+static int factory_cmd_handler(at_cmd_t* msg)
+{
+    uint16_t remaining;
+
+    remaining = RESP_STRING_LENGTH_MAX;
+    /* 检查参数数量 (应为0，指令格式为FACTORY#) */
+    if (msg->parm_count == 0)
+    {
+        my_param_factory_reset();
+        lte_send_command("FACTORY", "0");
+        g_factory_mode = true;
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK");
+    }
+    else
+    {
+        LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
+    }
+    return BLE_DATA_TYPE_PACKET_MULTIPLE;
+}
+
+/*********************************************************************
+**函数名称:  factoryall_cmd_handler
+**入口参数:  msg              ---    指向AT_cmd_t结构体的指针
+**出口参数:  无
+**函数功能:  处理FACTORYALL指令
+*********************************************************************/
+static int factoryall_cmd_handler(at_cmd_t* msg)
+{
+    uint16_t remaining;
+
+    remaining = RESP_STRING_LENGTH_MAX;
+     /* 检查参数数量 (应为0，指令格式为FACTORYALL#) */
+    if (msg->parm_count == 0)
+    {
+        my_param_factory_reset();
+        lte_send_command("FACTORY", "1");
+        g_factory_mode = true;
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK");
+    }
+    else
+    {
+        LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
+        msg->resp_length = snprintf(msg->resp_msg, remaining, "Set Fail! InvalidParam");
+    }
     return BLE_DATA_TYPE_PACKET_MULTIPLE;
 }

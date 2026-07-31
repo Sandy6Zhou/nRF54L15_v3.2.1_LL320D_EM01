@@ -66,6 +66,9 @@ extern uint8_t g_lte_cmdSource;
 // 用于存储整包返回的数据内容(仅在蓝牙线程使用)
 extern char g_resp_buf[RESP_STRING_LENGTH_MAX];
 
+// 出厂关机标志位
+extern bool g_factory_mode;
+
 /********************************************************************
 **函数名称:  set_long_battery_params
 **入口参数:  config              ---    指向设备工作模式配置结构体的指针

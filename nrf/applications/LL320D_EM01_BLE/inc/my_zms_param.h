@@ -100,6 +100,12 @@ typedef struct                              // 广播有效值参数
     uint8_t GoogleValid;                    // Google有效值
 } adv_valid_value_t;
 
+typedef struct                              // 存储的ECDH_G信息
+{
+    uint8_t flag;                           // 参数有效标志
+    uint16_t ecdh_g; // ECDH_G参数值
+} ecdh_g_t;
+
 typedef struct                              // 存储的SN信息
 {
     uint8_t flag;                           // 参数有效标志
@@ -314,7 +320,7 @@ typedef struct
     lic_ff_t                    lic_ff;                     // 存储的LICENSE FF信息
     lic_gg_t                    lic_gg;                     // 存储的LICENSE GG信息
     adv_valid_value_t           adv_valid_value;            // 广播有效值
-    uint16_t                    ECDH_GValue;                // ECDH_GValue值
+    ecdh_g_t                    ECDH_GValue;                // ECDH_GValue值
     gsm_sn_t                    gsm_sn;                     // 设备序列号SN
     macaddr_t                   my_macaddr;                 // 设备MAC地址
     ble_tx_power_t              ble_tx_power;               // 蓝牙发射功率
@@ -519,5 +525,13 @@ int my_user_data_read(uint32_t id, void *data, int len);
 **返 回 值:  true表示有效，false表示无效
 *********************************************************************/
 bool my_param_check_license(char *param, uint8_t len, my_zms_id_t id);
+
+/********************************************************************
+**函数名称:  my_param_factory_reset
+**入口参数:  无
+**出口参数:  无
+**函数功能:  重置所有参数为出厂值
+*********************************************************************/
+int my_param_factory_reset(void);
 
 #endif

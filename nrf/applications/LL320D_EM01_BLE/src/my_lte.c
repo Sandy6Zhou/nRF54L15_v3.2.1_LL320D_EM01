@@ -132,6 +132,7 @@ static const ble_rsp_cmd_map_t ble_rsp_cmd_table[] = {
     {"TH",       BLE_RSP_TH},
     {"BP",       BLE_RSP_BP},
     {"CDATA",    BLE_RSP_CDATA},
+    {"FACTORY",  BLE_RSP_FACTORY},
     {NULL,       BLE_RSP_UNKNOWN }
 };
 
@@ -2069,6 +2070,15 @@ static int my_lte_handle_power_off(char *data)
         my_send_msg(MOD_LTE, MOD_MAIN, MY_MSG_CTRL_SHUTDOWN_REQUEST);
     }
 
+    if (g_factory_mode == true)
+    {
+        g_factory_mode = false;
+        my_gsensor_save_imu_bias();
+        k_sleep(K_MSEC(500));
+        sys_reboot(SYS_REBOOT_COLD);
+        return 0;
+    }
+
     return 0;
 }
 
@@ -2477,6 +2487,7 @@ static int my_ble_handle(char *data)
         case BLE_RSP_OTA:
         case BLE_RSP_INFO:
         case BLE_RSP_LED:
+        case BLE_RSP_FACTORY:
             break;
 
         case BLE_RSP_TIME:

@@ -18,6 +18,12 @@ const adv_valid_value_t gDefaultAdvValidValue =
     .GoogleValid = 0,
 };
 
+const ecdh_g_t gDefaultEcdhGValue =
+{
+    .flag = FLAG_VALID,
+    .ecdh_g = DEFAULT_ECDH_G_VALUE,
+};
+
 const gsm_sn_t gDefaultSnValue =
 {
     .flag = 0,
@@ -286,9 +292,6 @@ const imu_zero_bias_config_t gDefaultImuZeroBiasConfig =
     .gyro_bias_y = 0.0f,            // 默认陀螺仪零偏估计 Y (rad/s)
     .gyro_bias_z = 0.0f,            // 默认陀螺仪零偏估计 Z (rad/s)
 };
-
-
-/**
 /********************************************************************
 **函数名称:  my_user_data_storage_init
 **入口参数:  无
@@ -411,7 +414,7 @@ void my_param_load_config(void)
     //--------Load license ff data ---------------------
     length = sizeof(lic_ff_t);
     ret = my_user_data_read(ZMS_ID_FF, &gConfigParam.lic_ff, length);
-    if (ret != length)
+    if (gConfigParam.lic_ff.flag != FLAG_VALID || ret != length)
     {
         MY_LOG_INF("get zms ff fail");
         memset(&gConfigParam.lic_ff, 0, length);
@@ -420,7 +423,7 @@ void my_param_load_config(void)
     //--------Load license gg data ---------------------
     length = sizeof(lic_gg_t);
     ret = my_user_data_read(ZMS_ID_GG, &gConfigParam.lic_gg, length);
-    if (ret != length)
+    if (gConfigParam.lic_gg.flag != FLAG_VALID || ret != length)
     {
         MY_LOG_INF("get zms gg fail");
         memset(&gConfigParam.lic_gg, 0, length);
@@ -429,7 +432,7 @@ void my_param_load_config(void)
     //--------Load adv valid value data ---------------------
     length = sizeof(adv_valid_value_t);
     ret = my_user_data_read(ZMS_ID_ADV_VALID, &gConfigParam.adv_valid_value, length);
-    if (ret != length)
+    if (gConfigParam.adv_valid_value.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.adv_valid_value, &gDefaultAdvValidValue, length);
         MY_LOG_INF("Adv valid value not found. Use default:AppleValid(%d),GoogleValid(%d)",
@@ -443,16 +446,16 @@ void my_param_load_config(void)
     //--------Load ECDH G Value ---------------------
     length = sizeof(gConfigParam.ECDH_GValue);
     ret = my_user_data_read(ZMS_ID_ECDH_G, &gConfigParam.ECDH_GValue, length);
-    if (ret != length)
+    if (gConfigParam.ECDH_GValue.flag != FLAG_VALID || ret != length)
     {
-        gConfigParam.ECDH_GValue = DEFAULT_ECDH_G_VALUE;
-        MY_LOG_INF("ECDH G value not found. Use default:ECDH G value(0x%04x)", gConfigParam.ECDH_GValue);
+        memcpy(&gConfigParam.ECDH_GValue, &gDefaultEcdhGValue, length);
+        MY_LOG_INF("ECDH G value not found. Use default:ECDH G value(0x%04x)", gConfigParam.ECDH_GValue.ecdh_g);
     }
 
     //--------Load SN Value ---------------------
     length = sizeof(gsm_sn_t);
     ret = my_user_data_read(ZMS_ID_SN, &gConfigParam.gsm_sn, length);
-    if (ret != length)
+    if (gConfigParam.gsm_sn.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.gsm_sn, &gDefaultSnValue, length);
         memcpy(data_buff, gConfigParam.gsm_sn.hex, sizeof(gConfigParam.gsm_sn.hex));
@@ -462,7 +465,7 @@ void my_param_load_config(void)
     //--------Load mac addr ---------------------
     length = sizeof(macaddr_t);
     ret = my_user_data_read(ZMS_ID_MAC, &gConfigParam.my_macaddr, length);
-    if (ret != length)
+    if (gConfigParam.my_macaddr.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.my_macaddr, &gDefaultMacAddr, length);
         memcpy(data_buff, gConfigParam.my_macaddr.hex, sizeof(gConfigParam.my_macaddr.hex));
@@ -473,7 +476,7 @@ void my_param_load_config(void)
     //--------Load BLE TX Power ---------------------
     length = sizeof(ble_tx_power_t);
     ret = my_user_data_read(ZMS_ID_BLE_TX_POWER, &gConfigParam.ble_tx_power, length);
-    if (ret != length)
+    if (gConfigParam.ble_tx_power.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.ble_tx_power, &gDefaultBleTxPower, length);
         MY_LOG_INF("BLE TX power not set. Use default:%d dBm", gConfigParam.ble_tx_power.tx_power);
@@ -486,7 +489,7 @@ void my_param_load_config(void)
     //--------Load BLE Log Config ---------------------
     length = sizeof(ble_log_config_t);
     ret = my_user_data_read(ZMS_ID_BLE_LOG_CONFIG, &gConfigParam.ble_log_config, length);
-    if (ret != length)
+    if (gConfigParam.ble_log_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.ble_log_config, &gDefaultBleLogConfig, length);
         MY_LOG_INF("BLE log config not set. Use default: global_en=%d",
@@ -500,7 +503,7 @@ void my_param_load_config(void)
     //--------Load Device Workmode Config ---------------------
     length = sizeof(work_mode_config_t);
     ret = my_user_data_read(ZMS_ID_WORK_MODE_CONFIG, &gConfigParam.device_workmode_config, length);
-    if (ret != length)
+    if (gConfigParam.device_workmode_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.device_workmode_config, &gDefaultWorkModeConfig, length);
         MY_LOG_INF("Device workmode config not found. Use default.");
@@ -509,7 +512,7 @@ void my_param_load_config(void)
     //--------Load Remote Alarm Config ---------------------
     length = sizeof(remalm_config_t);
     ret = my_user_data_read(ZMS_ID_REM_ALM_CONFIG, &gConfigParam.remalm_config, length);
-    if (ret != length)
+    if (gConfigParam.remalm_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.remalm_config, &gDefaultRemAlmConfig, length);
         MY_LOG_INF("Remote alarm config not found. Use default:remalm_mode(%d), remalm_sw(%d)",
@@ -524,7 +527,7 @@ void my_param_load_config(void)
     //--------Load Pull Alarm Config ---------------------
     length = sizeof(pullalm_config_t);
     ret = my_user_data_read(ZMS_ID_PULL_ALM_CONFIG, &gConfigParam.pullalm_config, length);
-    if (ret != length)
+    if (gConfigParam.pullalm_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.pullalm_config, &gDefaultPullAlmConfig, length);
         MY_LOG_INF("Pull alarm config not found. Use default:pullalm_mode(%d), pullalm_sw(%d)",
@@ -539,7 +542,7 @@ void my_param_load_config(void)
     //--------Load Patalm Config ---------------------
     length = sizeof(patalm_config_t);
     ret = my_user_data_read(ZMS_ID_PATMALM_CONFIG, &gConfigParam.patalm_config, length);
-    if (ret != length)
+    if (gConfigParam.patalm_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.patalm_config, &gDefaultPatAlmConfig, length);
         MY_LOG_INF("Pat alarm config not found. Use default:patalm_low_threshold(%d), patalm_high_threshold(%d), patalm_report_type(%d), patalm_report_interval(%d)",
@@ -560,7 +563,7 @@ void my_param_load_config(void)
     //--------Load Temp Alm Config ---------------------
     length = sizeof(tempalm_config_t);
     ret = my_user_data_read(ZMS_ID_TEMPALM_CONFIG, &gConfigParam.tempalm_config, length);
-    if (ret != length)
+    if (gConfigParam.tempalm_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.tempalm_config, &gDefaultTempAlmConfig, length);
         MY_LOG_INF("Temp alarm config not found. Use default:temp_low_threshold(%d), temp_high_threshold(%d), humi_low_threshold(%d), humi_high_threshold(%d), tempalm_report_type(%d), tempalm_report_interval(%d)",
@@ -585,7 +588,7 @@ void my_param_load_config(void)
     //--------Load Mot Det Config ---------------------
     length = sizeof(mot_det_config_t);
     ret = my_user_data_read(ZMS_ID_MOT_DET_CONFIG, &gConfigParam.motdet_config, length);
-    if (ret != length)
+    if (gConfigParam.motdet_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.motdet_config, &gDefaultMotDetConfig, length);
         MY_LOG_INF("Mot det config not found. Use default:motdet_vibration(%d), motdet_duration(%d)",
@@ -600,7 +603,7 @@ void my_param_load_config(void)
     //--------Load Mot Det Alm Config ---------------------
     length = sizeof(motdetalm_config_t);
     ret = my_user_data_read(ZMS_ID_MOTDETALM_CONFIG, &gConfigParam.motdetalm_config, length);
-    if (ret != length)
+    if (gConfigParam.motdetalm_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.motdetalm_config, &gDefaultMotDetAlmConfig, length);
         MY_LOG_INF("Mot det alarm config not found. Use default:motdetalm_sw(%d), motdetalm_report_type(%d)",
@@ -615,7 +618,7 @@ void my_param_load_config(void)
     //--------Load Batlevel Config ---------------------
     length = sizeof(bat_level_config_t);
     ret = my_user_data_read(ZMS_ID_BAT_LEVEL_CONFIG, &gConfigParam.batlevel_config, length);
-    if (ret != length)
+    if (gConfigParam.batlevel_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.batlevel_config, &gDefaultBatlevelConfig, length);
         MY_LOG_INF("Batlevel config not found. Use default:batlevel_empty_rpt(%d), batlevel_low_rpt(%d), batlevel_normal_rpt(%d), "
@@ -638,7 +641,7 @@ void my_param_load_config(void)
     //--------Load Startr Config ---------------------
     length = sizeof(startr_config_t);
     ret = my_user_data_read(ZMS_ID_STARTR_CONFIG, &gConfigParam.startr_config, length);
-    if (ret != length)
+    if (gConfigParam.startr_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.startr_config, &gDefaultStartrConfig, length);
         MY_LOG_INF("Startr config not found. Use default:startr_sw(%d)", gConfigParam.startr_config.startr_sw);
@@ -651,7 +654,7 @@ void my_param_load_config(void)
     //--------Load PWRLimit Config ---------------------
     length = sizeof(pwrlimit_config_t);
     ret = my_user_data_read(ZMS_ID_PWRLIMIT_CONFIG, &gConfigParam.pwrlimit_config, length);
-    if (ret != length)
+    if (gConfigParam.pwrlimit_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.pwrlimit_config, &gDefaultPWRlimitConfig, length);
         MY_LOG_INF("PWRLimit config not found. Use default:pwrlimit_sw(%d)", gConfigParam.pwrlimit_config.pwrlimit_sw);
@@ -664,7 +667,7 @@ void my_param_load_config(void)
     //--------Load LPSLEEP Config ---------------------
     length = sizeof(lprunning_config_t);
     ret = my_user_data_read(ZMS_ID_LPSLEEP_CONFIG, &gConfigParam.lprunning_config, length);
-    if (ret != length)
+    if (gConfigParam.lprunning_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.lprunning_config, &gDefaultlprunningConfig, length);
         MY_LOG_INF("LPSLEEP config not found. Use default:sw(%d),threshold(%d),interval(%d)",
@@ -683,7 +686,7 @@ void my_param_load_config(void)
     //--------Load BTUPDATA Config ---------------------
     length = sizeof(bt_updata_config_t);
     ret = my_user_data_read(ZMS_ID_BT_UPDATA_CONFIG, &gConfigParam.bt_updata_config, length);
-    if (ret != length)
+    if (gConfigParam.bt_updata_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.bt_updata_config, &gDefaultBtUpdataConfig, length);
         MY_LOG_INF("BTUPDATA config not found. Use default:bt_updata_mode(%d), bt_updata_scan_interval(%d), bt_updata_scan_length(%d), bt_updata_updata_interval(%d)",
@@ -700,7 +703,7 @@ void my_param_load_config(void)
     //--------Load Bluetooth Config ---------------------
     length = sizeof(bluetooth_config_t);
     ret = my_user_data_read(ZMS_ID_BLUETOOTH_CONFIG, &gConfigParam.bluetooth_config, length);
-    if (ret != length)
+    if (gConfigParam.bluetooth_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.bluetooth_config, &gDefaultBluetoothConfig, length);
         MY_LOG_INF("Bluetooth config not found. Use default:bluetooth_sw(%d), bluetooth_a(%d), bluetooth_b(%d), bluetooth_flag(%d)",
@@ -715,7 +718,7 @@ void my_param_load_config(void)
     //--------Load BTCONNECT Config ---------------------
     length = sizeof(btconnect_config_t);
     ret = my_user_data_read(ZMS_ID_BTCONNECT_CONFIG, &gConfigParam.btconnect_config, length);
-    if (ret != length)
+    if (gConfigParam.btconnect_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.btconnect_config, &gDefaultBtconnectConfig, length);
         MY_LOG_INF("BTCONNECT config not found. Use default:btconnect_sw(%d), btconnect_interval(%d), btconnect_report(%d)",
@@ -730,7 +733,7 @@ void my_param_load_config(void)
     //--------Load Tag Config ---------------------
     length = sizeof(tag_config_t);
     ret = my_user_data_read(ZMS_ID_TAG_CONFIG, &gConfigParam.tag_config, length);
-    if (ret != length)
+    if (gConfigParam.tag_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.tag_config, &gDefaultTagConfig, length);
         MY_LOG_INF("Tag config not found. Use default:tag_sw(%d), tag_interval(%d)", gConfigParam.tag_config.tag_sw, gConfigParam.tag_config.tag_interval);
@@ -743,7 +746,7 @@ void my_param_load_config(void)
     //--------Load Led Config ---------------------
     length = sizeof(led_config_t);
     ret = my_user_data_read(ZMS_ID_LED_CONFIG, &gConfigParam.led_config, length);
-    if (ret != length)
+    if (gConfigParam.led_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.led_config, &gDefaultLedConfig, length);
         MY_LOG_INF("Led config not found. Use default:led_display(%d)", gConfigParam.led_config.led_display);
@@ -756,7 +759,7 @@ void my_param_load_config(void)
     //--------Load Ltint Config ---------------------
     length = sizeof(ltint_config_t);
     ret = my_user_data_read(ZMS_ID_LTINT_CONFIG, &gConfigParam.ltint_config, length);
-    if (ret != length)
+    if (gConfigParam.ltint_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.ltint_config, &gDefaultLtintConfig, length);
         MY_LOG_INF("Ltint Config not found. Use default:T1(%d), T2(%d)", gConfigParam.ltint_config.T1, gConfigParam.ltint_config.T2);
@@ -769,7 +772,7 @@ void my_param_load_config(void)
     //--------Load Buzzer Config ---------------------
     length = sizeof(buzzer_config_t);
     ret = my_user_data_read(ZMS_ID_BUZZER_CONFIG, &gConfigParam.buzzer_config, length);
-    if (ret != length)
+    if (gConfigParam.buzzer_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.buzzer_config, &gDefaultBuzzerConfig, length);
         MY_LOG_INF("Buzzer config not found. Use default:buzzer_operator(%d)", gConfigParam.buzzer_config.buzzer_operator);
@@ -782,7 +785,7 @@ void my_param_load_config(void)
     //--------Load Bparmac Config ---------------------
     length = sizeof(bparmac_config_t);
     ret = my_user_data_read(ZMS_ID_BT_PARMAC_CONFIG, &gConfigParam.bparmac_config, length);
-    if (ret != length)
+    if (gConfigParam.bparmac_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.bparmac_config, &gDefaultBparmacConfig, length);
         MY_LOG_INF("Bparmac config not found. Use default.");
@@ -795,7 +798,7 @@ void my_param_load_config(void)
     //--------Load Patm Timer Config ---------------------
     length = sizeof(patm_timer_config_t);
     ret = my_user_data_read(ZMS_ID_PATM_TIMER_CONFIG, &gConfigParam.patm_timer_config, length);
-    if (ret != length)
+    if (gConfigParam.patm_timer_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.patm_timer_config, &gDefaultPatmTimerConfig, length);
         MY_LOG_INF("Patm timer config not found. Use default:T(%d), C(%d)",
@@ -812,7 +815,7 @@ void my_param_load_config(void)
     //--------Load Temp Timer Config ---------------------
     length = sizeof(temp_timer_config_t);
     ret = my_user_data_read(ZMS_ID_TEMP_TIMER_CONFIG, &gConfigParam.temp_timer_config, length);
-    if (ret != length)
+    if (gConfigParam.temp_timer_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.temp_timer_config, &gDefaultTempTimerConfig, length);
         MY_LOG_INF("Temp timer config not found. Use default:T(%d), C(%d)",
@@ -829,7 +832,7 @@ void my_param_load_config(void)
     //--------Load Imu Alm Config ---------------------
     length = sizeof(imu_alm_config_t);
     ret = my_user_data_read(ZMS_ID_IMU_ALM_CONFIG, &gConfigParam.imu_alm_config, length);
-    if (ret != length)
+    if (gConfigParam.imu_alm_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.imu_alm_config, &gDefaultImuAlmConfig, length);
         MY_LOG_INF("Imu alm config not found. Use default.");
@@ -842,7 +845,7 @@ void my_param_load_config(void)
     //--------Load Imu Zero Bias Config ---------------------
     length = sizeof(imu_zero_bias_config_t);
     ret = my_user_data_read(ZMS_ID_IMU_ZERO_BIAS_CONFIG, &gConfigParam.imu_zero_bias_config, length);
-    if (ret != length)
+    if (gConfigParam.imu_zero_bias_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.imu_zero_bias_config, &gDefaultImuZeroBiasConfig, length);
         MY_LOG_INF("Imu zero bias config not found. Use default: gyro_bias_x(%f), gyro_bias_y(%f), gyro_bias_z(%f)",
@@ -857,6 +860,37 @@ void my_param_load_config(void)
                    gConfigParam.imu_zero_bias_config.gyro_bias_y,
                    gConfigParam.imu_zero_bias_config.gyro_bias_z);
     }
+}
+
+/********************************************************************
+**函数名称:  my_param_factory_reset
+**入口参数:  无
+**出口参数:  无
+**函数功能:  重置所有参数为出厂值
+*********************************************************************/
+int my_param_factory_reset(void)
+{
+    int ret;
+
+    MY_LOG_INF("Factory reset started");
+
+    /* 确保ZMS文件系统已初始化 */
+    ret = my_user_data_storage_init();
+    if (ret != 0)
+    {
+        MY_LOG_ERR("Storage init failed: %d", ret);
+        return ret;
+    }
+
+    /* 清除整个ZMS分区 */
+    ret = zms_clear(&s_user_data_fs);
+    if (ret < 0)
+    {
+        MY_LOG_ERR("ZMS clear failed: %d", ret);
+        return ret;
+    }
+
+    return 0;
 }
 
 /********************************************************************
@@ -1150,7 +1184,8 @@ int my_param_set_Gvalue(char *param)
     }
 
     Gvalue_len = sizeof(gConfigParam.ECDH_GValue);
-    gConfigParam.ECDH_GValue = Gvalue;
+    gConfigParam.ECDH_GValue.flag = FLAG_VALID;
+    gConfigParam.ECDH_GValue.ecdh_g = Gvalue;
 
     ret = my_user_data_write(ZMS_ID_ECDH_G, &gConfigParam.ECDH_GValue, Gvalue_len);
     if (ret != Gvalue_len)
@@ -1175,7 +1210,7 @@ int my_param_set_Gvalue(char *param)
 *********************************************************************/
 const uint16_t my_param_get_Gvalue(void)
 {
-    return gConfigParam.ECDH_GValue;
+    return gConfigParam.ECDH_GValue.ecdh_g;
 }
 
 /********************************************************************

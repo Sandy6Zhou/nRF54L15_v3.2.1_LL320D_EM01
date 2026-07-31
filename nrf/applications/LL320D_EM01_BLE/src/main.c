@@ -1051,7 +1051,7 @@ int main(void)
             case MY_MSG_CTRL_SHUTDOWN_REQUEST:
                 MY_LOG_INF("Shutdown request received, entering SHUTDOWN mode");
                 /* 切换到关机模式 */
-                MY_LOG_INF("sSystem hutdown complete. Press FUN_KEY for 3s to wakeup.");
+                MY_LOG_INF("System shutdown complete. Press FUN_KEY for 3s to wakeup.");
                 g_shutdown_request = false;
                 switch_work_mode(MY_MODE_SHUTDOWN);
                 break;
