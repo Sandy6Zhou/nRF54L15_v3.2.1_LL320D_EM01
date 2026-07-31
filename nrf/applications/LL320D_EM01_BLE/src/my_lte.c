@@ -324,6 +324,8 @@ static int lte_pm_resume(void)
 {
     int ret;
 
+    // 每次以缓冲区1开启接收时，缓冲区2必须作为驱动请求的下一块缓冲区
+    lte_next_buf = s_lte_rx_buf_2;
     ret = uart_rx_enable(lte_uart_dev, s_lte_rx_buf_1, LTE_UART_BUF_SIZE, 10 * USEC_PER_MSEC);
     if ((ret != 0) && (ret != -EBUSY))
     {
@@ -1271,6 +1273,8 @@ static void lte_uart_cb(const struct device *dev, struct uart_event *evt, void *
             // uart活跃时，才允许重新开启
             if (s_lte_uart_ctx.active)
             {
+                // 已释放缓冲区可能为缓冲区1，重启前必须指定缓冲区2为下一块缓冲区
+                lte_next_buf = s_lte_rx_buf_2;
                 uart_rx_enable(dev, s_lte_rx_buf_1, LTE_UART_BUF_SIZE, 10 * USEC_PER_MSEC);
             }
             break;

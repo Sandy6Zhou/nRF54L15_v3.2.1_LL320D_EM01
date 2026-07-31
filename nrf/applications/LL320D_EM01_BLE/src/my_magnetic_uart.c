@@ -139,6 +139,7 @@ static int magnetic_uart_pm_resume(void)
     int ret;
 
     // 恢复时重新打开 UART 异步接收，后续接收数据会继续通过 RX 事件进入线程处理流程
+    s_magnetic_uart_next_buf = s_magnetic_uart_rx_buf_2;
     ret = uart_rx_enable(s_magnetic_uart_dev, s_magnetic_uart_rx_buf_1, MAGNETIC_UART_BUF_SIZE, 10 * USEC_PER_MSEC);
     if ((ret != 0) && (ret != -EBUSY))
     {
@@ -346,6 +347,7 @@ static void magnetic_uart_cb(const struct device *dev, struct uart_event *evt, v
             if (s_magnetic_uart_ctx.active)
             {
                 // 非主动挂起场景下若驱动关闭了 RX，则立即补开，保持接收链路持续有效
+                s_magnetic_uart_next_buf = s_magnetic_uart_rx_buf_2;
                 uart_rx_enable(dev, s_magnetic_uart_rx_buf_1, MAGNETIC_UART_BUF_SIZE, 10 * USEC_PER_MSEC);
             }
             break;
