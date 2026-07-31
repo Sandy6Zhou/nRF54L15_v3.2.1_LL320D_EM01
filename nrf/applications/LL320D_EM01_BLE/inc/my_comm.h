@@ -180,6 +180,7 @@ typedef enum
     // G-Sensor 专用定时器
     MY_TIMER_IMU_INT_DITHER,      // IMU 中断去抖定时器
     MY_TIMER_GSENSOR_STATE_CHECK, // 运动状态检查定时器
+    MY_TIMER_GSENSOR_ALGORITHM,   // G-Sensor 算法定时器
 
     // 低功耗运行专用定时器
     MY_TIMER_LPSLEEP,               // 低功耗运行定时唤醒定时器
@@ -306,7 +307,7 @@ typedef enum
 #include "my_lte.h"
 #include "my_magnetic_uart.h"
 #include "my_gsensor.h"
-// #include "my_gsensor_algorithm.h"
+#include "my_gsensor_algorithm.h"
 #include "my_battery.h"
 #include "my_wdt.h"
 #include "my_tool.h"

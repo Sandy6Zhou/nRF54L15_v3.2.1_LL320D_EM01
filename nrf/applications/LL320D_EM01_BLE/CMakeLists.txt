@@ -34,7 +34,7 @@ target_sources(app PRIVATE
   src/my_lte.c
   src/my_magnetic_uart.c
   src/my_gsensor.c
-#  src/my_gsensor_algorithm.c
+  src/my_gsensor_algorithm.c
   src/my_ctrl.c
   src/my_battery.c
   src/my_wdt.c

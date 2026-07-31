@@ -166,6 +166,18 @@ void imu_int_callback(void)
 }
 
 /********************************************************************
+**函数名称:  gsensor_algorithm_timer_cb
+**入口参数:  param      ---        无（用于符合回调函数签名）
+**出口参数:  无
+**函数功能:  G-Sensor 算法定时器回调函数，用于更新姿态解算
+**返值:    无
+*********************************************************************/
+void gsensor_algorithm_timer_cb(void *param)
+{
+    my_send_msg(MOD_GSENSOR, MOD_GSENSOR, MY_MSG_READ_GSENSOR_DATA);
+}
+
+/********************************************************************
 **函数名称:  gsensor_motion_int_config
 **入口参数:  无
 **出口参数:  无
@@ -179,9 +191,9 @@ static int gsensor_motion_int_config(void)
     struct imu_int_config imu_int_cfg = { 0 };
     struct imu_any_motion_config imu_motion_cfg = { 0 };
 
-    imu_cfg.acc_odr = IMU_ODR_25HZ;
+    imu_cfg.acc_odr = IMU_ODR_100HZ;
     imu_cfg.acc_range = IMU_ACC_RANGE_2G;
-    imu_cfg.gyr_odr = IMU_ODR_25HZ;
+    imu_cfg.gyr_odr = IMU_ODR_100HZ;
     imu_cfg.gyr_range = IMU_GYR_RANGE_250DPS;
     imu_cfg.power_mode = IMU_POWER_LOW_POWER;
     ret = imu_set_config(&imu_cfg);
@@ -213,6 +225,10 @@ static int gsensor_motion_int_config(void)
 
     // 启动状态检测定时器
     my_start_timer(MY_TIMER_GSENSOR_STATE_CHECK, 2000, true, gsensor_state_check_timer_cb);
+    // 等待陀螺仪稳定，确保数据采集准确,不然会导致姿态解算错误，上电偏航角会偏移16度
+    k_sleep(K_MSEC(50));
+    // 启动算法定时器
+    my_start_timer(MY_TIMER_GSENSOR_ALGORITHM, 10, true, gsensor_algorithm_timer_cb);
 
     return 0;
 }
@@ -597,14 +613,14 @@ void gsensor_int_handler(void)
 *********************************************************************/
 void my_gsensor_read_data(void)
 {
-    struct imu_raw_data imu_raw_data_t = {0};
-    struct imu_data imu_data_t = {0};
+    static attitude_ctx_t s_attitude_ctx = {0};
+    euler_angle_t euler_angle = {0};
 
-    imu_read_raw(&imu_raw_data_t);
-    LOG_INF("imu_raw_data_t: %d, %d, %d, %d, %d, %d, %d", imu_raw_data_t.acc_x, imu_raw_data_t.acc_y, imu_raw_data_t.acc_z, imu_raw_data_t.gyr_x, imu_raw_data_t.gyr_y, imu_raw_data_t.gyr_z, imu_raw_data_t.temperature);
-
-    imu_read(&imu_data_t);
-    LOG_INF("imu_data_t: %d, %d, %d, %d, %d, %d, %d", imu_data_t.acc_x, imu_data_t.acc_y, imu_data_t.acc_z, imu_data_t.gyr_x, imu_data_t.gyr_y, imu_data_t.gyr_z, imu_data_t.temperature);
+    attitude_read_imu_and_update(&s_attitude_ctx, &euler_angle);
+    // 打印欧拉角（可选）, 单位：度
+    // 注意：欧拉角的顺序是 roll, pitch, yaw
+    // 要查看角度时打开日志打印注释
+    // LOG_INF("euler_angle: %f, %f, %f", euler_angle.roll, euler_angle.pitch, euler_angle.yaw);
 }
 
 /********************************************************************
