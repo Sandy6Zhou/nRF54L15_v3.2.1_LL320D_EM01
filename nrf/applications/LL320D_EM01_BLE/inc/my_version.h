@@ -12,7 +12,20 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260731"
+#define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260803"
+/* 软件版本:        V1.0
+** 完成日期:        2026.08.03
+** 作    者:       曹阳 (caoyang@jimiiot.com)
+** 修改内容:        1. 电池模块中新增两个对外接口，分别用于获取当前电池电压（毫伏）和电量百分比
+**                 2. 在主流程的短按唤醒和长按关机事件处理中，新增向 LTE 模块发送按键短按、长按指令的逻辑.
+**                 3. 脉冲发送函数在原有脉冲计数的基础上，追加电池电压和电量百分比两个字段。
+**                 4. 设备信息上报命令在原有 MAC、LICENSE FF、LICENSE GG 三个字段之间插入 GSM SN 字段。
+**                 5. 在指令透传表末尾追加4G相关命令属性字符串。
+**                 6. CBMT 命令改用缓存读取，电池查询命令中获取电池电压的方式由原先的实时采样改为读取缓存值。
+**                 7. 将IMU_ALM指令改名为IMUALM。
+***/
+
+// #define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260731"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.07.31
 ** 作    者:       曹阳 (caoyang@jimiiot.com)

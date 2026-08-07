@@ -133,6 +133,7 @@ static const ble_rsp_cmd_map_t ble_rsp_cmd_table[] = {
     {"BP",       BLE_RSP_BP},
     {"CDATA",    BLE_RSP_CDATA},
     {"FACTORY",  BLE_RSP_FACTORY},
+    {"KEY",      BLE_RSP_KEY},
     {NULL,       BLE_RSP_UNKNOWN }
 };
 
@@ -1890,12 +1891,14 @@ static int my_at_factory_cmd(char *pfactorycmd)
 *********************************************************************/
 static void send_lte_pulse(void)
 {
-    char buf[10] = {0};
+    char buf[20] = {0};
+    int battery_voltage_mv = get_batt_mv();
+    int8_t battery_percent = get_batt_percent();
 
     // 脉冲计数器增加
     s_lte_pulse_count++;
     // 构造脉冲消息: LTE+PULSE=<脉冲计数器>
-    snprintf(buf, sizeof(buf), "%u", s_lte_pulse_count);
+    snprintf(buf, sizeof(buf), "%u,%d,%d", s_lte_pulse_count, battery_voltage_mv, battery_percent);
 
     #if RETRANSMIT_CHECK_ENABLED
         lte_send_cmd_with_retry("PULSE", buf);
@@ -1926,12 +1929,18 @@ void lte_pulse_timer_handler(void *param)
 void send_bt_info_command(void)
 {
     char data_buff[LICENSE_FF_STR_LEN + 1] = {0};
-    char buf[MY_MAC_LENGTH*2 + LICENSE_GG_STR_LEN + LICENSE_FF_STR_LEN + 5] = {0};
+    char buf[MY_MAC_LENGTH*2 + GSM_SN_LENGTH*2 + LICENSE_GG_STR_LEN + LICENSE_FF_STR_LEN + 10] = {0};
     char *ptr = buf;
     int len = 0;
     int remaining = sizeof(buf);
 
     hex2hexstr(gConfigParam.my_macaddr.hex, sizeof(gConfigParam.my_macaddr.hex), data_buff, sizeof(data_buff));
+    len = snprintf(ptr, remaining, "%s,", data_buff);
+    ptr += len;
+    remaining -= len;
+    memset(data_buff, 0, sizeof(data_buff));
+
+    memcpy(data_buff, gConfigParam.gsm_sn.hex, sizeof(gConfigParam.gsm_sn.hex));
     len = snprintf(ptr, remaining, "%s,", data_buff);
     ptr += len;
     remaining -= len;
@@ -2488,6 +2497,7 @@ static int my_ble_handle(char *data)
         case BLE_RSP_INFO:
         case BLE_RSP_LED:
         case BLE_RSP_FACTORY:
+        case BLE_RSP_KEY:
             break;
 
         case BLE_RSP_TIME:

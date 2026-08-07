@@ -121,7 +121,7 @@ static const at_cmd_attr_t at_cmd_attr_table[] =
     {"PATM",           patm_cmd_handler},
     {"TEMPTIMER",      temptimer_cmd_handler},
     {"TEMP",           temp_cmd_handler},
-    {"IMU_ALM",        imu_alm_cmd_handler},
+    {"IMUALM",        imu_alm_cmd_handler},
     {"FACTORY",        factory_cmd_handler},
     {"FACTORYALL",     factoryall_cmd_handler},
 };
@@ -140,7 +140,19 @@ static const char* lte_cmd_attr_table[] =
     "DEEPSLEEPDT",
     "CENTER",
     "SECOND_SERVER",
-    "CHECK"
+    "CHECK",
+    "GPSDMODE",
+    "POSITIONIMMED",
+    "BATCH",
+    "ANGLEREP",
+    "GPSCOLD",
+    "NETSET",
+    "ICCID",
+    "IMSI",
+    "ASETGMT",
+    "GMT",
+    "AMSSERVER",
+    "NETLOG",
 };
 
 /*********************************************************************
@@ -1980,7 +1992,7 @@ static int cbmt_cmd_handler(at_cmd_t* msg)
     {
         LOG_INF("%s=>%s", __func__, msg->parm[0]);
 
-        my_battery_read_mv(&battery_voltage_mv);
+        battery_voltage_mv = get_batt_mv();
         if(g_charg_state == NO_CHARGING)
         {
             charge_status = "CHARGE_OUT";

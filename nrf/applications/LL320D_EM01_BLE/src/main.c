@@ -1038,9 +1038,19 @@ int main(void)
                 /* 短按唤醒后，显示电池状态，LED显示,蓝牙广播*/
                 open_led_timer(5000);
                 my_bluetooth_key_process();
+                #if RETRANSMIT_CHECK_ENABLED
+                    lte_send_cmd_with_retry("KEY", "SHORT");
+                #else
+                    lte_send_command("KEY", "SHORT");
+                #endif
                 break;
 
             case MY_MSG_CTRL_KEY_LONG_PRESS:
+                #if RETRANSMIT_CHECK_ENABLED
+                    lte_send_cmd_with_retry("KEY", "LONG");
+                #else
+                    lte_send_command("KEY", "LONG");
+                #endif
                 if (gConfigParam.pwrlimit_config.pwrlimit_sw == 0)
                 {
                     go_to_shutdown();

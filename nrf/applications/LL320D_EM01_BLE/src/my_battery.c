@@ -38,6 +38,9 @@ LOG_MODULE_REGISTER(my_battery, LOG_LEVEL_INF);
     {4200, 100}, /* 4.2V -> 100% */ \
 }
 
+static int s_read_mv = 0;                    // 电池电压值（毫伏）
+static int8_t s_show_percent = 0;        // 显示的电池电量百分比
+
 #define BATT_ADC_SAMPLE_NUM 3  /**< 电池电压采样次数，用于提高测量准确性, 数字必须大于3, 去掉一个最大值和最小值*/
 #define BATT_UPDATE_COUNT 3      /**< 电池电量更新计数阈值，用于实现电量显示的平滑过渡 */
 
@@ -107,8 +110,6 @@ static const pm_device_ops_t battery_pm_ops =
 // 电源状态，初始值为未连接
 my_chg_state_t g_charg_state = NO_CHARGING;
 
-static int8_t s_show_percent = 0;        // 显示的电池电量百分比
-
 /*********************************************************************
 **函数名称:  led_enable
 **入口参数:  on: true=使能，false=禁用
@@ -129,6 +130,28 @@ void led_enable(bool on)
 bool led_get_enable(void)
 {
     return s_led_enable_flag;
+}
+
+/*********************************************************************
+**函数名称:  get_batt_mv
+**入口参数:  无
+**出口参数:  电池电压值（毫伏）
+**函数功能:  获取当前电池电压值（毫伏）
+*********************************************************************/
+int get_batt_mv(void)
+{
+    return s_read_mv;
+}
+
+/*********************************************************************
+**函数名称:  get_batt_percent
+**入口参数:  无
+**出口参数:  电池电量百分比
+**函数功能:  获取当前电池电量百分比
+*********************************************************************/
+int8_t get_batt_percent(void)
+{
+    return s_show_percent;
 }
 
 /*********************************************************************
@@ -523,6 +546,7 @@ int my_battery_read_mv(int32_t *mv)
 {
     int err = 0;            // 错误码
     int i = 0;              // 循环计数器
+    int32_t read_mv = 0;  // 读取到的电池电压值
     int32_t max_mv = 0;     // 最大电压值
     int32_t min_mv = 10000; // 最小电压值，初始化为一个较大的值
     int32_t sum_mv = 0;     // 电压总和
@@ -532,7 +556,7 @@ int my_battery_read_mv(int32_t *mv)
     for (i = 0; i < BATT_ADC_SAMPLE_NUM; i++)
     {
         // 读取单次电池电压
-        err = batt_read_mv(mv);
+        err = batt_read_mv(&read_mv);
         if (err != 0)
         {
             LOG_ERR("Battery voltage acquisition failed!");  // 输出错误日志
@@ -542,17 +566,17 @@ int my_battery_read_mv(int32_t *mv)
         // 更新最大电压值
         if (*mv > max_mv)
         {
-            max_mv = *mv;
+            max_mv = read_mv;
         }
 
         // 更新最小电压值
         if (*mv < min_mv)
         {
-            min_mv = *mv;
+            min_mv = read_mv;
         }
 
         // 累加电压值
-        sum_mv += *mv;
+        sum_mv += read_mv;
     }
 
     // 计算平均电压：去掉最大值和最小值后取平均，再乘以 (2000+680)/680(硬件电路中的分压系数)
@@ -576,19 +600,18 @@ int8_t my_battery_read_percent()
     // 映射表条目数量
     static const int s_batt_map_entries = (sizeof(s_batt_volt_map) / sizeof(s_batt_volt_map[0]));
     int i = 0;                          // 循环变量，用于遍历电压-电量映射表数组
-    int read_mv = 0;                    // 电池电压值（毫伏）
     int8_t battery_percent_val = 0;     // 电池电量百分比
 
-    my_battery_read_mv(&read_mv);  // 读取电池电压值（毫伏）
-    LOG_INF("read_mv:%d", read_mv);  // 输出读取到的电池电压值（毫伏）
+    my_battery_read_mv(&s_read_mv);  // 读取电池电压值（毫伏）
+    LOG_INF("read_mv:%d", s_read_mv);  // 输出读取到的电池电压值（毫伏）
 
     // 处理电压低于最低映射值的情况
-    if (read_mv < s_batt_volt_map[0].mv)
+    if (s_read_mv < s_batt_volt_map[0].mv)
     {
         return 0;  // 返回 0% 电量
     }
     // 处理电压高于最高映射值的情况
-    else if (read_mv > s_batt_volt_map[s_batt_map_entries-1].mv)
+    else if (s_read_mv > s_batt_volt_map[s_batt_map_entries-1].mv)
     {
         return 100;  // 返回 100% 电量
     }
@@ -596,15 +619,15 @@ int8_t my_battery_read_percent()
     // 查找电压值所在的映射区间，-1是防止数组越界
     for (i = 0; i < s_batt_map_entries - 1; i++)
     {
-        if (read_mv >= s_batt_volt_map[i].mv &&
-            read_mv <= s_batt_volt_map[i+1].mv)
+        if (s_read_mv >= s_batt_volt_map[i].mv &&
+            s_read_mv <= s_batt_volt_map[i+1].mv)
         {
             break;  // 找到电压值所在的区间，退出循环
         }
     }
 
     // 使用线性插值计算电池电量百分比
-    battery_percent_val = s_batt_volt_map[i].percent + ((read_mv - s_batt_volt_map[i].mv) * \
+    battery_percent_val = s_batt_volt_map[i].percent + ((s_read_mv - s_batt_volt_map[i].mv) * \
     (s_batt_volt_map[i+1].percent - s_batt_volt_map[i].percent) / (s_batt_volt_map[i+1].mv - s_batt_volt_map[i].mv));
 
     return battery_percent_val;  // 返回计算得到的电池电量百分比
@@ -900,8 +923,7 @@ void led_sw_callback(void *param)
 *********************************************************************/
 void open_led_timer(uint32_t timer_ms)
 {
-    // 如果LED显示使能，且定时器未运行超过5秒， 仅当LED显示使能且LED控制开关未运行超过5秒时，才开启LED控制开关
-    // 开机LED显示要打开60s，此时按键不能控制LED状态
+    // 当LED显示处于按键模式且充电未开启时，才开启LED控制开关
     if (gConfigParam.led_config.led_display == 1 && led_status_get(CHG_LED_MODE) == false)
     {
         my_start_timer(MY_TIMER_LED_ENABLE, timer_ms, false, led_sw_callback);

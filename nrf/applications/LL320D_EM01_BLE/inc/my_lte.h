@@ -41,6 +41,7 @@ typedef enum
     BLE_RSP_BP,       // BLE+BP=OK
     BLE_RSP_CDATA,    // BLE+CDATA=OK,START/END/seq
     BLE_RSP_FACTORY,  // BLE+FACTORY=OK
+    BLE_RSP_KEY,      // BLE+KEY=OK
     BLE_RSP_MAX
 } ble_rsp_t;
 
