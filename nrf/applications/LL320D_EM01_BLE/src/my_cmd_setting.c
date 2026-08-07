@@ -737,6 +737,17 @@ uint16_t at_recv_cmd_handler(at_cmd_t *at_cmd_msg)
 }
 
 /********************************************************************
+**函数名称:  lte_cmd_source_clear_callback
+**入口参数:  param      ---        无
+**出口参数:  无
+**函数功能:  清除lte_cmdSource标志位
+*********************************************************************/
+static void lte_cmd_source_clear_callback(void *param)
+{
+    g_lte_cmdSource = 0;
+}
+
+/********************************************************************
 **函数名称:  run_lte_cmd
 **入口参数:  at_cmd_msg      ---   指令结构体指针，包含接收的指令和响应存储区域(输入/输出)
 **出口参数:  at_cmd_msg中更新响应消息内容和响应长度
@@ -759,14 +770,8 @@ uint16_t run_lte_cmd(at_cmd_t *at_cmd_msg)
     //执行命令
     cmd_type = at_recv_cmd_handler(at_cmd_msg);
 
-    //执行完清除
-    g_lte_cmdSource = 0;
-
-    if (!cmd_type)
-    {
-        //构造回复(命令无效)
-        sprintf(at_cmd_msg->resp_msg, "Invalid command parameter");
-    }
+    // 2秒后清除lte_cmdSource标志位
+    my_start_timer(MY_TIMER_LTE_CMDSOURCE_CLEAR, 2000, false, lte_cmd_source_clear_callback);
 
     return cmd_type;
 }
@@ -3892,6 +3897,8 @@ static int patm_cmd_handler(at_cmd_t* msg)
         LOG_INF("%s=>%s", __func__, msg->parm[0]);  // 输出函数名和命令名
         // 通知CTRL线程读取气压数据
         my_send_msg(MOD_BLE, MOD_CTRL, MY_MSG_CTRL_PATM_READ);
+
+        return 1; // 在其它线程处理后续任务
     }
     else  // 参数数量错误
     {
@@ -3992,6 +3999,8 @@ static int temp_cmd_handler(at_cmd_t* msg)
         LOG_INF("%s=>%s", __func__, msg->parm[0]);  // 输出函数名和命令名
         // 通知CTRL线程读取温湿度数据
         my_send_msg(MOD_BLE, MOD_CTRL, MY_MSG_CTRL_TEMP_READ);
+
+        return 1; // 在其它线程处理后续任务
     }
     else  // 参数数量错误
     {
@@ -4024,6 +4033,8 @@ static int status_cmd_handler(at_cmd_t* msg)
 
         // 通知CTRL线程读取查询status#状态
         my_send_msg(MOD_BLE, MOD_CTRL, MY_MSG_CTRL_STATUS_READ);
+
+        return 1; // 在其它线程处理后续任务
     }
     else  // 参数数量错误
     {

@@ -30,6 +30,7 @@ static const struct gpio_dt_spec fun_key = GPIO_DT_SPEC_GET(DT_ALIAS(fun_key), g
 static const struct pwm_dt_spec buzzer = PWM_DT_SPEC_GET(DT_ALIAS(buzzer_pwm));
 static const struct gpio_dt_spec light_tamper_det = GPIO_DT_SPEC_GET(DT_ALIAS(light_tamper_detect), gpios);
 static const struct gpio_dt_spec light_pull_det = GPIO_DT_SPEC_GET(DT_ALIAS(light_pull_detect), gpios);
+static const struct gpio_dt_spec env_sensor_pwr_gpio = GPIO_DT_SPEC_GET(DT_ALIAS(env_sensor_pwr_ctrl), gpios);
 static const struct gpio_dt_spec batt_leds[] = {
     GPIO_DT_SPEC_GET(DT_ALIAS(battery_led0), gpios),
     GPIO_DT_SPEC_GET(DT_ALIAS(battery_led1), gpios),
@@ -597,6 +598,34 @@ static int32_t sensor_collect_temp_humi(void)
 }
 
 /********************************************************************
+**函数名称:  send_lte_msg
+**入口参数:  send_str    ---   要发送的字符串
+**出口参数:  无
+**函数功能:  发送消息到lte模块
+**返 回 值:  无
+*********************************************************************/
+void send_lte_msg(char *send_str, int len)
+{
+    msg_t msg;
+    char *send_data;
+
+    MY_MALLOC_BUFFER(send_data, len + 1);
+    if (send_data == NULL)
+    {
+        MY_LOG_ERR("send_data malloc failed");
+        return;
+    }
+
+    strcpy(send_data, send_str);
+
+    // 将数据透传指令放到与蓝牙同线程
+    msg.msgID = MY_MSG_LTE_BLE_DATA;
+    msg.pData = send_data;
+    msg.DataLen = len;
+    my_send_msg_data(MOD_CTRL, MOD_LTE, &msg);
+}
+
+/********************************************************************
 **函数名称:  sensor_patm_read
 **入口参数:  无
 **出口参数:  无
@@ -606,18 +635,50 @@ static int32_t sensor_collect_temp_humi(void)
 static void sensor_patm_read(void)
 {
     float pressure_pa;
-    uint8_t resp_msg[40];
+    uint8_t resp_msg[60];
 
     pressure_pa = sensor_collect_barometer();
     if (pressure_pa < 0)
     {
         MY_LOG_ERR("sensor_collect_barometer fail");
-        send_ble_msg("NO Data!", strlen("NO Data!"));
+        if (!get_lte_factory())
+        {
+            snprintf(resp_msg, sizeof(resp_msg), "RETURN_MCU_PATM: NO DATA");
+            send_lte_msg(resp_msg, strlen(resp_msg));
+            return;
+        }
+        if (g_lte_cmdSource)
+        {
+            g_lte_cmdSource = 0;
+            snprintf(resp_msg, sizeof(resp_msg), "OK,%s,NO DATA", g_id);
+            send_lte_msg(resp_msg, strlen(resp_msg));
+        }
+        else
+        {
+            send_ble_msg("NO Data!", strlen("NO Data!"));
+        }
         return;
     }
     pressure_pa /= 1000.0f;
-    snprintf(resp_msg, sizeof(resp_msg), "Atmospheric Pressure %.2f Kpa", pressure_pa);
-    send_ble_msg(resp_msg, strlen(resp_msg));
+
+    if (get_lte_factory())
+    {
+        snprintf(resp_msg, sizeof(resp_msg), "RETURN_MCU_PATM:%.2f", pressure_pa);
+        send_lte_msg(resp_msg, strlen(resp_msg));
+        return;
+    }
+
+    if (g_lte_cmdSource)
+    {
+        g_lte_cmdSource = 0;
+        snprintf(resp_msg, sizeof(resp_msg), "OK,%s,Atmospheric Pressure %.2f Kpa", g_id, pressure_pa);
+        send_lte_msg(resp_msg, strlen(resp_msg));
+    }
+    else
+    {
+        snprintf(resp_msg, sizeof(resp_msg), "Atmospheric Pressure %.2f Kpa", pressure_pa);
+        send_ble_msg(resp_msg, strlen(resp_msg));
+    }
 }
 
 /********************************************************************
@@ -630,17 +691,50 @@ static void sensor_patm_read(void)
 static void sensor_temp_read(void)
 {
     int32_t temp_humi = 0;
-    uint8_t resp_msg[70];
+    uint8_t resp_msg[100];
 
     temp_humi = sensor_collect_temp_humi();
     if (temp_humi < 0)
     {
         MY_LOG_ERR("sensor_collect_temp_humi fail");
-        send_ble_msg("NO Data!", strlen("NO Data!"));
+        if (!get_lte_factory())
+        {
+            snprintf(resp_msg, sizeof(resp_msg), "RETURN_MCU_TEMP:TEMP= NO DATA");
+            send_lte_msg(resp_msg, strlen(resp_msg));
+            return;
+        }
+
+        if (g_lte_cmdSource)
+        {
+            g_lte_cmdSource = 0;
+            snprintf(resp_msg, sizeof(resp_msg), "OK,%s,NO DATA", g_id);
+            send_lte_msg(resp_msg, strlen(resp_msg));
+        }
+        else
+        {
+            send_ble_msg("NO Data!", strlen("NO Data!"));
+        }
         return;
     }
-    snprintf(resp_msg, sizeof(resp_msg), "Temperature: %.1f degrees Celsius,Humidity: %.1f %%", (temp_humi & 0xFFFF) * 0.1f, (temp_humi >> 16) * 0.1f);
-    send_ble_msg(resp_msg, strlen(resp_msg));
+
+    if (get_lte_factory())
+    {
+        snprintf(resp_msg, sizeof(resp_msg), "RETURN_MCU_TEMP:TEMP=%.1f,HUMI=%.1f", (temp_humi & 0xFFFF) * 0.1f, (temp_humi >> 16) * 0.1f);
+        send_lte_msg(resp_msg, strlen(resp_msg));
+        return;
+    }
+
+    if (g_lte_cmdSource)
+    {
+        g_lte_cmdSource = 0;
+        snprintf(resp_msg, sizeof(resp_msg), "OK,%s,Temperature: %.1f degrees Celsius,Humidity: %.1f %%", g_id, (temp_humi & 0xFFFF) * 0.1f, (temp_humi >> 16) * 0.1f);
+        send_lte_msg(resp_msg, strlen(resp_msg));
+    }
+    else
+    {
+        snprintf(resp_msg, sizeof(resp_msg), "Temperature: %.1f degrees Celsius,Humidity: %.1f %%", (temp_humi & 0xFFFF) * 0.1f, (temp_humi >> 16) * 0.1f);
+        send_ble_msg(resp_msg, strlen(resp_msg));
+    }
 }
 
 /********************************************************************
@@ -736,18 +830,73 @@ static void device_status_read(void)
                 break;
         }
 
-        snprintf(send_buf, sizeof(send_buf), "Battery:%d%%(%s);Network:%s(%s);GNSS:%s(%s); \
-            Tamper:%s;Pull:%s;Motion:%s(%.2f KM/h);Temperature:%s;Humidity:%s;Pressure:%s",
-            get_show_percent(),
-            g_charg_state == NO_CHARGING ? "Discharging" : "Charging",
-            g_lte_net_flag == 0 ? "Disconnect" : "Connect",
-            net_signal, gnss_signal, g_lte_gps_signal,
-            get_light_tamper_state() ? "Remove" : "Normal",
-            get_light_pull_state() ? "Remove" : "Normal",
-            motion, g_location_point.speed,
-            temperature_str, humidity_str, pressure_str);
+        if (g_lte_cmdSource)
+        {
+            g_lte_cmdSource = 0;
+            snprintf(send_buf, sizeof(send_buf), "OK,%s,Battery:%d%%(%s);Network:%s(%s);GNSS:%s(%s); \
+                Tamper:%s;Pull:%s;Motion:%s(%.2f KM/h);Temperature:%s;Humidity:%s;Pressure:%s",
+                g_id, get_show_percent(),
+                g_charg_state == NO_CHARGING ? "Discharging" : "Charging",
+                g_lte_net_flag == 0 ? "Disconnect" : "Connect",
+                net_signal, gnss_signal, g_lte_gps_signal,
+                get_light_tamper_state() ? "Remove" : "Normal",
+                get_light_pull_state() ? "Remove" : "Normal",
+                motion, g_location_point.speed,
+                temperature_str, humidity_str, pressure_str);
 
-        send_ble_msg(send_buf, strlen(send_buf));
+            send_lte_msg(send_buf, strlen(send_buf));
+        }
+        else
+        {
+            snprintf(send_buf, sizeof(send_buf), "Battery:%d%%(%s);Network:%s(%s);GNSS:%s(%s); \
+                Tamper:%s;Pull:%s;Motion:%s(%.2f KM/h);Temperature:%s;Humidity:%s;Pressure:%s",
+                get_show_percent(),
+                g_charg_state == NO_CHARGING ? "Discharging" : "Charging",
+                g_lte_net_flag == 0 ? "Disconnect" : "Connect",
+                net_signal, gnss_signal, g_lte_gps_signal,
+                get_light_tamper_state() ? "Remove" : "Normal",
+                get_light_pull_state() ? "Remove" : "Normal",
+                motion, g_location_point.speed,
+                temperature_str, humidity_str, pressure_str);
+
+            send_ble_msg(send_buf, strlen(send_buf));
+        }
+}
+
+/********************************************************************
+**函数名称:  my_sensor_pwr_on
+**入口参数:  on       ---        true 开启，false 关闭
+**出口参数:  无
+**函数功能:  控制气压与温湿度传感器的电源 (P2.05)
+**返 回 值:  0 表示成功，负值表示失败
+*********************************************************************/
+int my_sensor_pwr_on(bool on)
+{
+    int err;
+    static bool s_sensor_power_state = false;  // false=关闭, true=开启
+
+    /* 检查当前电源状态，避免重复操作 */
+    if (s_sensor_power_state == on)
+    {
+        /* 状态相同，无需操作 */
+        MY_LOG_INF("SENSOR Power: already %s", on ? "ON" : "OFF");
+        return 0;
+    }
+
+    /* 执行电源控制操作 */
+    err = gpio_pin_set_dt(&env_sensor_pwr_gpio, on ? 1 : 0);
+    if (err == 0)
+    {
+        /* 操作成功，更新状态 */
+        s_sensor_power_state = on;
+        MY_LOG_INF("SENSOR Power Control: %s", on ? "Power ON" : "Power OFF");
+    }
+    else
+    {
+        MY_LOG_ERR("SENSOR Power Control failed (err %d)", err);
+    }
+
+    return err;
 }
 
 /********************************************************************
@@ -759,9 +908,27 @@ static void device_status_read(void)
 *********************************************************************/
 static void sensor_module_init(void)
 {
+    int ret = 0;
     struct barometer_config barometer_cfg;
     barometer_result_t barometer_ret;
     temp_humi_result_t temp_humi_ret;
+
+     /* 1. 检查硬件接口是否就绪 */
+    if (!device_is_ready(env_sensor_pwr_gpio.port))
+    {
+        MY_LOG_ERR("SENSOR Power GPIO device not ready");
+        return;
+    }
+
+    if (!gpio_is_ready_dt(&env_sensor_pwr_gpio))
+    {
+        MY_LOG_ERR("SENSOR Power GPIO not ready");
+        return;
+    }
+
+    gpio_pin_configure_dt(&env_sensor_pwr_gpio, GPIO_OUTPUT_ACTIVE);
+
+    my_sensor_pwr_on(true);
 
     memset(&barometer_cfg, 0, sizeof(barometer_cfg));
     // 初始化气压传感器采样参数

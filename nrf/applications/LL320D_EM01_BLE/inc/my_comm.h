@@ -187,6 +187,8 @@ typedef enum
     // 低功耗运行专用定时器
     MY_TIMER_LPSLEEP,               // 低功耗运行定时唤醒定时器
 
+    MY_TIMER_LTE_CMDSOURCE_CLEAR, // 清除lte_cmdSource定时器
+
     MY_TIMER_MAX_ID,
 } MY_E_TIMER;
 

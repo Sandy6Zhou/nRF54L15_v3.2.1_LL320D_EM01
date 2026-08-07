@@ -160,10 +160,10 @@
 		};
 	};
 
-	/* 温湿度、气压传感器电源控制引脚：P2.05，高电平使能 */
+	/* 温湿度、气压传感器电源控制引脚：P2.05，低电平使能 */
 	env_sensor_pwr_en: env-sensor-pwr-en {
 		compatible = "nordic,gpio-pins";
-		gpios = <&gpio2 5 GPIO_ACTIVE_HIGH>;
+		gpios = <&gpio2 5 GPIO_ACTIVE_LOW>;
 		status = "okay";
 	};
 

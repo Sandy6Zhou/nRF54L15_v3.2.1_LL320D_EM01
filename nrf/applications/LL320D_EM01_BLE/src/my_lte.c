@@ -207,6 +207,8 @@ static struct k_thread s_my_lte_task_data;
 // 产测指令
 const char FACTORY_CMD_HEADER[] = "AT^GT_CM=";
 
+char g_id[16] = {0}; // 4G透传指令ID
+
 // 4G进入产测模式（0 = exit, 1:enter）
 static uint8_t s_lte_factory = 0;
 
@@ -231,6 +233,19 @@ uint8_t g_lte_net_signal_level = 0;
 uint8_t g_lte_gps_state = 0;
 // GPS信号值
 char g_lte_gps_signal[50] = {0};
+
+/********************************************************************
+**函数名称:  get_lte_factory
+**入口参数:  无
+**出口参数:  无
+**函数功能:  获取4G模块是否进入产测模式
+**返 回 值:  0 --- 未进入产测模式
+**          1 --- 已进入产测模式
+********************************************************************/
+uint8_t get_lte_factory(void)
+{
+    return s_lte_factory;
+}
 
 /********************************************************************
 **函数名称:  init_async_queue
@@ -1641,28 +1656,98 @@ static char *my_handle_at_pcba_cmd(char **pParam, int nParam)
             if (CMD_MATCHED(pParam[3], "ON"))
             {
                 batt_led_set_level(3);
-                sprintf(resp, "RETURN_LED_ON");
+                sprintf(resp, "RETURN_MCU_LED:ON");
             }
             else if (CMD_MATCHED(pParam[3], "OFF"))
             {
                 batt_led_set_level(0);
-                sprintf(resp, "RETURN_LED_OFF");
+                sprintf(resp, "RETURN_MCU_LED:OFF");
             }
         }
         else if (CMD_MATCHED(pParam[2], "MAC"))
         {
-            edr_addr = bt_get_mac_addr();
-            if (edr_addr != NULL)
+            if (nParam == 3)
             {
-                sprintf(resp, "RETURN_MCU_MAC:%02X%02X%02X%02X%02X%02X",
-                        edr_addr[5],edr_addr[4],edr_addr[3],edr_addr[2],edr_addr[1],edr_addr[0]);
+                edr_addr = bt_get_mac_addr();
+                if (edr_addr != NULL)
+                {
+                    sprintf(resp, "RETURN_MCU_MAC:%02X%02X%02X%02X%02X%02X",
+                            edr_addr[5],edr_addr[4],edr_addr[3],edr_addr[2],edr_addr[1],edr_addr[0]);
+                }
+            }
+            else if (nParam == 4)
+            {
+                ret = my_param_set_mac(pParam[3], strlen(pParam[3]));
+                if (ret == 0)
+                {
+                    sprintf(resp, "RETURN_MCU_MAC_SET_OK");
+                }
+                else
+                {
+                    sprintf(resp, "RETURN_MCU_MAC_SET_FAIL");
+                }
             }
         }
         else if (CMD_MATCHED(pParam[2], "GSENSOR"))
         {
             sprintf(resp, "RETURN_MCU_GSENSOR:0x%02X", get_chip_id());
         }
-
+        else if (CMD_MATCHED(pParam[2], "CHARGER"))
+        {
+            if (nParam < 4)
+            {
+                sprintf(resp, "MCU params error");
+                return resp;
+            }
+            if (CMD_MATCHED(pParam[3], "ON"))
+            {
+                batt_enable(true);
+                sprintf(resp, "RETURN_MCU_CHARGER:ON");
+            }
+            else if (CMD_MATCHED(pParam[3], "OFF"))
+            {
+                batt_enable(false);
+                sprintf(resp, "RETURN_MCU_CHARGER:OFF");
+            }
+        }
+        else if (CMD_MATCHED(pParam[2], "VOLT"))
+        {
+            int32_t mv = 0;
+            my_battery_read_mv(&mv);
+            sprintf(resp, "RETURN_MCU_VOLT:%dMV", mv);
+        }
+        else if (CMD_MATCHED(pParam[2], "LIGHT1"))
+        {
+            sprintf(resp, "RETURN_MCU_LIGHT1:%s", get_light_tamper_state() == true ? "LIGHT" : "DARK");
+        }
+        else if (CMD_MATCHED(pParam[2], "LIGHT2"))
+        {
+            sprintf(resp, "RETURN_MCU_LIGHT2:%s", get_light_pull_state() == true ? "LIGHT" : "DARK");
+        }
+        else if (CMD_MATCHED(pParam[2], "TEMP"))
+        {
+            my_send_msg(MOD_LTE, MOD_CTRL, MY_MSG_CTRL_TEMP_READ);
+        }
+        else if (CMD_MATCHED(pParam[2], "PATM"))
+        {
+            my_send_msg(MOD_LTE, MOD_CTRL, MY_MSG_CTRL_PATM_READ);
+        }
+    }
+    else if (CMD_MATCHED(pParam[1], "SHUTDOWN"))
+    {
+        s_lte_factory = 0;
+        if (go_to_shutdown() == 0)
+        {
+            sprintf(resp, "RETURN_SHUTDOWN_OK");
+        }
+    }
+    else if (CMD_MATCHED(pParam[1], "FACTORY"))
+    {
+        s_lte_factory = 0;
+        my_param_factory_reset();
+        lte_send_command("FACTORY", "1");
+        g_factory_mode = true;
+        sprintf(resp, "FACTORY set OK");
     }
 
     return resp;
@@ -2198,17 +2283,16 @@ int my_lte_handle_cmd(char *data)
 {
     at_cmd_t at_cmd_msg = {0};
     int len = 0;
-    char id[16] = {0};
     int ret = 0;
 
     memset(s_lte_cmd_resp_buf, 0, sizeof(s_lte_cmd_resp_buf));
 
     //后续有参数
-    if (my_get_str_at_pos(data, 0, ',', id, sizeof(id)))
+    if (my_get_str_at_pos(data, 0, ',', g_id, sizeof(g_id)))
     {
         MY_LOG_INF("data: %s;len: %d", data, strlen(data));
         //指向command部分的起始位置
-        strcpy(at_cmd_msg.rcv_msg, data + strlen(id) + 1); // +1跳过逗号
+        strcpy(at_cmd_msg.rcv_msg, data + strlen(g_id) + 1); // +1跳过逗号
 
         //指向全局回复区域
         at_cmd_msg.resp_msg = g_resp_buf;
@@ -2216,21 +2300,22 @@ int my_lte_handle_cmd(char *data)
         //执行指令内容
         ret = run_lte_cmd(&at_cmd_msg);
 
-        //需要异步回复，只做简单应答
-        if (ret == 2)
+        if (ret == 0)
         {
-            //添加到异步回复队列
-            async_add_item(at_cmd_msg.parm[0], id);
-            sprintf(at_cmd_msg.resp_msg, "OK");
+            // 拼接回复消息(LTE+CMD=id,cmd,resp)
+            snprintf(s_lte_cmd_resp_buf, LTE_CMD_RESPBUF_SIZE, "LTE+CMD=FAIL,%s,%s\r\n", g_id, at_cmd_msg.parm[0]);
+            s_lte_cmd_resp_buf[LTE_CMD_RESPBUF_SIZE - 1] = '\0'; // 确保字符串终止
         }
-
-        // 拼接回复消息(LTE+CMD=id,cmd,resp)
-        snprintf(s_lte_cmd_resp_buf, LTE_CMD_RESPBUF_SIZE, "LTE+CMD=%s,%s,%s\r\n", id, at_cmd_msg.parm[0], at_cmd_msg.resp_msg);
-        s_lte_cmd_resp_buf[LTE_CMD_RESPBUF_SIZE - 1] = '\0'; // 确保字符串终止
+        else if (ret == BLE_DATA_TYPE_PACKET_MULTIPLE)
+        {
+            // 拼接回复消息(LTE+CMD=id,cmd,resp)
+            snprintf(s_lte_cmd_resp_buf, LTE_CMD_RESPBUF_SIZE, "LTE+CMD=OK,%s,%s\r\n", g_id, at_cmd_msg.resp_msg);
+            s_lte_cmd_resp_buf[LTE_CMD_RESPBUF_SIZE - 1] = '\0'; // 确保字符串终止
+        }
     }
     else
     {
-        sprintf(s_lte_cmd_resp_buf,"LTE+CMD=%s,Missing command parameter\r\n", id);
+        sprintf(s_lte_cmd_resp_buf,"LTE+CMD=%s,Missing command parameter\r\n", g_id);
     }
 
     MY_LOG_INF("lte handle cmd resp: %s", s_lte_cmd_resp_buf);

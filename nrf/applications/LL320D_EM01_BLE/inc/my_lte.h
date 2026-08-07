@@ -93,6 +93,8 @@ typedef struct {
 
 extern bool g_lte_ota_in_progress;
 
+extern char g_id[16]; // 4G透传指令ID
+
 extern uint8_t g_lte_net_flag; // 网络状态
 extern uint8_t g_lte_net_signal_level; // 网络信号强度
 extern uint8_t g_lte_gps_state; // GPS状态
@@ -226,5 +228,15 @@ void send_led_command(void);
 **返 回 值:  无
 *********************************************************************/
 void send_ble_msg(char *send_str, int len);
+
+/********************************************************************
+**函数名称:  get_lte_factory
+**入口参数:  无
+**出口参数:  无
+**函数功能:  获取4G模块是否进入产测模式
+**返 回 值:  0 --- 未进入产测模式
+**          1 --- 已进入产测模式
+********************************************************************/
+uint8_t get_lte_factory(void);
 
 #endif /* _MY_LTE_H_ */
