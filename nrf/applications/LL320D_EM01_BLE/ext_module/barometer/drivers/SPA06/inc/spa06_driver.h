@@ -38,7 +38,7 @@
 #define SPA06_REG_COEF_START        0x10    /* 校准系数起始地址 */
 
 /* 芯片 ID 期望值 */
-#define SPA06_CHIP_ID_VALUE         0x10
+#define SPA06_CHIP_ID_VALUE         0x11
 
 /* 软复位命令 */
 #define SPA06_RESET_CMD             0x09

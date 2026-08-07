@@ -12,7 +12,18 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260803"
+#define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260807"
+/* 软件版本:        V1.0
+** 完成日期:        2026.08.07
+** 作    者:       周森达 (zhousenda@jimiiot.com)
+** 修改内容:        气压传感器新增SPL16-001芯片支持:
+**                 1.新增SPL16-001气压传感器驱动(spl16_driver.c/h)，实现I2C读写、采样率/过采样配置、校准系数读取与补偿计算、单次/连续测量、就绪轮询与超时、工作模式控制。
+**                 2.barometer_api抽象层重构：以BARO_DRV_* 宏统一封装SPA06/SPL16驱动接口，通过编译宏BARO_USE_SPL16选择底层驱动，屏蔽芯片差异。
+**                 3.CMakeLists新增BARO_DRIVER配置项(默认 SPL16)，按配置只编译对应驱动源文件;SPA06驱动默认不再参与编译;清理冗余的驱动头文件include路径。
+**                 4.修正SPA06芯片ID期望值定义(0x11)
+***/
+
+// #define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260803"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.08.03
 ** 作    者:       曹阳 (caoyang@jimiiot.com)

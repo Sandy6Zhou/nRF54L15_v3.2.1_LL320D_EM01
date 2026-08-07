@@ -6,16 +6,56 @@
 **作    者:       周森达 (zhousenda@jimiiot.com)
 **完成日期:        2026.06.08
 *********************************************************************
-** 功能描述:       封装 SPA06-003 驱动，提供统一气压接口
+** 功能描述:       封装底层气压驱动（SPA06/SPL16），提供统一气压接口
 *********************************************************************/
 
 #include "barometer_api.h"
-#include "../drivers/SPA06/inc/spa06_driver.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
 LOG_MODULE_REGISTER(barometer_api, LOG_LEVEL_INF);
+
+/* 底层驱动切换：通过编译期宏 BARO_USE_SPL16 选择 SPL16 或 SPA06 驱动 */
+#ifdef BARO_USE_SPL16
+#include "../drivers/SPL16/inc/spl16_driver.h"
+
+#define BARO_DRV_CONFIG_T               spl16_config_t
+#define BARO_DRV_WORK_MODE_T            spl16_work_mode_t
+#define BARO_DRV_NAME                   "SPL16"
+
+#define BARO_DRV_INIT(...)              spl16_driver_init(__VA_ARGS__)
+#define BARO_DRV_SET_WORK_MODE(...)     spl16_driver_set_work_mode(__VA_ARGS__)
+#define BARO_DRV_READ_MEASUREMENT(...)  spl16_driver_read_measurement(__VA_ARGS__)
+#define BARO_DRV_READ_CHIP_ID(...)      spl16_driver_read_chip_id(__VA_ARGS__)
+
+#define BARO_DRV_MODE_STOP                      SPL16_MODE_STOP
+#define BARO_DRV_MODE_SINGLE_TEMPERATURE        SPL16_MODE_SINGLE_TEMPERATURE
+#define BARO_DRV_MODE_SINGLE_PRESSURE           SPL16_MODE_SINGLE_PRESSURE
+#define BARO_DRV_MODE_SINGLE_BOTH               SPL16_MODE_SINGLE_BOTH
+#define BARO_DRV_MODE_CONTINUOUS_TEMPERATURE    SPL16_MODE_CONTINUOUS_TEMPERATURE
+#define BARO_DRV_MODE_CONTINUOUS_PRESSURE       SPL16_MODE_CONTINUOUS_PRESSURE
+#define BARO_DRV_MODE_CONTINUOUS_BOTH           SPL16_MODE_CONTINUOUS_BOTH
+#else
+#include "../drivers/SPA06/inc/spa06_driver.h"
+
+#define BARO_DRV_CONFIG_T               spa06_config_t
+#define BARO_DRV_WORK_MODE_T            spa06_work_mode_t
+#define BARO_DRV_NAME                   "SPA06"
+
+#define BARO_DRV_INIT(...)              spa06_driver_init(__VA_ARGS__)
+#define BARO_DRV_SET_WORK_MODE(...)     spa06_driver_set_work_mode(__VA_ARGS__)
+#define BARO_DRV_READ_MEASUREMENT(...)  spa06_driver_read_measurement(__VA_ARGS__)
+#define BARO_DRV_READ_CHIP_ID(...)      spa06_driver_read_chip_id(__VA_ARGS__)
+
+#define BARO_DRV_MODE_STOP                      SPA06_MODE_STOP
+#define BARO_DRV_MODE_SINGLE_TEMPERATURE        SPA06_MODE_SINGLE_TEMPERATURE
+#define BARO_DRV_MODE_SINGLE_PRESSURE           SPA06_MODE_SINGLE_PRESSURE
+#define BARO_DRV_MODE_SINGLE_BOTH               SPA06_MODE_SINGLE_BOTH
+#define BARO_DRV_MODE_CONTINUOUS_TEMPERATURE    SPA06_MODE_CONTINUOUS_TEMPERATURE
+#define BARO_DRV_MODE_CONTINUOUS_PRESSURE       SPA06_MODE_CONTINUOUS_PRESSURE
+#define BARO_DRV_MODE_CONTINUOUS_BOTH           SPA06_MODE_CONTINUOUS_BOTH
+#endif
 
 /* 内部状态 */
 static bool s_barometer_initialized = false;
@@ -53,35 +93,35 @@ static barometer_result_t barometer_convert_config_result(int ret)
 **入口参数:  work_mode   ---        API 工作模式（输入）
 **出口参数:  无
 **函数功能:  将 API 工作模式转换为底层驱动工作模式
-**返 回 值:  转换后的 SPA06 工作模式
+**返 回 值:  转换后的底层驱动工作模式
 *********************************************************************/
-static spa06_work_mode_t barometer_convert_work_mode(barometer_work_mode_t work_mode)
+static BARO_DRV_WORK_MODE_T barometer_convert_work_mode(barometer_work_mode_t work_mode)
 {
     switch (work_mode)
     {
         case BARO_MODE_STOP:
-            return SPA06_MODE_STOP;
+            return BARO_DRV_MODE_STOP;
 
         case BARO_MODE_SINGLE_TEMPERATURE:
-            return SPA06_MODE_SINGLE_TEMPERATURE;
+            return BARO_DRV_MODE_SINGLE_TEMPERATURE;
 
         case BARO_MODE_SINGLE_PRESSURE:
-            return SPA06_MODE_SINGLE_PRESSURE;
+            return BARO_DRV_MODE_SINGLE_PRESSURE;
 
         case BARO_MODE_SINGLE_BOTH:
-            return SPA06_MODE_SINGLE_BOTH;
+            return BARO_DRV_MODE_SINGLE_BOTH;
 
         case BARO_MODE_CONTINUOUS_TEMPERATURE:
-            return SPA06_MODE_CONTINUOUS_TEMPERATURE;
+            return BARO_DRV_MODE_CONTINUOUS_TEMPERATURE;
 
         case BARO_MODE_CONTINUOUS_PRESSURE:
-            return SPA06_MODE_CONTINUOUS_PRESSURE;
+            return BARO_DRV_MODE_CONTINUOUS_PRESSURE;
 
         case BARO_MODE_CONTINUOUS_BOTH:
-            return SPA06_MODE_CONTINUOUS_BOTH;
+            return BARO_DRV_MODE_CONTINUOUS_BOTH;
 
         default:
-            return SPA06_MODE_STOP;
+            return BARO_DRV_MODE_STOP;
     }
 }
 
@@ -96,7 +136,7 @@ static spa06_work_mode_t barometer_convert_work_mode(barometer_work_mode_t work_
 barometer_result_t barometer_init(const struct barometer_config *config)
 {
     int ret;
-    spa06_config_t drv_config;
+    BARO_DRV_CONFIG_T drv_config;
 
     if (config == NULL)
     {
@@ -114,20 +154,20 @@ barometer_result_t barometer_init(const struct barometer_config *config)
     drv_config.temperature_sample_rate_hz = config->temperature_sample_rate_hz;
     drv_config.temperature_oversampling = config->temperature_oversampling;
 
-    ret = spa06_driver_init(&drv_config);
+    ret = BARO_DRV_INIT(&drv_config);
     if (ret == -ENODEV)
     {
-        LOG_ERR("SPA06 driver init failed (chip ID): %d", ret);
+        LOG_ERR("%s driver init failed (chip ID): %d", BARO_DRV_NAME, ret);
         return BARO_ERROR_CHIP_ID;
     }
     else if (ret == -ETIMEDOUT)
     {
-        LOG_ERR("SPA06 driver init failed (timeout): %d", ret);
+        LOG_ERR("%s driver init failed (timeout): %d", BARO_DRV_NAME, ret);
         return BARO_ERROR_TIMEOUT;
     }
     else if (ret != 0)
     {
-        LOG_ERR("SPA06 driver init failed: %d", ret);
+        LOG_ERR("%s driver init failed: %d", BARO_DRV_NAME, ret);
         return BARO_ERROR_INIT;
     }
 
@@ -147,7 +187,7 @@ barometer_result_t barometer_init(const struct barometer_config *config)
 barometer_result_t barometer_set_work_mode(barometer_work_mode_t work_mode)
 {
     int ret;
-    spa06_work_mode_t drv_work_mode;
+    BARO_DRV_WORK_MODE_T drv_work_mode;
 
     if (!s_barometer_initialized)
     {
@@ -162,7 +202,7 @@ barometer_result_t barometer_set_work_mode(barometer_work_mode_t work_mode)
 
     drv_work_mode = barometer_convert_work_mode(work_mode);
 
-    ret = spa06_driver_set_work_mode(drv_work_mode);
+    ret = BARO_DRV_SET_WORK_MODE(drv_work_mode);
     if (ret < 0)
     {
         return barometer_convert_config_result(ret);
@@ -201,7 +241,7 @@ barometer_result_t barometer_read(struct barometer_data *data)
         return BARO_ERROR_PARAM;
     }
 
-    ret = spa06_driver_read_measurement(&data->pressure_pa, &data->temperature);
+    ret = BARO_DRV_READ_MEASUREMENT(&data->pressure_pa, &data->temperature);
     if (ret == -ETIMEDOUT)
     {
         return BARO_ERROR_TIMEOUT;
@@ -235,7 +275,7 @@ barometer_result_t barometer_get_chip_id(uint8_t *id)
         return BARO_ERROR_PARAM;
     }
 
-    ret = spa06_driver_read_chip_id(id);
+    ret = BARO_DRV_READ_CHIP_ID(id);
     if (ret < 0)
     {
         return BARO_ERROR_COMM;
