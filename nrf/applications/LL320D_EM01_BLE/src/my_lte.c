@@ -1174,7 +1174,6 @@ static void my_lte_pwroff_handle(void)
 
     // 断LTE的电源
     my_lte_pwr_on(false);
-    my_stop_timer(MY_TIMER_LTE_PULSE);
     g_bLteReady = 0;
 
     #if RETRANSMIT_CHECK_ENABLED
@@ -1982,6 +1981,11 @@ static void send_lte_pulse(void)
 
     // 脉冲计数器增加
     s_lte_pulse_count++;
+
+    if (g_bLteReady == 0)
+    {
+        return;
+    }
     // 构造脉冲消息: LTE+PULSE=<脉冲计数器>
     snprintf(buf, sizeof(buf), "%u,%d,%d", s_lte_pulse_count, battery_voltage_mv, battery_percent);
 
@@ -3251,14 +3255,6 @@ static void my_lte_task(void *p1, void *p2, void *p3)
                 send_lte_pulse();
                 break;
 
-            case MY_MSG_LTE_PULSE_START:
-                my_start_timer(MY_TIMER_LTE_PULSE, 60 * 1000, true, lte_pulse_timer_handler);
-                break;
-
-            case MY_MSG_LTE_PULSE_STOP:
-                my_stop_timer(MY_TIMER_LTE_PULSE);
-                break;
-
             case MY_MSG_LTE_WAKEUP:
                 MY_LOG_INF("LTE wakeup pin triggered, resuming UART");
                 // GPIO唤醒消息已进入线程处理，清除待处理标志，允许后续新的唤醒中断再次投递消息
@@ -3375,6 +3371,9 @@ int my_lte_init(k_tid_t *tid)
 
     /* 初始化LTE缓存消息队列, 用于存储BLE指令数据 */
     my_lte_msg_queue_init();
+
+    // 初始化LTE心跳定时器
+    my_start_timer(MY_TIMER_LTE_PULSE, 60 * 1000, true, lte_pulse_timer_handler);
 
     /* 启动 LTE 线程 */
     *tid = k_thread_create(&s_my_lte_task_data, my_lte_task_stack,

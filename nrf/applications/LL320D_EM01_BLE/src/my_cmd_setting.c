@@ -470,13 +470,12 @@ int set_long_battery_params(device_work_mode_config_t *p_workmode,
 **函数名称:  set_intelligent_params
 **入口参数:  p_workmode  --  设备工作模式配置结构体指针
 **           sub_mode    --  子模式（0~5）
-**           static_int  --  静止状态上报间隔（原始值，单位由子模式决定）
-**           moving_int  --  运动状态上报间隔（原始值，单位由子模式决定）
+**           static_int  --  静止状态上报间隔（单位:秒，0=不上报；sub0~4: 180~3600，sub5: 10~86400）
+**           moving_int  --  运动状态上报间隔（单位:秒；sub0,1,3: 180~3600，sub2,4,5: 10~86400）
 **出口参数:  无
-**函数功能:  设置智能模式参数，根据子模式校验间隔范围
+**函数功能:  设置智能模式参数，校验间隔范围
 **返 回 值:  0 表示成功，-1 表示失败（参数非法）
-**注意事项:  子模式0~4静止间隔单位为分钟(0/3~60)，子模式5为秒(0/10~86400)
-**           子模式0~1运动间隔单位为分钟(3~60)，子模式2~5为秒(10~86400)
+**注意事项:  所有子模式间隔单位统一为秒
 *********************************************************************/
 int set_intelligent_params(device_work_mode_config_t *p_workmode, uint8_t sub_mode,
                      uint32_t static_int, uint32_t moving_int)
@@ -495,16 +494,16 @@ int set_intelligent_params(device_work_mode_config_t *p_workmode, uint8_t sub_mo
     {
         if (sub_mode <= 4)
         {
-            // 子模式0~4：静止间隔单位为分钟，范围3~60
-            if (static_int < 3 || static_int > 60)
+            // 子模式0~4：静止间隔范围180~3600秒
+            if (static_int < 180 || static_int > 3600)
             {
-                LOG_INF("Error: intelligent static_int %u out of range (0/3~60 min) for sub_mode %u", static_int, sub_mode);
+                LOG_INF("Error: intelligent static_int %u out of range (0/180~3600 sec) for sub_mode %u", static_int, sub_mode);
                 return -1;
             }
         }
         else
         {
-            // 子模式5：静止间隔单位为秒，范围10~86400
+            // 子模式5：静止间隔范围10~86400秒
             if (static_int < 10 || static_int > 86400)
             {
                 LOG_INF("Error: intelligent static_int %u out of range (0/10~86400 sec) for sub_mode 5", static_int);
@@ -514,18 +513,18 @@ int set_intelligent_params(device_work_mode_config_t *p_workmode, uint8_t sub_mo
     }
 
     // 校验运动间隔
-    if (sub_mode <= 1)
+    if (sub_mode == 0 || sub_mode == 1 || sub_mode == 3)
     {
-        // 子模式0~1：运动间隔单位为分钟，范围3~60
-        if (moving_int < 3 || moving_int > 60)
+        // 子模式0,1,3：运动间隔范围180~3600秒
+        if (moving_int < 180 || moving_int > 3600)
         {
-            LOG_INF("Error: intelligent moving_int %u out of range (3~60 min) for sub_mode %u", moving_int, sub_mode);
+            LOG_INF("Error: intelligent moving_int %u out of range (180~3600 sec) for sub_mode %u", moving_int, sub_mode);
             return -1;
         }
     }
     else
     {
-        // 子模式2~5：运动间隔单位为秒，范围10~86400
+        // 子模式2,4,5：运动间隔范围10~86400秒
         if (moving_int < 10 || moving_int > 86400)
         {
             LOG_INF("Error: intelligent moving_int %u out of range (10~86400 sec) for sub_mode %u", moving_int, sub_mode);
@@ -534,8 +533,8 @@ int set_intelligent_params(device_work_mode_config_t *p_workmode, uint8_t sub_mo
     }
 
     p_workmode->intelligent.sub_mode = sub_mode;
-    p_workmode->intelligent.static_interval = static_int;
-    p_workmode->intelligent.moving_interval = moving_int;
+    p_workmode->intelligent.static_interval[sub_mode] = static_int;
+    p_workmode->intelligent.moving_interval[sub_mode] = moving_int;
     LOG_INF("Set intelligent: sub_mode=%u, static_int=%u, moving_int=%u",
            sub_mode, static_int, moving_int);
     return 0;
@@ -3255,7 +3254,7 @@ static int version_cmd_handler(at_cmd_t* msg)
 **指令格式:  MODESET,[Work Mode],[参数...]#
 **参数说明:  模式0: MODESET,0,[Reporting INT],[Distance INT]#
 **           模式1: MODESET,1,[Reporting Interval],[Start Time],[GNSS SW]#
-**           模式2: MODESET,2,[Sub Mode],[Static INT],[MOVING INT]#
+**           模式2: MODESET,2,[Sub Mode],[Static INT],[MOVING INT]# 或 MODESET,2,[Sub Mode]#
 **           模式3: MODESET,3#
 **返 回 值:  BLE数据类型
 *********************************************************************/
@@ -3294,12 +3293,17 @@ static int modeset_cmd_handler(at_cmd_t* msg)
     // 只有模式参数的情况（仅切换模式，不改参数）
     if (msg->parm_count == 1)
     {
+
+        if (get_last_work_mode() != param_work_mode_config.current_mode)
+        {
+            gConfigParam.device_workmode_config.flag = FLAG_VALID;
+            gConfigParam.device_workmode_config.workmode_config.current_mode = param_work_mode_config.current_mode;
+            /* 保存配置 */
+            my_user_data_write(ZMS_ID_WORK_MODE_CONFIG, &gConfigParam.device_workmode_config, sizeof(device_work_mode_config_t));
+        }
+
         // 切换到指定工作模式
         switch_work_mode(param_work_mode_config.current_mode);
-
-        gConfigParam.device_workmode_config.flag = FLAG_VALID;
-        /* 保存配置 */
-        my_user_data_write(ZMS_ID_WORK_MODE_CONFIG, &gConfigParam.device_workmode_config, sizeof(device_work_mode_config_t));
 
         /* 生成成功响应 */
         msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK!");
@@ -3417,11 +3421,11 @@ static int modeset_cmd_handler(at_cmd_t* msg)
 
         LOG_INF("%s,%s,%s,%s,%s#", msg->parm[0], msg->parm[1], msg->parm[2], msg->parm[3], msg->parm[4]);
     }
-    // 智能模式处理: MODESET,2,[Sub Mode],[Static INT],[MOVING INT]#
+    // 智能模式处理: MODESET,2,[Sub Mode],[Static INT],[MOVING INT]# 或 MODESET,2,[Sub Mode]#
     else if (param_work_mode_config.current_mode == MY_MODE_SMART)
     {
-        /* 检查参数数量 */
-        if (msg->parm_count != 4)
+        /* 检查参数数量：2=仅切换子模式，4=完整设置子模式+间隔 */
+        if (msg->parm_count != 2 && msg->parm_count != 4)
         {
             LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
             goto param_invalid;
@@ -3433,30 +3437,45 @@ static int modeset_cmd_handler(at_cmd_t* msg)
             LOG_INF("%s=>invalid Sub Mode param: %s", __func__, msg->parm[2]);
             goto param_invalid;
         }
-        no_count = string_check_is_number(0, msg->parm[3]);
-        if (no_count == 0 || no_count > 9)
-        {
-            LOG_INF("%s=>invalid Static INT param: %s", __func__, msg->parm[3]);
-            goto param_invalid;
-        }
-        no_count = string_check_is_number(0, msg->parm[4]);
-        if (no_count == 0 || no_count > 9)
-        {
-            LOG_INF("%s=>invalid Moving INT param: %s", __func__, msg->parm[4]);
-            goto param_invalid;
-        }
 
-        // 解析智能模式参数
         sub_mode_val = atoi(msg->parm[2]);
-        static_int_val = atoi(msg->parm[3]);
-        moving_int_val = atoi(msg->parm[4]);
 
-        // 设置智能模式参数（内部完成参数校验）
-        if (set_intelligent_params(&gConfigParam.device_workmode_config.workmode_config,
-            sub_mode_val, static_int_val, moving_int_val) < 0)
+        if (msg->parm_count == 4)
         {
-            LOG_INF("%s=>set_intelligent_params failed", __func__);
-            goto param_invalid;
+            /* 完整模式：校验并设置 Sub Mode + Static INT + Moving INT */
+            no_count = string_check_is_number(0, msg->parm[3]);
+            if (no_count == 0 || no_count > 9)
+            {
+                LOG_INF("%s=>invalid Static INT param: %s", __func__, msg->parm[3]);
+                goto param_invalid;
+            }
+            no_count = string_check_is_number(0, msg->parm[4]);
+            if (no_count == 0 || no_count > 9)
+            {
+                LOG_INF("%s=>invalid Moving INT param: %s", __func__, msg->parm[4]);
+                goto param_invalid;
+            }
+
+            static_int_val = atoi(msg->parm[3]);
+            moving_int_val = atoi(msg->parm[4]);
+
+            // 设置智能模式参数（内部完成参数校验）
+            if (set_intelligent_params(&gConfigParam.device_workmode_config.workmode_config,
+                sub_mode_val, static_int_val, moving_int_val) < 0)
+            {
+                LOG_INF("%s=>set_intelligent_params failed", __func__);
+                goto param_invalid;
+            }
+        }
+        else
+        {
+            /* 仅切换子模式：校验 sub_mode 范围，保留该子模式已有间隔 */
+            if (sub_mode_val > 5)
+            {
+                LOG_INF("%s=>invalid Sub Mode %d (0~5)", __func__, sub_mode_val);
+                goto param_invalid;
+            }
+            gConfigParam.device_workmode_config.workmode_config.intelligent.sub_mode = sub_mode_val;
         }
 
         gConfigParam.device_workmode_config.flag = FLAG_VALID;
@@ -3470,26 +3489,21 @@ static int modeset_cmd_handler(at_cmd_t* msg)
             smart_mode_apply_lte_policy();
         }
 
-        LOG_INF("%s,%s,%s,%s,%s#", msg->parm[0], msg->parm[1], msg->parm[2], msg->parm[3], msg->parm[4]);
-    }
-    // 常在线模式处理: MODESET,3# （无附加参数）
-    else if (param_work_mode_config.current_mode == MY_MODE_ALWAYS_ONLINE)
-    {
-        if (msg->parm_count != 1)
+        if (msg->parm_count == 4)
         {
-            LOG_INF("%s=>%s, param count error: %d", __func__, msg->parm[0], msg->parm_count);
-            goto param_invalid;
+            LOG_INF("%s,%s,%s,%s,%s#", msg->parm[0], msg->parm[1], msg->parm[2], msg->parm[3], msg->parm[4]);
         }
-
-        // 常在线模式无附加参数，仅切换模式
-        switch_work_mode(MY_MODE_ALWAYS_ONLINE);
-
-        gConfigParam.device_workmode_config.flag = FLAG_VALID;
-        /* 保存配置 */
-        my_user_data_write(ZMS_ID_WORK_MODE_CONFIG, &gConfigParam.device_workmode_config, sizeof(device_work_mode_config_t));
-
-        LOG_INF("MODESET,3 (ALWAYS_ONLINE)");
+        else
+        {
+            LOG_INF("%s,%s,%s#", msg->parm[0], msg->parm[1], msg->parm[2]);
+        }
     }
+    else
+    {
+        LOG_INF("%s=>invalid current_mode %d", __func__, param_work_mode_config.current_mode);
+        goto param_invalid;
+    }
+
 
     /* 生成成功响应 */
     msg->resp_length = snprintf(msg->resp_msg, remaining, "Set OK!");
@@ -3544,8 +3558,8 @@ static int modeget_cmd_handler(at_cmd_t* msg)
                 ret = snprintf(msg->resp_msg, remaining, "MODE:%d,%d,%d,%d",
                     gConfigParam.device_workmode_config.workmode_config.current_mode,
                     gConfigParam.device_workmode_config.workmode_config.intelligent.sub_mode,
-                    gConfigParam.device_workmode_config.workmode_config.intelligent.static_interval,
-                    gConfigParam.device_workmode_config.workmode_config.intelligent.moving_interval);
+                    gConfigParam.device_workmode_config.workmode_config.intelligent.static_interval[gConfigParam.device_workmode_config.workmode_config.intelligent.sub_mode],
+                    gConfigParam.device_workmode_config.workmode_config.intelligent.moving_interval[gConfigParam.device_workmode_config.workmode_config.intelligent.sub_mode]);
                 break;
 
             case MY_MODE_ALWAYS_ONLINE:
@@ -3609,8 +3623,8 @@ static int modeparam_cmd_handler(at_cmd_t* msg)
                     gConfigParam.device_workmode_config.workmode_config.long_battery.gnss_sw ? "ON" : "OFF",
                     MY_MODE_SMART,
                     gConfigParam.device_workmode_config.workmode_config.intelligent.sub_mode,
-                    gConfigParam.device_workmode_config.workmode_config.intelligent.static_interval,
-                    gConfigParam.device_workmode_config.workmode_config.intelligent.moving_interval,
+                    gConfigParam.device_workmode_config.workmode_config.intelligent.static_interval[gConfigParam.device_workmode_config.workmode_config.intelligent.sub_mode],
+                    gConfigParam.device_workmode_config.workmode_config.intelligent.moving_interval[gConfigParam.device_workmode_config.workmode_config.intelligent.sub_mode],
                     MY_MODE_ALWAYS_ONLINE);
 
         if (ret > 0 && ret < remaining)  // 检查响应消息是否生成成功

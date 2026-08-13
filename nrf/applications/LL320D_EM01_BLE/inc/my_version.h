@@ -12,7 +12,20 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260807"
+#define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260812"
+/* 软件版本:        V1.0
+** 完成日期:        2026.08.12
+** 作    者:       曹阳 (caoyang@jimiiot.com)
+** 修改内容:        1.智能模式间隔参数改为数组 ： static_interval / moving_interval 从标量改为 [6] 数组，每个子模式独立保存间隔值
+**                 2. 间隔单位统一为秒 ：移除按子模式区分分钟/秒的逻辑，所有子模式统一使用秒
+**                 3.支持短格式 MODESET,2,[Sub Mode]# ,仅切换子模式时无需重复传入间隔参数
+**                 4.心跳定时器改为记录蓝牙上电时间
+**                 5.新增配置参数打印函数 my_param_log_config ，精简启动日志
+**                 6.增加注释说明TAG,MAC,温湿度和气压数据采集OTA升级动态改变分区方法
+**                 7.修正蓝牙指令开关注释没对上的地方
+***/
+
+// #define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260807"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.08.07
 ** 作    者:       周森达 (zhousenda@jimiiot.com)

@@ -327,14 +327,14 @@ static int cmd_modeset(const struct shell *sh, size_t argc, char **argv)
         }
         case 2: // 智能模式
         {
-            // 校验参数个数（app modeset 2 5 5 10 → argc=5）
-            if (argc != 5)
+            // 校验参数个数：argc=3 仅切换子模式，argc=5 完整设置
+            if (argc != 3 && argc != 5)
             {
                 shell_print(sh, "Invalid argument count for mode 2!");
-                shell_print(sh, "Usage: app modeset 2 <sub_mode> <static_int> <moving_int>");
+                shell_print(sh, "Usage: app modeset 2 <sub_mode> [static_int moving_int]");
                 shell_print(sh, "  sub_mode   : 0~5 (sub mode controls Cell/GNSS sleep strategy)");
-                shell_print(sh, "  static_int : Static state interval (unit depends on sub_mode)");
-                shell_print(sh, "  moving_int : Moving state interval (unit depends on sub_mode)");
+                shell_print(sh, "  static_int : Static interval in sec (0=off; sub0~4:180~3600, sub5:10~86400)");
+                shell_print(sh, "  moving_int : Moving interval in sec (sub0,1,3:180~3600, sub2,4,5:10~86400)");
                 return -1;
             }
 
@@ -346,27 +346,36 @@ static int cmd_modeset(const struct shell *sh, size_t argc, char **argv)
                 return -1;
             }
 
-            // 解析static_int
-            static_int = strtoul(argv[3], &endptr, 10);
-            if (*endptr != '\0')
+            if (argc == 5)
             {
-                shell_print(sh, "Error: static_int must be an integer!");
-                return -1;
-            }
+                // 完整模式：校验并设置 sub_mode + static_int + moving_int
+                // 解析static_int
+                static_int = strtoul(argv[3], &endptr, 10);
+                if (*endptr != '\0')
+                {
+                    shell_print(sh, "Error: static_int must be an integer!");
+                    return -1;
+                }
 
-            // 解析moving_int
-            moving_int = strtoul(argv[4], &endptr, 10);
-            if (*endptr != '\0')
-            {
-                shell_print(sh, "Error: moving_int must be an integer!");
-                return -1;
-            }
+                // 解析moving_int
+                moving_int = strtoul(argv[4], &endptr, 10);
+                if (*endptr != '\0')
+                {
+                    shell_print(sh, "Error: moving_int must be an integer!");
+                    return -1;
+                }
 
-            // 设置智能模式参数
-            if (set_intelligent_params(p_workmode, sub_mode, static_int, moving_int) < 0)
+                // 设置智能模式参数
+                if (set_intelligent_params(p_workmode, sub_mode, static_int, moving_int) < 0)
+                {
+                    shell_print(sh, "Error: parameter validation failed!");
+                    return -1;
+                }
+            }
+            else
             {
-                shell_print(sh, "Error: parameter validation failed!");
-                return -1;
+                // 短格式：仅切换子模式，保留该子模式已有间隔
+                p_workmode->intelligent.sub_mode = sub_mode;
             }
             shell_print(sh, "Smart mode config success!");
             break;
@@ -2058,6 +2067,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_app,
     SHELL_CMD(retransmit_check_test, NULL, "Run retransmit_check_test test", cmd_retransmit_check_test),
     SHELL_CMD(hardware_test, NULL, "Run hardware test", cmd_hardware_test),
     SHELL_CMD(read_gsensor_data, NULL, "Read G-Sensor data", cmd_read_gsensor_data),
+    SHELL_CMD(param_log, NULL, "Print param log config", my_param_log_config),
 #if FS_STORE_TEST_ENABLE
     SHELL_CMD(fs, NULL, "Flash store test: app fs <init|info|count|push|fill|begin|read|commit|rewind|clear|sorttest|covertest|partialtest|busytest>", cmd_fs_test),
 #endif

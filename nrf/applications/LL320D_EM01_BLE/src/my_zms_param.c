@@ -111,8 +111,8 @@ const work_mode_config_t gDefaultWorkModeConfig =
         .intelligent = // 智能模式
         {
             .sub_mode = 5,                      // 默认子模式5（Cell+GNSS常开/秒）
-            .static_interval = 10,              // 默认静止间隔10（子模式5下单位为秒）
-            .moving_interval = 10,              // 默认运动间隔10（子模式5下单位为秒）
+            .static_interval = {300, 300, 300, 300, 300, 10},              // 默认静止间隔(单位:秒)
+            .moving_interval = {300, 300, 10, 300, 10, 10},              // 默认运动间隔（单位:秒）
         },
     }
 };
@@ -214,7 +214,7 @@ const bluetooth_config_t gDefaultBluetoothConfig =
     .bluetooth_sw = 0,                   /* 默认关闭 */
     .bluetooth_a = 5,                    /* 默认5 */
     .bluetooth_b = 2,                    /* 默认2 min */
-    .bluetooth_flag = 1,                 /* 默认未携带参数 */
+    .bluetooth_flag = 0,                 /* 默认未携带参数 */
 };
 
 const btconnect_config_t gDefaultBtconnectConfig =
@@ -392,6 +392,86 @@ int my_user_data_read(uint32_t id, void *data, int len)
 }
 
 /********************************************************************
+**函数名称:  my_param_log_config
+**入口参数:  无
+**出口参数:  无
+**函数功能:  打印所有配置参数（格式：指令名:参数, 参数）
+**返 回 值:  无
+*********************************************************************/
+void my_param_log_config(void)
+{
+    uint8_t data_buff[64] = {0};
+
+    MY_LOG_INF("adv valid value: AppleValid(%d), GoogleValid(%d)",
+                gConfigParam.adv_valid_value.AppleValid,
+                gConfigParam.adv_valid_value.GoogleValid);
+    MY_LOG_INF("ECDH G value: 0x%04x", gConfigParam.ECDH_GValue.ecdh_g);
+    memcpy(data_buff, gConfigParam.gsm_sn.hex, sizeof(gConfigParam.gsm_sn.hex));
+    MY_LOG_INF("sn value: %s", data_buff);
+    memcpy(data_buff, gConfigParam.my_macaddr.hex, sizeof(gConfigParam.my_macaddr.hex));
+    MY_LOG_INF("mac addr: %02x:%02x:%02x:%02x:%02x:%02x",
+                data_buff[5], data_buff[4], data_buff[3], data_buff[2], data_buff[1], data_buff[0]);
+    MY_LOG_INF("BLE TX power: %d dBm", gConfigParam.ble_tx_power.tx_power);
+    MY_LOG_INF("BLE log config: global_en(%d)", gConfigParam.ble_log_config.global_en);
+    MY_LOG_INF("remote alarm config: remalm_mode(%d), remalm_sw(%d)",
+                gConfigParam.remalm_config.remalm_mode, gConfigParam.remalm_config.remalm_sw);
+    MY_LOG_INF("pull alarm config: pullalm_mode(%d), pullalm_sw(%d)",
+                gConfigParam.pullalm_config.pullalm_mode, gConfigParam.pullalm_config.pullalm_sw);
+    MY_LOG_INF("pat alarm config: patalm_low_threshold(%d), patalm_high_threshold(%d), patalm_report_type(%d), patalm_report_interval(%d)",
+                gConfigParam.patalm_config.patalm_low_threshold,
+                gConfigParam.patalm_config.patalm_high_threshold,
+                gConfigParam.patalm_config.patalm_report_type,
+                gConfigParam.patalm_config.patalm_report_interval);
+    MY_LOG_INF("temp alarm config: temp_low_threshold(%d), temp_high_threshold(%d), humi_low_threshold(%d), humi_high_threshold(%d), tempalm_report_type(%d), tempalm_report_interval(%d)",
+                gConfigParam.tempalm_config.temp_low_threshold,
+                gConfigParam.tempalm_config.temp_high_threshold,
+                gConfigParam.tempalm_config.humi_low_threshold,
+                gConfigParam.tempalm_config.humi_high_threshold,
+                gConfigParam.tempalm_config.tempalm_report_type,
+                gConfigParam.tempalm_config.tempalm_report_interval);
+    MY_LOG_INF("mot det config: motdet_vibration(%d), motdet_duration(%d)",
+                gConfigParam.motdet_config.motdet_vibration, gConfigParam.motdet_config.motdet_duration);
+    MY_LOG_INF("mot det alarm config: motdetalm_sw(%d), motdetalm_report_type(%d)",
+                gConfigParam.motdetalm_config.motdetalm_sw, gConfigParam.motdetalm_config.motdetalm_report_type);
+    MY_LOG_INF("batlevel config: batlevel_empty_rpt(%d), batlevel_low_rpt(%d), batlevel_normal_rpt(%d), batlevel_fair_rpt(%d), batlevel_high_rpt(%d), batlevel_full_rpt(%d), chargesta_report(%d)",
+                gConfigParam.batlevel_config.batlevel_empty_rpt, gConfigParam.batlevel_config.batlevel_low_rpt,
+                gConfigParam.batlevel_config.batlevel_normal_rpt, gConfigParam.batlevel_config.batlevel_fair_rpt,
+                gConfigParam.batlevel_config.batlevel_high_rpt, gConfigParam.batlevel_config.batlevel_full_rpt,
+                gConfigParam.batlevel_config.chargesta_report);
+    MY_LOG_INF("startr config: startr_sw(%d)", gConfigParam.startr_config.startr_sw);
+    MY_LOG_INF("PWRLimit config: pwrlimit_sw(%d)", gConfigParam.pwrlimit_config.pwrlimit_sw);
+    MY_LOG_INF("LPSLEEP config: lprunning_sw(%d), lprunning_threshold(%d), lprunning_interval(%d)",
+                gConfigParam.lprunning_config.lprunning_sw,
+                gConfigParam.lprunning_config.lprunning_threshold,
+                gConfigParam.lprunning_config.lprunning_interval);
+    MY_LOG_INF("BTUPDATA config: bt_updata_mode(%d), bt_updata_scan_interval(%d), bt_updata_scan_length(%d), bt_updata_updata_interval(%d)",
+                gConfigParam.bt_updata_config.bt_updata_mode, gConfigParam.bt_updata_config.bt_updata_scan_interval,
+                gConfigParam.bt_updata_config.bt_updata_scan_length, gConfigParam.bt_updata_config.bt_updata_updata_interval);
+    MY_LOG_INF("bluetooth config: bluetooth_sw(%d), bluetooth_a(%d), bluetooth_b(%d), bluetooth_flag(%d)",
+                gConfigParam.bluetooth_config.bluetooth_sw, gConfigParam.bluetooth_config.bluetooth_a,
+                gConfigParam.bluetooth_config.bluetooth_b, gConfigParam.bluetooth_config.bluetooth_flag);
+    MY_LOG_INF("BTCONNECT config: btconnect_sw(%d), btconnect_interval(%d), btconnect_report(%d)",
+                gConfigParam.btconnect_config.btconnect_sw, gConfigParam.btconnect_config.btconnect_interval,
+                gConfigParam.btconnect_config.btconnect_report);
+    MY_LOG_INF("tag config: tag_sw(%d), tag_interval(%d)",
+                gConfigParam.tag_config.tag_sw, gConfigParam.tag_config.tag_interval);
+    MY_LOG_INF("led config: led_display(%d)", gConfigParam.led_config.led_display);
+    MY_LOG_INF("ltint config: T1(%d), T2(%d)",
+                gConfigParam.ltint_config.T1, gConfigParam.ltint_config.T2);
+    MY_LOG_INF("buzzer config: buzzer_operator(%d)", gConfigParam.buzzer_config.buzzer_operator);
+    MY_LOG_INF("patm timer config: interval_min(%d), wakeup_cell_sw(%d)",
+                gConfigParam.patm_timer_config.interval_min,
+                gConfigParam.patm_timer_config.wakeup_cell_sw);
+    MY_LOG_INF("temp timer config: interval_min(%d), wakeup_cell_sw(%d)",
+                gConfigParam.temp_timer_config.interval_min,
+                gConfigParam.temp_timer_config.wakeup_cell_sw);
+    MY_LOG_INF("imu zero bias config: gyro_bias_x(%f), gyro_bias_y(%f), gyro_bias_z(%f)",
+                gConfigParam.imu_zero_bias_config.gyro_bias_x,
+                gConfigParam.imu_zero_bias_config.gyro_bias_y,
+                gConfigParam.imu_zero_bias_config.gyro_bias_z);
+}
+
+/********************************************************************
 **函数名称:  my_param_load_config
 **入口参数:  无
 **出口参数:  无
@@ -402,7 +482,6 @@ void my_param_load_config(void)
 {
     int length;
     int ret;
-    uint8_t data_buff[64] = {0};
 
     // 先初始化数据存储
     ret = my_user_data_storage_init();
@@ -416,7 +495,6 @@ void my_param_load_config(void)
     ret = my_user_data_read(ZMS_ID_FF, &gConfigParam.lic_ff, length);
     if (gConfigParam.lic_ff.flag != FLAG_VALID || ret != length)
     {
-        MY_LOG_INF("get zms ff fail");
         memset(&gConfigParam.lic_ff, 0, length);
     }
 
@@ -425,7 +503,6 @@ void my_param_load_config(void)
     ret = my_user_data_read(ZMS_ID_GG, &gConfigParam.lic_gg, length);
     if (gConfigParam.lic_gg.flag != FLAG_VALID || ret != length)
     {
-        MY_LOG_INF("get zms gg fail");
         memset(&gConfigParam.lic_gg, 0, length);
     }
 
@@ -435,9 +512,6 @@ void my_param_load_config(void)
     if (gConfigParam.adv_valid_value.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.adv_valid_value, &gDefaultAdvValidValue, length);
-        MY_LOG_INF("Adv valid value not found. Use default:AppleValid(%d),GoogleValid(%d)",
-                gConfigParam.adv_valid_value.AppleValid,
-                gConfigParam.adv_valid_value.GoogleValid);
     }
 
     set_adv_valid_status(APPLE_ADV_TYPE, gConfigParam.adv_valid_value.AppleValid);
@@ -449,7 +523,6 @@ void my_param_load_config(void)
     if (gConfigParam.ECDH_GValue.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.ECDH_GValue, &gDefaultEcdhGValue, length);
-        MY_LOG_INF("ECDH G value not found. Use default:ECDH G value(0x%04x)", gConfigParam.ECDH_GValue.ecdh_g);
     }
 
     //--------Load SN Value ---------------------
@@ -458,8 +531,6 @@ void my_param_load_config(void)
     if (gConfigParam.gsm_sn.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.gsm_sn, &gDefaultSnValue, length);
-        memcpy(data_buff, gConfigParam.gsm_sn.hex, sizeof(gConfigParam.gsm_sn.hex));
-        MY_LOG_INF("sn not found. Use default:sn value(%s)", data_buff);
     }
 
     //--------Load mac addr ---------------------
@@ -468,9 +539,6 @@ void my_param_load_config(void)
     if (gConfigParam.my_macaddr.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.my_macaddr, &gDefaultMacAddr, length);
-        memcpy(data_buff, gConfigParam.my_macaddr.hex, sizeof(gConfigParam.my_macaddr.hex));
-        MY_LOG_INF("mac addr not set. Use default:mac addr(%02x:%02x:%02x:%02x:%02x:%02x)",
-            data_buff[5], data_buff[4], data_buff[3], data_buff[2], data_buff[1], data_buff[0]);
     }
 
     //--------Load BLE TX Power ---------------------
@@ -479,11 +547,6 @@ void my_param_load_config(void)
     if (gConfigParam.ble_tx_power.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.ble_tx_power, &gDefaultBleTxPower, length);
-        MY_LOG_INF("BLE TX power not set. Use default:%d dBm", gConfigParam.ble_tx_power.tx_power);
-    }
-    else
-    {
-        MY_LOG_INF("BLE TX power loaded:%d dBm", gConfigParam.ble_tx_power.tx_power);
     }
 
     //--------Load BLE Log Config ---------------------
@@ -492,12 +555,6 @@ void my_param_load_config(void)
     if (gConfigParam.ble_log_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.ble_log_config, &gDefaultBleLogConfig, length);
-        MY_LOG_INF("BLE log config not set. Use default: global_en=%d",
-                gConfigParam.ble_log_config.global_en);
-    }
-    else
-    {
-        MY_LOG_INF("BLE log config loaded: global_en=%d", gConfigParam.ble_log_config.global_en);
     }
 
     //--------Load Device Workmode Config ---------------------
@@ -506,7 +563,6 @@ void my_param_load_config(void)
     if (gConfigParam.device_workmode_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.device_workmode_config, &gDefaultWorkModeConfig, length);
-        MY_LOG_INF("Device workmode config not found. Use default.");
     }
 
     //--------Load Remote Alarm Config ---------------------
@@ -515,13 +571,6 @@ void my_param_load_config(void)
     if (gConfigParam.remalm_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.remalm_config, &gDefaultRemAlmConfig, length);
-        MY_LOG_INF("Remote alarm config not found. Use default:remalm_mode(%d), remalm_sw(%d)",
-                    gConfigParam.remalm_config.remalm_mode, gConfigParam.remalm_config.remalm_sw);
-    }
-    else
-    {
-        MY_LOG_INF("Remote alarm config loaded: remalm_mode(%d), remalm_sw(%d)",
-                    gConfigParam.remalm_config.remalm_mode, gConfigParam.remalm_config.remalm_sw);
     }
 
     //--------Load Pull Alarm Config ---------------------
@@ -530,13 +579,6 @@ void my_param_load_config(void)
     if (gConfigParam.pullalm_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.pullalm_config, &gDefaultPullAlmConfig, length);
-        MY_LOG_INF("Pull alarm config not found. Use default:pullalm_mode(%d), pullalm_sw(%d)",
-                    gConfigParam.pullalm_config.pullalm_mode, gConfigParam.pullalm_config.pullalm_sw);
-    }
-    else
-    {
-        MY_LOG_INF("Pull alarm config loaded: pullalm_mode(%d), pullalm_sw(%d)",
-                    gConfigParam.pullalm_config.pullalm_mode, gConfigParam.pullalm_config.pullalm_sw);
     }
 
     //--------Load Patalm Config ---------------------
@@ -545,19 +587,6 @@ void my_param_load_config(void)
     if (gConfigParam.patalm_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.patalm_config, &gDefaultPatAlmConfig, length);
-        MY_LOG_INF("Pat alarm config not found. Use default:patalm_low_threshold(%d), patalm_high_threshold(%d), patalm_report_type(%d), patalm_report_interval(%d)",
-                    gConfigParam.patalm_config.patalm_low_threshold,
-                    gConfigParam.patalm_config.patalm_high_threshold,
-                    gConfigParam.patalm_config.patalm_report_type,
-                    gConfigParam.patalm_config.patalm_report_interval);
-    }
-    else
-    {
-        MY_LOG_INF("Pat alarm config loaded: patalm_low_threshold(%d), patalm_high_threshold(%d), patalm_report_type(%d), patalm_report_interval(%d)",
-                    gConfigParam.patalm_config.patalm_low_threshold,
-                    gConfigParam.patalm_config.patalm_high_threshold,
-                    gConfigParam.patalm_config.patalm_report_type,
-                    gConfigParam.patalm_config.patalm_report_interval);
     }
 
     //--------Load Temp Alm Config ---------------------
@@ -566,23 +595,6 @@ void my_param_load_config(void)
     if (gConfigParam.tempalm_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.tempalm_config, &gDefaultTempAlmConfig, length);
-        MY_LOG_INF("Temp alarm config not found. Use default:temp_low_threshold(%d), temp_high_threshold(%d), humi_low_threshold(%d), humi_high_threshold(%d), tempalm_report_type(%d), tempalm_report_interval(%d)",
-                    gConfigParam.tempalm_config.temp_low_threshold,
-                    gConfigParam.tempalm_config.temp_high_threshold,
-                    gConfigParam.tempalm_config.humi_low_threshold,
-                    gConfigParam.tempalm_config.humi_high_threshold,
-                    gConfigParam.tempalm_config.tempalm_report_type,
-                    gConfigParam.tempalm_config.tempalm_report_interval);
-    }
-    else
-    {
-        MY_LOG_INF("Temp alarm config loaded: temp_low_threshold(%d), temp_high_threshold(%d), humi_low_threshold(%d), humi_high_threshold(%d), tempalm_report_type(%d), tempalm_report_interval(%d)",
-                    gConfigParam.tempalm_config.temp_low_threshold,
-                    gConfigParam.tempalm_config.temp_high_threshold,
-                    gConfigParam.tempalm_config.humi_low_threshold,
-                    gConfigParam.tempalm_config.humi_high_threshold,
-                    gConfigParam.tempalm_config.tempalm_report_type,
-                    gConfigParam.tempalm_config.tempalm_report_interval);
     }
 
     //--------Load Mot Det Config ---------------------
@@ -591,13 +603,6 @@ void my_param_load_config(void)
     if (gConfigParam.motdet_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.motdet_config, &gDefaultMotDetConfig, length);
-        MY_LOG_INF("Mot det config not found. Use default:motdet_vibration(%d), motdet_duration(%d)",
-                    gConfigParam.motdet_config.motdet_vibration, gConfigParam.motdet_config.motdet_duration);
-    }
-    else
-    {
-        MY_LOG_INF("Mot det config loaded: motdet_vibration(%d), motdet_duration(%d)",
-                    gConfigParam.motdet_config.motdet_vibration, gConfigParam.motdet_config.motdet_duration);
     }
 
     //--------Load Mot Det Alm Config ---------------------
@@ -606,13 +611,6 @@ void my_param_load_config(void)
     if (gConfigParam.motdetalm_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.motdetalm_config, &gDefaultMotDetAlmConfig, length);
-        MY_LOG_INF("Mot det alarm config not found. Use default:motdetalm_sw(%d), motdetalm_report_type(%d)",
-                    gConfigParam.motdetalm_config.motdetalm_sw, gConfigParam.motdetalm_config.motdetalm_report_type);
-    }
-    else
-    {
-        MY_LOG_INF("Mot det alarm config loaded: motdetalm_sw(%d), motdetalm_report_type(%d)",
-                    gConfigParam.motdetalm_config.motdetalm_sw, gConfigParam.motdetalm_config.motdetalm_report_type);
     }
 
     //--------Load Batlevel Config ---------------------
@@ -621,21 +619,6 @@ void my_param_load_config(void)
     if (gConfigParam.batlevel_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.batlevel_config, &gDefaultBatlevelConfig, length);
-        MY_LOG_INF("Batlevel config not found. Use default:batlevel_empty_rpt(%d), batlevel_low_rpt(%d), batlevel_normal_rpt(%d), "
-                   "batlevel_fair_rpt(%d), batlevel_high_rpt(%d), batlevel_full_rpt(%d), chargesta_report(%d)",
-                    gConfigParam.batlevel_config.batlevel_empty_rpt, gConfigParam.batlevel_config.batlevel_low_rpt,
-                    gConfigParam.batlevel_config.batlevel_normal_rpt, gConfigParam.batlevel_config.batlevel_fair_rpt,
-                    gConfigParam.batlevel_config.batlevel_high_rpt, gConfigParam.batlevel_config.batlevel_full_rpt,
-                    gConfigParam.batlevel_config.chargesta_report);
-    }
-    else
-    {
-        MY_LOG_INF("Batlevel config loaded: batlevel_empty_rpt(%d), batlevel_low_rpt(%d), batlevel_normal_rpt(%d), "
-                   "batlevel_fair_rpt(%d), batlevel_high_rpt(%d), batlevel_full_rpt(%d), ",
-                    gConfigParam.batlevel_config.batlevel_empty_rpt, gConfigParam.batlevel_config.batlevel_low_rpt,
-                    gConfigParam.batlevel_config.batlevel_normal_rpt, gConfigParam.batlevel_config.batlevel_fair_rpt,
-                    gConfigParam.batlevel_config.batlevel_high_rpt, gConfigParam.batlevel_config.batlevel_full_rpt,
-                    gConfigParam.batlevel_config.chargesta_report);
     }
 
     //--------Load Startr Config ---------------------
@@ -644,11 +627,6 @@ void my_param_load_config(void)
     if (gConfigParam.startr_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.startr_config, &gDefaultStartrConfig, length);
-        MY_LOG_INF("Startr config not found. Use default:startr_sw(%d)", gConfigParam.startr_config.startr_sw);
-    }
-    else
-    {
-        MY_LOG_INF("Startr config loaded: startr_sw(%d)", gConfigParam.startr_config.startr_sw);
     }
 
     //--------Load PWRLimit Config ---------------------
@@ -657,11 +635,6 @@ void my_param_load_config(void)
     if (gConfigParam.pwrlimit_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.pwrlimit_config, &gDefaultPWRlimitConfig, length);
-        MY_LOG_INF("PWRLimit config not found. Use default:pwrlimit_sw(%d)", gConfigParam.pwrlimit_config.pwrlimit_sw);
-    }
-    else
-    {
-        MY_LOG_INF("PWRLimit config loaded: pwrlimit_sw(%d)", gConfigParam.pwrlimit_config.pwrlimit_sw);
     }
 
     //--------Load LPSLEEP Config ---------------------
@@ -670,17 +643,6 @@ void my_param_load_config(void)
     if (gConfigParam.lprunning_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.lprunning_config, &gDefaultlprunningConfig, length);
-        MY_LOG_INF("LPSLEEP config not found. Use default:sw(%d),threshold(%d),interval(%d)",
-                    gConfigParam.lprunning_config.lprunning_sw,
-                    gConfigParam.lprunning_config.lprunning_threshold,
-                    gConfigParam.lprunning_config.lprunning_interval);
-    }
-    else
-    {
-        MY_LOG_INF("LPSLEEP config loaded: sw(%d),threshold(%d),interval(%d)",
-                    gConfigParam.lprunning_config.lprunning_sw,
-                    gConfigParam.lprunning_config.lprunning_threshold,
-                    gConfigParam.lprunning_config.lprunning_interval);
     }
 
     //--------Load BTUPDATA Config ---------------------
@@ -689,15 +651,6 @@ void my_param_load_config(void)
     if (gConfigParam.bt_updata_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.bt_updata_config, &gDefaultBtUpdataConfig, length);
-        MY_LOG_INF("BTUPDATA config not found. Use default:bt_updata_mode(%d), bt_updata_scan_interval(%d), bt_updata_scan_length(%d), bt_updata_updata_interval(%d)",
-                    gConfigParam.bt_updata_config.bt_updata_mode, gConfigParam.bt_updata_config.bt_updata_scan_interval,
-                    gConfigParam.bt_updata_config.bt_updata_scan_length, gConfigParam.bt_updata_config.bt_updata_updata_interval);
-    }
-    else
-    {
-        MY_LOG_INF("BTUPDATA config loaded: bt_updata_mode(%d), bt_updata_scan_interval(%d), bt_updata_scan_length(%d), bt_updata_updata_interval(%d)",
-                    gConfigParam.bt_updata_config.bt_updata_mode, gConfigParam.bt_updata_config.bt_updata_scan_interval,
-                    gConfigParam.bt_updata_config.bt_updata_scan_length, gConfigParam.bt_updata_config.bt_updata_updata_interval);
     }
 
     //--------Load Bluetooth Config ---------------------
@@ -706,13 +659,6 @@ void my_param_load_config(void)
     if (gConfigParam.bluetooth_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.bluetooth_config, &gDefaultBluetoothConfig, length);
-        MY_LOG_INF("Bluetooth config not found. Use default:bluetooth_sw(%d), bluetooth_a(%d), bluetooth_b(%d), bluetooth_flag(%d)",
-                    gConfigParam.bluetooth_config.bluetooth_sw, gConfigParam.bluetooth_config.bluetooth_a, gConfigParam.bluetooth_config.bluetooth_b, gConfigParam.bluetooth_config.bluetooth_flag);
-    }
-    else
-    {
-        MY_LOG_INF("Bluetooth config loaded: bluetooth_sw(%d), bluetooth_a(%d), bluetooth_b(%d), bluetooth_flag(%d)",
-                    gConfigParam.bluetooth_config.bluetooth_sw, gConfigParam.bluetooth_config.bluetooth_a, gConfigParam.bluetooth_config.bluetooth_b, gConfigParam.bluetooth_config.bluetooth_flag);
     }
 
     //--------Load BTCONNECT Config ---------------------
@@ -721,13 +667,6 @@ void my_param_load_config(void)
     if (gConfigParam.btconnect_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.btconnect_config, &gDefaultBtconnectConfig, length);
-        MY_LOG_INF("BTCONNECT config not found. Use default:btconnect_sw(%d), btconnect_interval(%d), btconnect_report(%d)",
-                    gConfigParam.btconnect_config.btconnect_sw, gConfigParam.btconnect_config.btconnect_interval, gConfigParam.btconnect_config.btconnect_report);
-    }
-    else
-    {
-        MY_LOG_INF("BTCONNECT config loaded: btconnect_sw(%d), btconnect_interval(%d), btconnect_report(%d)",
-                    gConfigParam.btconnect_config.btconnect_sw, gConfigParam.btconnect_config.btconnect_interval, gConfigParam.btconnect_config.btconnect_report);
     }
 
     //--------Load Tag Config ---------------------
@@ -736,11 +675,6 @@ void my_param_load_config(void)
     if (gConfigParam.tag_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.tag_config, &gDefaultTagConfig, length);
-        MY_LOG_INF("Tag config not found. Use default:tag_sw(%d), tag_interval(%d)", gConfigParam.tag_config.tag_sw, gConfigParam.tag_config.tag_interval);
-    }
-    else
-    {
-        MY_LOG_INF("Tag config loaded: tag_sw(%d), tag_interval(%d)", gConfigParam.tag_config.tag_sw, gConfigParam.tag_config.tag_interval);
     }
 
     //--------Load Led Config ---------------------
@@ -749,11 +683,6 @@ void my_param_load_config(void)
     if (gConfigParam.led_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.led_config, &gDefaultLedConfig, length);
-        MY_LOG_INF("Led config not found. Use default:led_display(%d)", gConfigParam.led_config.led_display);
-    }
-    else
-    {
-        MY_LOG_INF("Led config loaded: led_display(%d)", gConfigParam.led_config.led_display);
     }
 
     //--------Load Ltint Config ---------------------
@@ -762,11 +691,6 @@ void my_param_load_config(void)
     if (gConfigParam.ltint_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.ltint_config, &gDefaultLtintConfig, length);
-        MY_LOG_INF("Ltint Config not found. Use default:T1(%d), T2(%d)", gConfigParam.ltint_config.T1, gConfigParam.ltint_config.T2);
-    }
-    else
-    {
-        MY_LOG_INF("Ltint Config loaded: T1(%d), T2(%d)", gConfigParam.ltint_config.T1, gConfigParam.ltint_config.T2);
     }
 
     //--------Load Buzzer Config ---------------------
@@ -775,11 +699,6 @@ void my_param_load_config(void)
     if (gConfigParam.buzzer_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.buzzer_config, &gDefaultBuzzerConfig, length);
-        MY_LOG_INF("Buzzer config not found. Use default:buzzer_operator(%d)", gConfigParam.buzzer_config.buzzer_operator);
-    }
-    else
-    {
-        MY_LOG_INF("Buzzer config loaded: buzzer_operator(%d)", gConfigParam.buzzer_config.buzzer_operator);
     }
 
     //--------Load Bparmac Config ---------------------
@@ -788,11 +707,6 @@ void my_param_load_config(void)
     if (gConfigParam.bparmac_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.bparmac_config, &gDefaultBparmacConfig, length);
-        MY_LOG_INF("Bparmac config not found. Use default.");
-    }
-    else
-    {
-        MY_LOG_INF("Bparmac config loaded");
     }
 
     //--------Load Patm Timer Config ---------------------
@@ -801,15 +715,6 @@ void my_param_load_config(void)
     if (gConfigParam.patm_timer_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.patm_timer_config, &gDefaultPatmTimerConfig, length);
-        MY_LOG_INF("Patm timer config not found. Use default:T(%d), C(%d)",
-                   gConfigParam.patm_timer_config.interval_min,
-                   gConfigParam.patm_timer_config.wakeup_cell_sw);
-    }
-    else
-    {
-        MY_LOG_INF("Patm timer config loaded:T(%d), C(%d)",
-                   gConfigParam.patm_timer_config.interval_min,
-                   gConfigParam.patm_timer_config.wakeup_cell_sw);
     }
 
     //--------Load Temp Timer Config ---------------------
@@ -818,15 +723,6 @@ void my_param_load_config(void)
     if (gConfigParam.temp_timer_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.temp_timer_config, &gDefaultTempTimerConfig, length);
-        MY_LOG_INF("Temp timer config not found. Use default:T(%d), C(%d)",
-                   gConfigParam.temp_timer_config.interval_min,
-                   gConfigParam.temp_timer_config.wakeup_cell_sw);
-    }
-    else
-    {
-        MY_LOG_INF("Temp timer config loaded:T(%d), C(%d)",
-                   gConfigParam.temp_timer_config.interval_min,
-                   gConfigParam.temp_timer_config.wakeup_cell_sw);
     }
 
     //--------Load Imu Alm Config ---------------------
@@ -835,11 +731,6 @@ void my_param_load_config(void)
     if (gConfigParam.imu_alm_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.imu_alm_config, &gDefaultImuAlmConfig, length);
-        MY_LOG_INF("Imu alm config not found. Use default.");
-    }
-    else
-    {
-        MY_LOG_INF("Imu alm config loaded");
     }
 
     //--------Load Imu Zero Bias Config ---------------------
@@ -848,17 +739,6 @@ void my_param_load_config(void)
     if (gConfigParam.imu_zero_bias_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.imu_zero_bias_config, &gDefaultImuZeroBiasConfig, length);
-        MY_LOG_INF("Imu zero bias config not found. Use default: gyro_bias_x(%f), gyro_bias_y(%f), gyro_bias_z(%f)",
-                   gConfigParam.imu_zero_bias_config.gyro_bias_x,
-                   gConfigParam.imu_zero_bias_config.gyro_bias_y,
-                   gConfigParam.imu_zero_bias_config.gyro_bias_z);
-    }
-    else
-    {
-        MY_LOG_INF("Imu zero bias config loaded: gyro_bias_x(%f), gyro_bias_y(%f), gyro_bias_z(%f)",
-                   gConfigParam.imu_zero_bias_config.gyro_bias_x,
-                   gConfigParam.imu_zero_bias_config.gyro_bias_y,
-                   gConfigParam.imu_zero_bias_config.gyro_bias_z);
     }
 }
 

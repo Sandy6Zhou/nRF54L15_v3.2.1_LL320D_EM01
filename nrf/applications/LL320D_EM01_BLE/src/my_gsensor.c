@@ -74,23 +74,22 @@ static uint8_t s_chip_id = 0; // 存储识别到的芯片ID
 typedef struct
 {
     bool cell_always_on;        // true=Cell常开不断电, false=Cell断电需定时唤醒
-    bool interval_unit_is_sec;  // true=间隔单位为秒, false=间隔单位为分钟
 } smart_sub_mode_cfg_t;
 
 static const smart_sub_mode_cfg_t s_smart_sub_mode_table[6][2] =
 {
-    /* sub0: 静止Sleep/min, 运动Sleep/min */
-    {{false, false}, {false, false}},
-    /* sub1: 静止Sleep/min, 运动Cell常开/min */
-    {{false, false}, {true,  false}},
-    /* sub2: 静止Sleep/min, 运动Cell+GNSS常开/sec */
-    {{false, false}, {true,  true}},
-    /* sub3: 静止Cell常开/min, 运动Cell常开/min */
-    {{true,  false}, {true,  false}},
-    /* sub4: 静止Cell常开/min, 运动Cell+GNSS常开/sec */
-    {{true,  false}, {true,  true}},
-    /* sub5: 静止Cell+GNSS常开/sec, 运动Cell+GNSS常开/sec */
-    {{true,  true},  {true,  true}},
+    /* sub0: 静止Sleep, 运动Sleep */
+    {{false}, {false}},
+    /* sub1: 静止Sleep, 运动Cell常开 */
+    {{false}, {true}},
+    /* sub2: 静止Sleep, 运动Cell+GNSS常开 */
+    {{false}, {true}},
+    /* sub3: 静止Cell常开, 运动Cell常开 */
+    {{true}, {true}},
+    /* sub4: 静止Cell常开, 运动Cell+GNSS常开 */
+    {{true}, {true}},
+    /* sub5: 静止Cell+GNSS常开, 运动Cell+GNSS常开 */
+    {{true}, {true}},
 };
 
 typedef struct {
@@ -320,11 +319,9 @@ gsensor_state_t my_gsensor_get_state(void)
 void smart_mode_apply_lte_policy(void)
 {
     uint32_t raw_interval = 0;
-    uint32_t timer_interval_sec = 0;
     uint8_t sub_mode;
     bool is_moving;
     bool cell_always_on;
-    bool unit_is_sec;
     gsensor_state_t state;
 
     sub_mode = gConfigParam.device_workmode_config.workmode_config.intelligent.sub_mode;
@@ -334,13 +331,13 @@ void smart_mode_apply_lte_policy(void)
     if (state == STATE_STATIC)
     {
         is_moving = false;
-        raw_interval = gConfigParam.device_workmode_config.workmode_config.intelligent.static_interval;
+        raw_interval = gConfigParam.device_workmode_config.workmode_config.intelligent.static_interval[sub_mode];
         MY_LOG_INF("Smart policy: STATIC, raw_interval = %d", raw_interval);
     }
     else
     {
         is_moving = true;
-        raw_interval = gConfigParam.device_workmode_config.workmode_config.intelligent.moving_interval;
+        raw_interval = gConfigParam.device_workmode_config.workmode_config.intelligent.moving_interval[sub_mode];
         MY_LOG_INF("Smart policy: MOVING, raw_interval = %d", raw_interval);
     }
 
@@ -354,19 +351,9 @@ void smart_mode_apply_lte_policy(void)
 
     // 查子模式规则表
     cell_always_on = s_smart_sub_mode_table[sub_mode][is_moving ? 1 : 0].cell_always_on;
-    unit_is_sec = s_smart_sub_mode_table[sub_mode][is_moving ? 1 : 0].interval_unit_is_sec;
-    MY_LOG_INF("Smart policy: sub_mode=%d, moving=%d, raw_interval=%d, unit=%s, cell_always_on=%d",
-        sub_mode, is_moving, raw_interval, unit_is_sec ? "sec" : "min", cell_always_on);
 
-    // 将原始间隔值转换为秒
-    if (unit_is_sec)
-    {
-        timer_interval_sec = raw_interval;
-    }
-    else
-    {
-        timer_interval_sec = raw_interval * 60;  // 分钟转秒
-    }
+    MY_LOG_INF("Smart policy: sub_mode=%d, moving=%d, raw_interval=%d, cell_always_on=%d",
+        sub_mode, is_moving, raw_interval, cell_always_on);
 
     /* 开启LTE */
     my_send_msg(MOD_GSENSOR, MOD_LTE, MY_MSG_LTE_PWRON);
@@ -381,8 +368,8 @@ void smart_mode_apply_lte_policy(void)
     else
     {
         // Cell休眠，启动周期唤醒定时器
-        my_start_timer(MY_TIMER_LTE_POWER, timer_interval_sec * 1000, true, awaken_lte_timer_callback);
-        MY_LOG_INF("Smart policy: sub%d, Cell sleep, timer = %d sec", sub_mode, timer_interval_sec);
+        my_start_timer(MY_TIMER_LTE_POWER, raw_interval * 1000, true, awaken_lte_timer_callback);
+        MY_LOG_INF("Smart policy: sub%d, Cell sleep, timer = %d sec", sub_mode, raw_interval);
     }
 }
 

@@ -833,8 +833,8 @@ static void device_status_read(void)
         if (g_lte_cmdSource)
         {
             g_lte_cmdSource = 0;
-            snprintf(send_buf, sizeof(send_buf), "OK,%s,Battery:%d%%(%s);Network:%s(%s);GNSS:%s(%s); \
-                Tamper:%s;Pull:%s;Motion:%s(%.2f KM/h);Temperature:%s;Humidity:%s;Pressure:%s",
+            snprintf(send_buf, sizeof(send_buf), "OK,%s,Battery:%d%%(%s);Network:%s(%s);GNSS:%s(%s);"
+                "Tamper:%s;Pull:%s;Motion:%s(%.2f KM/h);Temperature:%s;Humidity:%s;Pressure:%s",
                 g_id, get_show_percent(),
                 g_charg_state == NO_CHARGING ? "Discharging" : "Charging",
                 g_lte_net_flag == 0 ? "Disconnect" : "Connect",
@@ -848,8 +848,8 @@ static void device_status_read(void)
         }
         else
         {
-            snprintf(send_buf, sizeof(send_buf), "Battery:%d%%(%s);Network:%s(%s);GNSS:%s(%s); \
-                Tamper:%s;Pull:%s;Motion:%s(%.2f KM/h);Temperature:%s;Humidity:%s;Pressure:%s",
+            snprintf(send_buf, sizeof(send_buf), "Battery:%d%%(%s);Network:%s(%s);GNSS:%s(%s);"
+                "Tamper:%s;Pull:%s;Motion:%s(%.2f KM/h);Temperature:%s;Humidity:%s;Pressure:%s",
                 get_show_percent(),
                 g_charg_state == NO_CHARGING ? "Discharging" : "Charging",
                 g_lte_net_flag == 0 ? "Disconnect" : "Connect",

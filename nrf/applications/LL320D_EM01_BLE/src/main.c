@@ -287,8 +287,8 @@ void send_work_mode_command(work_mode_t mode)
         case MY_MODE_SMART:
             snprintf(buf, sizeof(buf), "%d,%d,%d,%d", mode,
                 gConfigParam.device_workmode_config.workmode_config.intelligent.sub_mode,
-                gConfigParam.device_workmode_config.workmode_config.intelligent.static_interval,
-                gConfigParam.device_workmode_config.workmode_config.intelligent.moving_interval);
+                gConfigParam.device_workmode_config.workmode_config.intelligent.static_interval[gConfigParam.device_workmode_config.workmode_config.intelligent.sub_mode],
+                gConfigParam.device_workmode_config.workmode_config.intelligent.moving_interval[gConfigParam.device_workmode_config.workmode_config.intelligent.sub_mode]);
             break;
 
         case MY_MODE_ALWAYS_ONLINE:
@@ -344,6 +344,18 @@ void switch_work_mode(work_mode_t mode)
 bool get_lprunning_active(void)
 {
     return s_lprunning_active;
+}
+
+/*********************************************************************
+**函数名称:  get_last_work_mode
+**入口参数:  无
+**出口参数:  无
+**函数功能:  获取上一个工作模式
+**返 回 值:  上一个工作模式
+*********************************************************************/
+work_mode_t get_last_work_mode(void)
+{
+    return s_last_work_mode;
 }
 
 /*********************************************************************
@@ -738,17 +750,8 @@ static void handle_lprunning_lte_sync(void)
     // 当前处于低功耗运行时，同步通知LTE线程停止心跳，并通知4G进入低功耗运行
     if (s_lprunning_active)
     {
-        // 停止LTE心跳定时器，避免LPSLEEP期间继续发送PULSE消息
-        my_send_msg(MOD_MAIN, MOD_LTE, MY_MSG_LTE_PULSE_STOP);
-
         // LTE上电完成后，如果系统仍处于LPSLEEP，则再次同步LPSLEEP状态给4G模块
         lte_send_command("LPSLEEP", "1");
-    }
-    // 当前未处于低功耗运行，且LTE已经就绪时，恢复LTE心跳发送
-    else if (g_bLteReady == true)
-    {
-        // 通知LTE线程启动心跳定时器，恢复正常工作状态下的PULSE上报
-        my_send_msg(MOD_MAIN, MOD_LTE, MY_MSG_LTE_PULSE_START);
     }
 }
 
@@ -851,10 +854,6 @@ static void handle_lprunning_exit(void)
     // 5. 恢复扫描相关定时器
     my_send_msg(MOD_MAIN, MOD_BLE, MY_MSG_SCAN_LPSLEEP_EXIT);  /* 扫描退出低功耗运行消息 */
 
-    if (g_bLteReady == true)
-    {
-        my_send_msg(MOD_MAIN, MOD_LTE, MY_MSG_LTE_PULSE_START);
-    }
 }
 
 /********************************************************************

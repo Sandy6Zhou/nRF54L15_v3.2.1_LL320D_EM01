@@ -18,6 +18,13 @@
 
 LOG_MODULE_REGISTER(my_flash_store, LOG_LEVEL_INF);
 
+/*
+** OTA升级动态分区调整说明
+1.升级若想调整分区大小，需在升级前配置好新的分区大小
+2.修改FS_SECTOR_MAGIC为新的魔数
+3.修改FS_META_MAGIC为新的魔数
+*/
+
 /* ========== 分区与扇区布局常量 ========== */
 #define FS_SECTOR_SIZE          4096U                   // FLASH扇区大小(RRAM擦除块)
 #define FS_TOTAL_SECTORS        50U                     // 数据区总扇区数(200KB/4KB)
