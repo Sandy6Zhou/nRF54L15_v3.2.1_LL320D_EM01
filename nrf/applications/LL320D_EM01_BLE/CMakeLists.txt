@@ -43,6 +43,9 @@ target_sources(app PRIVATE
   src/my_ble_app.c
   src/my_ble_log.c
   src/my_dfu_jimi.c
+  src/my_dfu_lte.c
+  src/my_ota_flash.c
+  src/my_ymodem.c
   src/my_pm.c
   src/my_ble_scan.c
   ext_module/imu/api/imu_api.c

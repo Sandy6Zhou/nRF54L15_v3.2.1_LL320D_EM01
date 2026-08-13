@@ -18,6 +18,9 @@
 
 #define UART_TX_BUFFER_SIZE    1024
 
+/* YModem 接收侧仅回复 ACK/NAK/C 等单字节应答及 OTA FAIL 提示串, 无需 1024B 大缓冲 */
+#define YMODEM_SEND_BUF_SIZE    64
+
 // 默认存储点有效期: 30分钟（秒)
 #define LOCATION_VALIDITY_PERIOD_S     (30 * 60)
 
@@ -38,6 +41,7 @@ char LTE_NTCSET[] = "LTE+NTCSET=";
 char LTE_TIME[] = "LTE+TIME=";
 char LTE_TRANSMIT[] = "LTE+TRANSMIT=";
 char LTE_FOTA[] = "LTE+FOTA=";
+char LTE_MCUOTA[] = "LTE+MCUOTA=";
 char LTE_CMD[] = "LTE+CMD=";
 char LTE_LOCATION[] = "LTE+LOCATION=";
 char LTE_FACTORY[] = "LTE+FACTORY=";
@@ -175,6 +179,17 @@ static struct gpio_callback lte_wake_cb;
 #define LTE_CMD_RESPBUF_SIZE 1024
 static char s_lte_cmd_resp_buf[LTE_CMD_RESPBUF_SIZE] = {0};
 
+/* dfu_lte_fail_reason_t -> MCUOTA 协议 reason 字符串 (顺序必须与枚举定义一致) */
+static const char *const dfu_lte_reason_str[] = {
+    "",       /* DFU_LTE_OK          */
+    "BUSY",   /* DFU_LTE_FAIL_BUSY   */
+    "PARAM",  /* DFU_LTE_FAIL_PARAM  */
+    "SIZE",   /* DFU_LTE_FAIL_SIZE   */
+    "YMODEM", /* DFU_LTE_FAIL_YMODEM */
+    "CRC",    /* DFU_LTE_FAIL_CRC    */
+    "FLASH",  /* DFU_LTE_FAIL_FLASH  */
+};
+
 // 定义一个串口发送状态信号量，初始值为1(表示UART空闲)
 static struct k_sem s_TxDoneSem;
 /* LTE缓存消息队列 */
@@ -192,8 +207,8 @@ static uint8_t s_lte_rx_buf_1[LTE_UART_BUF_SIZE];
 static uint8_t s_lte_rx_buf_2[LTE_UART_BUF_SIZE];
 static uint8_t *lte_next_buf = s_lte_rx_buf_2;
 
-// 串口接收循环缓冲区（建议用2的幂，如1024，取模效率更高）
-#define LTE_UART_RB_SIZE    512
+// LTE YModem 单帧最大 1029 字节, 环形缓冲需能容纳至少一帧完整数据
+#define LTE_UART_RB_SIZE    2048
 static uint8_t s_lte_rb_buf[LTE_UART_RB_SIZE];
 static ring_buffer_t s_lte_rb;
 
@@ -399,6 +414,12 @@ static int lte_uart_ensure_active(void)
 static bool lte_uart_can_suspend(void)
 {
     bool can_suspend;
+
+    /* LTE 模块自身 FOTA 或蓝牙 OTA(含 LTE+OTA=YMODEM 通道)期间禁止挂起 UART, 保证数据传输连续 */
+    if (g_lte_ota_in_progress || my_ota_flash_is_busy())
+    {
+        return false;
+    }
 
     can_suspend = (s_lte_msg_queue.count == 0);
 
@@ -1139,11 +1160,11 @@ static void my_lte_pwroff_handle(void)
 {
     int ret;
 
-    // OTA进行中 或 产测模式下，拒绝整个关机流程，保持所有状态不变
-    if (g_lte_ota_in_progress || s_lte_factory)
+    // LTE 模块自身 FOTA / 蓝牙 OTA 进行中 / 产测模式下，拒绝整个关机流程，保持所有状态不变
+    if (g_lte_ota_in_progress || my_ota_flash_is_busy() || s_lte_factory)
     {
-        MY_LOG_INF("LTE pwr off blocked: ota=%d factory=%d",
-                    g_lte_ota_in_progress, s_lte_factory);
+        MY_LOG_INF("LTE pwr off blocked: ota=%d busy=%d factory=%d",
+                    g_lte_ota_in_progress, my_ota_flash_is_busy(), s_lte_factory);
         return;
     }
 
@@ -1169,7 +1190,7 @@ static void my_lte_pwroff_handle(void)
     s_lte_uart_ctx.tx_busy = false;
     s_lte_uart_ctx.wakeup_pending = false;
     k_sem_give(&s_TxDoneSem);
-    my_rb_clear(&s_lte_rb);
+    my_lte_uart_flush();
     my_lte_msg_queue_clear();
 
     // 断LTE的电源
@@ -1378,8 +1399,8 @@ int my_lte_uart_send(const uint8_t *data, uint16_t len)
             return ret;
         }
 
-        // TODO 唤醒时间仅需几百微秒，几乎不影响后续数据传输，待实际测试验证，暂定等待1ms
-        k_sleep(K_MSEC(1));
+        // TODO 唤醒时间仅需几百微秒，几乎不影响后续数据传输，待实际测试验证，暂定等待10ms
+        k_sleep(K_MSEC(10));
     }
 
     // 无论本次是否发送唤醒字节，只要成功进入发送流程，就刷新2.5秒唤醒窗口
@@ -1398,6 +1419,120 @@ int my_lte_uart_send(const uint8_t *data, uint16_t len)
     }
 
     return 0;
+}
+
+/********************************************************************
+**函数名称:  my_lte_uart_read
+**入口参数:  buf   ---   接收缓冲区
+**           len   ---   最大读取字节数
+**出口参数:  buf   ---   存储读出的数据
+**函数功能:  从 LTE UART 环形缓冲区非阻塞读取原始数据
+**返 回 值:  实际读取的字节数; 0 表示当前无数据
+**注意事项:  供 LTE YModem OTA 使用, 读取原始字节流绕过行解析
+*********************************************************************/
+int my_lte_uart_read(uint8_t *buf, uint32_t len)
+{
+    if (buf == NULL || len == 0)
+    {
+        return -EINVAL;
+    }
+
+    return my_rb_read(&s_lte_rb, buf, len);
+}
+
+/********************************************************************
+**函数名称:  my_lte_uart_flush
+**入口参数:  无
+**出口参数:  无
+**函数功能:  排空 LTE UART 环形缓冲区中的残留数据
+**返 回 值:  无
+**注意事项:  供 LTE YModem OTA 使用, 丢弃会话前的残留字节
+*********************************************************************/
+void my_lte_uart_flush(void)
+{
+    /* 直接清空环形缓冲, 无需逐字节排空 */
+    my_rb_clear(&s_lte_rb);
+}
+
+/********************************************************************
+**函数名称:  my_lte_uart_send_ymodem
+**入口参数:  data  ---   待发送数据指针
+**           len   ---   数据长度
+**出口参数:  无
+**函数功能:  裸发送数据到 LTE 模块(不附加唤醒字节), 用于 YModem 协议交互
+**返 回 值:  0 表示成功, 其他表示失败
+**注意事项:  供 LTE YModem OTA 使用; 与常规发送共用 s_TxDoneSem 串行化
+**          与常规 my_lte_uart_send 的差异: 不检查 g_bLteReady, 不附加唤醒字节
+*********************************************************************/
+int my_lte_uart_send_ymodem(const uint8_t *data, uint16_t len)
+{
+    static uint8_t s_ymodem_send_buf[YMODEM_SEND_BUF_SIZE] = {0};
+    int ret;
+
+    if (data == NULL || len == 0 || len > YMODEM_SEND_BUF_SIZE)
+    {
+        return -EINVAL;
+    }
+
+    if (lte_uart_ensure_active() < 0)
+    {
+        return -1;
+    }
+
+    // 刷新本端 UART 空闲计时, 避免等待发送完成期间定时器超时导致 UART 被挂起
+    lte_uart_activity_kick();
+
+    // 等待上一次传输完成, 增加等待超时避免异常状态下永久阻塞
+    ret = k_sem_take(&s_TxDoneSem, K_MSEC(LTE_UART_TX_WAIT_MS));
+    if (ret != 0)
+    {
+        return ret;
+    }
+
+    s_lte_uart_ctx.tx_busy = true;
+
+    // 刷新 2.5 秒唤醒窗口, 保持与常规发送的窗口状态一致
+    lte_uart_send_wakeup_window_kick();
+
+    // uart_tx 为异步发送, 数据需常驻静态缓冲
+    memcpy(s_ymodem_send_buf, data, len);
+    ret = uart_tx(lte_uart_dev, s_ymodem_send_buf, len, SYS_FOREVER_MS);
+    if (ret != 0)
+    {
+        s_lte_uart_ctx.tx_busy = false;
+        k_sem_give(&s_TxDoneSem);
+        return ret;
+    }
+
+    return 0;
+}
+
+/********************************************************************
+**函数名称:  my_lte_purge_dfu_queues
+**入口参数:  无
+**出口参数:  无
+**函数功能:  清空 LTE 消息队列及缓存队列中的无关消息(DFU 会话前调用)
+**返 回 值:  无
+**注意事项:  供 LTE YModem OTA 使用; 升级后 Nordic 重启, 无需保留旧消息
+*********************************************************************/
+void my_lte_purge_dfu_queues(void)
+{
+    /* 丢弃 LTE 线程消息队列中的无关消息 */
+    k_msgq_purge(&my_lte_msgq);
+
+    /* 清空 LTE 待发缓存队列并释放内存 */
+    my_lte_msg_queue_clear();
+
+#if RETRANSMIT_CHECK_ENABLED
+    /* 清空重传队列 */
+    init_retransmission_queue();
+#endif
+
+    /* 清空异步回复队列 */
+    init_async_queue();
+
+    /* 排空环形缓冲残留 */
+    my_lte_uart_flush();
 }
 
 /********************************************************************
@@ -2795,7 +2930,7 @@ static int my_lte_handle_getmot(char *data)
             strncpy(result, "UNKNOWN", sizeof("UNKNOWN"));
             break;
     }
-    snprintf(send_buf, sizeof(send_buf), "LTE+GETMOT=%s\r\n", result);
+    snprintf(send_buf, sizeof(send_buf), "LTE+GETMOT=OK,%s\r\n", result);
     my_lte_uart_send(send_buf, strlen(send_buf));
 
     return 0;
@@ -3009,6 +3144,57 @@ int my_lte_parse_cmd(char *cmd, int cmd_len)
     else if (CMD_MATCHED(cmd, LTE_FOTA))
     {
         ret = my_lte_handle_fota(p + strlen(LTE_FOTA));
+        goto END;
+    }
+    else if (CMD_MATCHED(cmd, LTE_MCUOTA))
+    {
+        /* 4G 固件 OTA 握手式升级: LTE+MCUOTA=START,<total_size>,<crc32 8位hex>
+         * 流程: 参数校验/占用会话 -> 回 READY -> 在 LTE 线程内阻塞接收固件
+         *       -> 文件级 CRC32 校验 -> 回 SUCCESS / FAIL,<reason> */
+        const char *param = p + strlen(LTE_MCUOTA);
+        unsigned int size;
+        char crc_str[16];
+        dfu_lte_fail_reason_t reason;
+
+        if (sscanf(param, "START,%u,%8s", &size, crc_str) == 2
+            && strlen(crc_str) == 8)
+        {
+            uint32_t expect_crc = (uint32_t)strtoul(crc_str, NULL, 16);
+            reason = my_dfu_lte_prepare(size, expect_crc);
+            if (reason != DFU_LTE_OK)
+            {
+                /* prepare 失败 (BUSY/PARAM/SIZE): 直接回 FAIL,<reason> */
+                snprintf(s_lte_cmd_resp_buf, sizeof(s_lte_cmd_resp_buf),
+                         "LTE+MCUOTA=FAIL,%s\r\n", dfu_lte_reason_str[reason]);
+                my_lte_send_msg(s_lte_cmd_resp_buf, strlen(s_lte_cmd_resp_buf));
+            }
+            else
+            {
+                /* 占用成功, 通知 4G 可进入升级模式 */
+                my_lte_send_msg("LTE+MCUOTA=READY\r\n",
+                                strlen("LTE+MCUOTA=READY\r\n"));
+                /* 阻塞接收固件并做文件级校验 */
+                reason = my_dfu_lte_start();
+                if (reason == DFU_LTE_OK)
+                {
+                    my_lte_send_msg("LTE+MCUOTA=SUCCESS\r\n",
+                                    strlen("LTE+MCUOTA=SUCCESS\r\n"));
+                }
+                else
+                {
+                    snprintf(s_lte_cmd_resp_buf, sizeof(s_lte_cmd_resp_buf),
+                             "LTE+MCUOTA=FAIL,%s\r\n", dfu_lte_reason_str[reason]);
+                    my_lte_send_msg(s_lte_cmd_resp_buf, strlen(s_lte_cmd_resp_buf));
+                }
+            }
+        }
+        else
+        {
+            /* START 参数格式错误(含非 START 前缀): 回 FAIL,PARAM, 避免 4G 端无限等待 */
+            my_lte_send_msg("LTE+MCUOTA=FAIL,PARAM\r\n",
+                            strlen("LTE+MCUOTA=FAIL,PARAM\r\n"));
+            ret = -EINVAL;
+        }
         goto END;
     }
     else if (CMD_MATCHED(cmd, LTE_CMD))

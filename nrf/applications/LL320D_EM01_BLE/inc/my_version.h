@@ -12,7 +12,18 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260812"
+#define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260813"
+/* 软件版本:        V1.0
+** 完成日期:        2026.08.13
+** 作    者:       周森达 (zhousenda@jimiiot.com)
+** 修改内容:        新增LTE YModem OTA模块，统一BLE/LTE双通道升级写FLASH机制(其中my_ymodem.c/.h由4G提供(仅增加了接口兼容)无需关注,diff存在两种编码格式,因此可能会存在部分乱码的情况)：
+**                 1.集成4G平台提供的YModem协议栈(接收方向适配+无文件系统写Flash),新增my_dfu_lte模块, 经LTE串口接收OTA固件写入image_1分区并触发MCUboot升级,失败可重试,与BLE DFU互斥。
+**                 2.新增统一OTA写FLASH模块my_ota_flash(分区擦写读+1KB聚合缓存CRC校验+会话互斥+复位调度+通用workq), my_dfu_jimi重构复用, 删除重复的Flash/缓存/复位实现。
+**                 3.新增LTE+MCUOTA指令入口;扩展LTE UART原始读/清空/裸发送/清队列接口,环形缓冲增至2048B;OTA期间禁止LTE挂起/关机及蓝牙日志发送。
+**                 注意:本版本同时修改GETMOT指令应答格式及修改唤醒前导帧时间(1ms->10ms)
+***/
+
+// #define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260812"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.08.12
 ** 作    者:       曹阳 (caoyang@jimiiot.com)

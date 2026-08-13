@@ -940,6 +940,9 @@ int main(void)
     /* 初始化电源管理子系统（必须在其他模块之前） */
     my_pm_init();
 
+    /* 初始化统一 OTA Flash 模块(通用 OTA workq 与复位链路), 供 BLE/LTE OTA 共用 */
+    my_ota_flash_init();
+
     /* 初始化系统控制模块 (LED, Buzzer, Key) */
     err = my_ctrl_init(&s_my_ctrl_task_id);
     if (err)

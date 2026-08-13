@@ -41,6 +41,7 @@
 #include <zephyr/drivers/uart.h>
 #include <zephyr/drivers/adc.h>
 #include <zephyr/drivers/hwinfo.h>
+#include <zephyr/drivers/flash.h>
 #include <zephyr/drivers/timer/system_timer.h>
 
 /* Zephyr系统功能 */
@@ -54,6 +55,9 @@
 #include <zephyr/sys/clock.h>
 #include <zephyr/storage/flash_map.h>
 #include <zephyr/fs/zms.h>
+#include <zephyr/dfu/mcuboot.h>
+#include <zephyr/sys/crc.h>
+#include <zephyr/sys/atomic.h>
 
 /* Zephyr 设备及电源管理 */
 #include <zephyr/pm/device.h>
@@ -317,6 +321,9 @@ typedef enum
 #include "my_ble_app.h"
 #include "my_cmd_setting.h"
 #include "my_dfu_jimi.h"
+#include "my_dfu_lte.h"
+#include "my_ota_flash.h"
+#include "my_ymodem.h"
 #include "my_ble_log.h"
 #include "my_pm.h"
 #include "my_ble_scan.h"

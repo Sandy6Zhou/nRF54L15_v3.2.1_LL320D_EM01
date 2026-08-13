@@ -64,8 +64,8 @@ bool ble_log_check_enabled(uint8_t mod_id, uint8_t level)
         return false;
     }
 
-    /* DFU OTA 期间禁用蓝牙日志发送，避免干扰 OTA 传输 */
-    if (jimi_dfu_is_in_progress())
+    /* 蓝牙 OTA(APP 或 4G 来源)期间禁用蓝牙日志发送，避免干扰 OTA 传输 */
+    if (my_ota_flash_is_busy())
     {
         return false;
     }
