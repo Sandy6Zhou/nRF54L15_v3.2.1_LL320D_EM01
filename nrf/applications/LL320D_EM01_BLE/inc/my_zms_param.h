@@ -79,6 +79,7 @@ typedef enum                           // 参数ID定义
     ZMS_ID_IMU_ZERO_BIAS_CONFIG,       // IMU零偏配置参数ID
     ZMS_ID_BLE_TH_STORE_META,          // BLE 温湿度循环存储区元数据ID
     ZMS_ID_BLE_BP_STORE_META,          // BLE 气压循环存储区元数据ID
+    ZMS_ID_SHUTDOWN_CONFIG,          // 关机配置参数ID
 } my_zms_id_t;
 
 typedef struct                              // 存储的LICENSE GG信息
@@ -315,6 +316,12 @@ typedef struct                              // 存储的IMU零偏配置参数
     float gyro_bias_z;                      // 陀螺仪零偏估计 Z (rad/s)
 } imu_zero_bias_config_t;
 
+typedef struct                              // 存储的关机配置参数
+{
+    uint8_t flag;                           // 参数有效标志
+    uint8_t shutdown_flag;                  // 关机标志位
+} shutdown_config_t;
+
 typedef struct
 {
     lic_ff_t                    lic_ff;                     // 存储的LICENSE FF信息
@@ -348,6 +355,7 @@ typedef struct
     temp_timer_config_t         temp_timer_config;          // 温湿度定时上传配置
     imu_alm_config_t            imu_alm_config;             // IMU翻转报警配置
     imu_zero_bias_config_t      imu_zero_bias_config;       // IMU零偏配置
+    shutdown_config_t           shutdown_config;            // 关机配置
 } config_param_t;
 
 extern config_param_t    gConfigParam;

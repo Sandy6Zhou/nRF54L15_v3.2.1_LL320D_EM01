@@ -2114,9 +2114,6 @@ static void send_lte_pulse(void)
     int battery_voltage_mv = get_batt_mv();
     int8_t battery_percent = get_batt_percent();
 
-    // 脉冲计数器增加
-    s_lte_pulse_count++;
-
     if (g_bLteReady == 0)
     {
         return;
@@ -2139,6 +2136,8 @@ static void send_lte_pulse(void)
 *********************************************************************/
 void lte_pulse_timer_handler(void *param)
 {
+    // 脉冲计数器增加
+    s_lte_pulse_count++;
     // 发送脉冲消息
     my_send_msg(MOD_LTE, MOD_LTE, MY_MSG_LTE_PULSE);
 }
@@ -2237,6 +2236,11 @@ static int my_lte_handle_power_on(char *data)
     // 4G模块已就绪，允许后续数据收发
     g_bLteReady = 1;
 
+    if (s_lte_pulse_count == 0)
+    {
+        set_lte_boot_reason(LTE_BOOT_REASON_BOOT_COLD);
+    }
+
     // 构造应答报文: LTE+PWRON=OK,<开机原因>,<蓝牙版本号>
     if (s_4GPoweronStatus == LTE_PWR_STATE_ABNORMAL)
     {
@@ -2271,6 +2275,9 @@ static int my_lte_handle_power_on(char *data)
 
     // 发送LED显示指令给LTE模块
     send_led_command();
+
+    // 发送脉冲消息
+    send_lte_pulse();
 
     // 处理排队的消息
     my_lte_process_queued_msgs();
@@ -2307,6 +2314,8 @@ static int my_lte_handle_power_off(char *data)
     {
         g_factory_mode = false;
         my_gsensor_save_imu_bias();
+        gConfigParam.shutdown_config.shutdown_flag = 1;
+        my_user_data_write(ZMS_ID_SHUTDOWN_CONFIG, &gConfigParam.shutdown_config, sizeof(shutdown_config_t));
         k_sleep(K_MSEC(500));
         sys_reboot(SYS_REBOOT_COLD);
         return 0;

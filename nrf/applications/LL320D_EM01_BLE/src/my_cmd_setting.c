@@ -3299,7 +3299,7 @@ static int modeset_cmd_handler(at_cmd_t* msg)
             gConfigParam.device_workmode_config.flag = FLAG_VALID;
             gConfigParam.device_workmode_config.workmode_config.current_mode = param_work_mode_config.current_mode;
             /* 保存配置 */
-            my_user_data_write(ZMS_ID_WORK_MODE_CONFIG, &gConfigParam.device_workmode_config, sizeof(device_work_mode_config_t));
+            my_user_data_write(ZMS_ID_WORK_MODE_CONFIG, &gConfigParam.device_workmode_config, sizeof(work_mode_config_t));
         }
 
         // 切换到指定工作模式
@@ -3357,7 +3357,7 @@ static int modeset_cmd_handler(at_cmd_t* msg)
         gConfigParam.device_workmode_config.workmode_config.continuous_tracking.reporting_interval_dis = param_work_mode_config.continuous_tracking.reporting_interval_dis;
         gConfigParam.device_workmode_config.flag = FLAG_VALID;
         /* 保存配置 */
-        my_user_data_write(ZMS_ID_WORK_MODE_CONFIG, &gConfigParam.device_workmode_config, sizeof(device_work_mode_config_t));
+        my_user_data_write(ZMS_ID_WORK_MODE_CONFIG, &gConfigParam.device_workmode_config, sizeof(work_mode_config_t));
 
         if (gConfigParam.device_workmode_config.workmode_config.current_mode == MY_MODE_CONTINUOUS)
         {
@@ -3410,7 +3410,7 @@ static int modeset_cmd_handler(at_cmd_t* msg)
 
         gConfigParam.device_workmode_config.flag = FLAG_VALID;
         /* 保存配置 */
-        my_user_data_write(ZMS_ID_WORK_MODE_CONFIG, &gConfigParam.device_workmode_config, sizeof(device_work_mode_config_t));
+        my_user_data_write(ZMS_ID_WORK_MODE_CONFIG, &gConfigParam.device_workmode_config, sizeof(work_mode_config_t));
 
         if (gConfigParam.device_workmode_config.workmode_config.current_mode == MY_MODE_LONG_LIFE)
         {
@@ -3480,7 +3480,7 @@ static int modeset_cmd_handler(at_cmd_t* msg)
 
         gConfigParam.device_workmode_config.flag = FLAG_VALID;
         /* 保存配置 */
-        my_user_data_write(ZMS_ID_WORK_MODE_CONFIG, &gConfigParam.device_workmode_config, sizeof(device_work_mode_config_t));
+        my_user_data_write(ZMS_ID_WORK_MODE_CONFIG, &gConfigParam.device_workmode_config, sizeof(work_mode_config_t));
 
         if (gConfigParam.device_workmode_config.workmode_config.current_mode == MY_MODE_SMART)
         {

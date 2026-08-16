@@ -12,7 +12,17 @@
 #ifndef _MY_VERSION_H_
 #define _MY_VERSION_H_
 
-#define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260813"
+#define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260814"
+/* 软件版本:        V1.0
+** 完成日期:        2026.08.14
+** 作    者:       曹阳 (caoyang@jimiiot.com)
+** 修改内容:        1.修改设备关机逻辑，设备默认开机模式，只有指令和按键才能进入关机模式
+**                 2.增加冷启动开机原因发送给4G
+**                 3.修复工作模式配置写入长度错误，确保每个子模式的间隔值都能正确写入FLASH
+**                 4.优化心跳包脉冲计数移至定时器回调递增并在 LTE 开机时立即上报
+***/
+
+// #define SOFTWARE_VERSION "LL320D_EM01_NRF54L15_V1.0_260813"
 /* 软件版本:        V1.0
 ** 完成日期:        2026.08.13
 ** 作    者:       周森达 (zhousenda@jimiiot.com)

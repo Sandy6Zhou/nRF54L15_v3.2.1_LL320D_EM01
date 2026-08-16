@@ -154,7 +154,7 @@ typedef enum
 
 typedef enum
 {
-    LTE_BOOT_REASON_KEYPRESS = 0,   // 按键开机
+    LTE_BOOT_REASON_BOOT_COLD = 0,   // 冷启动开机
     LTE_BOOT_REASON_INTERVAL,       // 间隔定位上报
     LTE_BOOT_REASON_ALARM,          // 告警事件唤醒
     LTE_BOOT_REASON_SCAN,           // 扫描数据上报

@@ -1007,6 +1007,8 @@ void go_to_system_off(void)
     MY_LOG_INF("Config wakeup pin and enter System OFF");
 
     my_gsensor_save_imu_bias();
+    gConfigParam.shutdown_config.shutdown_flag = 1;
+    my_user_data_write(ZMS_ID_SHUTDOWN_CONFIG, &gConfigParam.shutdown_config, sizeof(shutdown_config_t));
 
     k_sleep(K_SECONDS(2));// 确保上面的日志有打印出来
 
@@ -1321,18 +1323,24 @@ static int misc_io_init(void)
         return ret;
     }
 
-    if (get_charge_state_level() == 0)
+    if (gConfigParam.shutdown_config.shutdown_flag == 1)
     {
-        while (gpio_pin_get(fun_key.port, fun_key.pin))
+        if (get_charge_state_level() == 0)
         {
-            fun_key_count++;
-            k_msleep(KEY_POLL_PERIOD_MS);
+            while (gpio_pin_get(fun_key.port, fun_key.pin))
+            {
+                fun_key_count++;
+                k_msleep(KEY_POLL_PERIOD_MS);
+            }
+
+            if (fun_key_count < KEY_LONG_PRESS_COUNT)
+            {
+                go_to_system_off();
+            }
         }
 
-        if (fun_key_count < KEY_LONG_PRESS_COUNT)
-        {
-            go_to_system_off();
-        }
+        gConfigParam.shutdown_config.shutdown_flag = 0;
+        my_user_data_write(ZMS_ID_SHUTDOWN_CONFIG, &gConfigParam.shutdown_config, sizeof(shutdown_config_t));
     }
 
     /* 配置为输入（light_tamper_det 配置为输入） */

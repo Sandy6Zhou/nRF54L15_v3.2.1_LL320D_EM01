@@ -292,6 +292,12 @@ const imu_zero_bias_config_t gDefaultImuZeroBiasConfig =
     .gyro_bias_y = 0.0f,            // 默认陀螺仪零偏估计 Y (rad/s)
     .gyro_bias_z = 0.0f,            // 默认陀螺仪零偏估计 Z (rad/s)
 };
+
+const shutdown_config_t gDefaultShutdownConfig =
+{
+    .flag = FLAG_VALID,             // 默认配置有效
+    .shutdown_flag = 0,             // 默认不关机
+};
 /********************************************************************
 **函数名称:  my_user_data_storage_init
 **入口参数:  无
@@ -402,6 +408,18 @@ void my_param_log_config(void)
 {
     uint8_t data_buff[64] = {0};
 
+    MY_LOG_INF("device_workmode_config: current_mode(%d)", gConfigParam.device_workmode_config.workmode_config.current_mode);
+    MY_LOG_INF("continuous_tracking: interval_sec(%d), interval_dis(%d)",
+                gConfigParam.device_workmode_config.workmode_config.continuous_tracking.reporting_interval_sec,
+                gConfigParam.device_workmode_config.workmode_config.continuous_tracking.reporting_interval_dis);
+    MY_LOG_INF("long_battery: interval_min(%d), start_time(%s), gnss_sw(%d)",
+                gConfigParam.device_workmode_config.workmode_config.long_battery.reporting_interval_min,
+                gConfigParam.device_workmode_config.workmode_config.long_battery.start_time,
+                gConfigParam.device_workmode_config.workmode_config.long_battery.gnss_sw);
+    MY_LOG_INF("intelligent: sub_mode(%d), static_int(%d), moving_int(%d)",
+                gConfigParam.device_workmode_config.workmode_config.intelligent.sub_mode,
+                gConfigParam.device_workmode_config.workmode_config.intelligent.static_interval[gConfigParam.device_workmode_config.workmode_config.intelligent.sub_mode],
+                gConfigParam.device_workmode_config.workmode_config.intelligent.moving_interval[gConfigParam.device_workmode_config.workmode_config.intelligent.sub_mode]);
     MY_LOG_INF("adv valid value: AppleValid(%d), GoogleValid(%d)",
                 gConfigParam.adv_valid_value.AppleValid,
                 gConfigParam.adv_valid_value.GoogleValid);
@@ -469,6 +487,8 @@ void my_param_log_config(void)
                 gConfigParam.imu_zero_bias_config.gyro_bias_x,
                 gConfigParam.imu_zero_bias_config.gyro_bias_y,
                 gConfigParam.imu_zero_bias_config.gyro_bias_z);
+    MY_LOG_INF("shutdown config: shutdown_flag(%d)",
+                gConfigParam.shutdown_config.shutdown_flag);
 }
 
 /********************************************************************
@@ -739,6 +759,14 @@ void my_param_load_config(void)
     if (gConfigParam.imu_zero_bias_config.flag != FLAG_VALID || ret != length)
     {
         memcpy(&gConfigParam.imu_zero_bias_config, &gDefaultImuZeroBiasConfig, length);
+    }
+
+    //--------Load Shutdown Config ---------------------
+    length = sizeof(shutdown_config_t);
+    ret = my_user_data_read(ZMS_ID_SHUTDOWN_CONFIG, &gConfigParam.shutdown_config, length);
+    if (gConfigParam.shutdown_config.flag != FLAG_VALID || ret != length)
+    {
+        memcpy(&gConfigParam.shutdown_config, &gDefaultShutdownConfig, length);
     }
 }
 
