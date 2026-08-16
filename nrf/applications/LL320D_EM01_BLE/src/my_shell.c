@@ -13,6 +13,7 @@
 #define BLE_LOG_MODULE_ID BLE_LOG_MOD_SHELL
 
 #include "my_comm.h"
+#include "my_lora.h"
 
 #define LOG_MODULE_NAME my_shell
 LOG_MODULE_REGISTER(LOG_MODULE_NAME);
@@ -2045,6 +2046,48 @@ void cmd_read_gsensor_data(const struct shell *sh, size_t argc, char **argv)
     my_send_msg(MOD_MAIN, MOD_GSENSOR, MY_MSG_READ_GSENSOR_DATA);
 }
 
+#if MY_LORA_SHELL_TEST_ENABLE
+static int cmd_lora_test(const struct shell *sh, size_t argc, char **argv)
+{
+    my_lora_status_t status;
+    int ret;
+
+    if (argc != 2)
+    {
+        shell_print(sh, "Usage: app lora <status|init|tx>");
+        return -EINVAL;
+    }
+
+    if (strcmp(argv[1], "status") == 0)
+    {
+        my_lora_get_status(&status);
+        shell_print(sh, "LR1121 detected: %s", status.modem_detected ? "yes" : "no");
+        shell_print(sh, "Hardware: 0x%02x, firmware: %u.%u", status.hardware_version,
+                    status.firmware_version >> 8, status.firmware_version & 0xFF);
+        shell_print(sh, "Credentials: %s", status.credentials_provisioned ? "configured" : "not configured");
+        shell_print(sh, "LoRaWAN joined: %s", status.joined ? "yes" : "no");
+        return 0;
+    }
+
+    if (strcmp(argv[1], "init") == 0)
+    {
+        ret = my_lora_init();
+        shell_print(sh, "LR1121 init ret=%d", ret);
+        return ret;
+    }
+
+    if (strcmp(argv[1], "tx") == 0)
+    {
+        ret = my_lora_request_test_uplink();
+        shell_print(sh, "LoRaWAN test uplink ret=%d", ret);
+        return ret;
+    }
+
+    shell_print(sh, "Usage: app lora <status|init|tx>");
+    return -EINVAL;
+}
+#endif
+
 /* 注册自定义命令到 Shell 子系统 */
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_app,
     SHELL_CMD(sysinfo, NULL, "Display system information", cmd_system_info),
@@ -2068,6 +2111,9 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_app,
     SHELL_CMD(hardware_test, NULL, "Run hardware test", cmd_hardware_test),
     SHELL_CMD(read_gsensor_data, NULL, "Read G-Sensor data", cmd_read_gsensor_data),
     SHELL_CMD(param_log, NULL, "Print param log config", my_param_log_config),
+#if MY_LORA_SHELL_TEST_ENABLE
+    SHELL_CMD(lora, NULL, "LR1121 test: app lora <status|init|tx>", cmd_lora_test),
+#endif
 #if FS_STORE_TEST_ENABLE
     SHELL_CMD(fs, NULL, "Flash store test: app fs <init|info|count|push|fill|begin|read|commit|rewind|clear|sorttest|covertest|partialtest|busytest>", cmd_fs_test),
 #endif

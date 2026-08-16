@@ -160,12 +160,13 @@
 		};
 	};
 
-	/* 温湿度、气压传感器电源控制引脚：P2.05，低电平使能 */
+	/* LoRa validation owns P2.05 as LR1121 NSS; sensors remain powered off. */
 	env_sensor_pwr_en: env-sensor-pwr-en {
 		compatible = "nordic,gpio-pins";
 		gpios = <&gpio2 5 GPIO_ACTIVE_LOW>;
-		status = "okay";
+		status = "disabled";
 	};
+
 
 };
 
@@ -262,6 +263,25 @@
 			low-power-enable;
 		};
 	};
+
+	spi20_default: spi20_default {
+		group1 {
+			psels = <NRF_PSEL(SPIM_SCK, 2, 1)>,
+				<NRF_PSEL(SPIM_MOSI, 2, 2)>,
+				<NRF_PSEL(SPIM_MISO, 2, 4)>;
+			nordic,drive-mode = <NRF_DRIVE_H0H1>;
+			bias-disable;
+		};
+	};
+
+	spi20_sleep: spi20_sleep {
+		group1 {
+			psels = <NRF_PSEL(SPIM_SCK, 2, 1)>,
+				<NRF_PSEL(SPIM_MOSI, 2, 2)>,
+				<NRF_PSEL(SPIM_MISO, 2, 4)>;
+			low-power-enable;
+		};
+	};
 };
 
 /* 开启并配置 UART30 */
@@ -274,11 +294,7 @@
 };
 
 &uart20 {
-    status = "okay";
-    current-speed = <115200>;
-    pinctrl-0 = <&uart20_default>;
-    pinctrl-1 = <&uart20_sleep>;
-    pinctrl-names = "default", "sleep";
+	status = "disabled";
 };
 
 /* 开启并配置 PWM 用于蜂鸣器 */
@@ -327,6 +343,22 @@
 /* disable spi nor flash */
 &spi00 {
 	status = "disabled";
+};
+
+&spi20 {
+	compatible = "nordic,nrf-spim";
+	status = "okay";
+	pinctrl-0 = <&spi20_default>;
+	pinctrl-1 = <&spi20_sleep>;
+	pinctrl-names = "default", "sleep";
+	cs-gpios = <&gpio2 5 GPIO_ACTIVE_LOW>;
+	lr1121: lr1121@0 {
+		compatible = "semtech,lr1121-modem-e";
+		reg = <0>;
+		spi-max-frequency = <8000000>;
+		busy-gpios = <&gpio2 0 GPIO_ACTIVE_HIGH>;
+		reset-gpios = <&gpio2 3 GPIO_ACTIVE_LOW>;
+	};
 };
 
 /* Disable MX25R64 SPI NOR Flash */

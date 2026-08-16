@@ -1,0 +1,16 @@
+description: Semtech LR1121 running LoRa Basics Modem-E
+
+compatible: "semtech,lr1121-modem-e"
+
+include: spi-device.yaml
+
+properties:
+  busy-gpios:
+    type: phandle-array
+    required: true
+    description: LR1121 BUSY output GPIO.
+
+  reset-gpios:
+    type: phandle-array
+    required: true
+    description: LR1121 active-low reset GPIO.

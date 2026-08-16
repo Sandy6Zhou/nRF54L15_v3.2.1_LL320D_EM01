@@ -1992,7 +1992,8 @@ int my_ctrl_init(k_tid_t *tid)
         return ret;
     }
 
-    sensor_module_init();
+    /* LoRa validation owns P2.05 as LR1121 NSS, so sensor power remains disabled. */
+    /* sensor_module_init(); */
 
     /* 启动时响一声提示音 */
     my_ctrl_buzzer_play_tone(2000, 100);

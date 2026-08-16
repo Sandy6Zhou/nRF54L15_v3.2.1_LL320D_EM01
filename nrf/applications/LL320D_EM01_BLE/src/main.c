@@ -2,6 +2,7 @@
 #define BLE_LOG_MODULE_ID BLE_LOG_MOD_MAIN
 
 #include "my_comm.h"
+#include "my_lora.h"
 
 #define LOG_MODULE_NAME my_main
 LOG_MODULE_REGISTER(LOG_MODULE_NAME);
@@ -934,6 +935,12 @@ int main(void)
     /* 打印应用信息 */
     print_app_info();
 
+    err = my_lora_init();
+    if (err)
+    {
+        MY_LOG_ERR("LR1121 Modem-E validation failed (err %d)", err);
+    }
+
     /* 获取当前线程 ID 并保存 */
     s_my_main_task_id = k_current_get();
 
@@ -984,12 +991,7 @@ int main(void)
         /* LTE 初始化失败可以选择不进入 error() 阻塞，视具体需求而定 */
     }
 
-    /* 初始化磁吸串口模块 */
-    err = my_magnetic_uart_init(&s_my_magnetic_uart_task_id);
-    if (err)
-    {
-        MY_LOG_ERR("Failed to initialize Magnetic UART module (err %d)", err);
-    }
+    /* UART20 is temporarily reserved for LR1121 SPI20 validation. */
 
     /* 初始化 G-Sensor 模块 */
     err = my_gsensor_init(&s_my_gsensor_task_id);
@@ -1022,7 +1024,8 @@ int main(void)
     {
         memset(&msg, 0, sizeof(msg_t));
 
-        my_recv_msg(&my_main_msgq, (void *)&msg, sizeof(msg_t), K_FOREVER);
+        my_lora_poll();
+        my_recv_msg(&my_main_msgq, (void *)&msg, sizeof(msg_t), K_MSEC(100));
 
         switch (msg.msgID)
         {

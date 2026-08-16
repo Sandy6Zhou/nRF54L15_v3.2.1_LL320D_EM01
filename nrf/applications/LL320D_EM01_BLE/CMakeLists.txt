@@ -20,6 +20,8 @@ target_include_directories(app PRIVATE
  ./ext_module/temp_humi/api
  ./ext_module/temp_humi/drivers/SHTC3/inc
  ./ext_module/barometer/api
+ ./ext_module/lr1121/api
+ ./ext_module/lr1121/modemE_driver/src
 #  ./ext_module/accelerometer/api
 #  ./ext_module/accelerometer/drivers/DA213/inc
 )
@@ -61,6 +63,11 @@ target_sources(app PRIVATE
   # ext_module/accelerometer/api/accelerometer_api.c
   # ext_module/accelerometer/drivers/DA213/src/da213_driver.c
   src/my_flash_store.c
+  ext_module/lr1121/api/my_lora.c
+  ext_module/lr1121/port/modem_e_hal_nrf54l15.c
+  ext_module/lr1121/modemE_driver/src/modem_e_modem.c
+  ext_module/lr1121/modemE_driver/src/modem_e_lorawan.c
+  ext_module/lr1121/modemE_driver/src/modem_e_system.c
 )
 
 # 气压传感器芯片选择：BARO_DRIVER=SPL16时仅编译SPL16驱动
