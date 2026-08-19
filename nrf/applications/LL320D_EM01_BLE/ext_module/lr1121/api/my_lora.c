@@ -12,7 +12,6 @@
 LOG_MODULE_REGISTER(my_lora, LOG_LEVEL_INF);
 
 #define MY_LORA_TRACKER_PAYLOAD_V1_LENGTH    17U
-#define MY_LORA_HARDWARE_RESET_ENABLE        0
 
 typedef struct
 {
@@ -114,19 +113,11 @@ int my_lora_init(void)
     modem_e_system_version_t version = {0};
     modem_e_response_code_t response;
 
-    if (lr1121_ready() != 0)
-    {
-        LOG_ERR("LR1121 hardware initialization failed");
-        return -EIO;
-    }
-
-#if MY_LORA_HARDWARE_RESET_ENABLE
     if (modem_e_modem_hal_reset(NULL) != MODEM_E_MODEM_HAL_STATUS_OK)
     {
         LOG_ERR("LR1121 hardware reset failed");
         return -EIO;
     }
-#endif
 
     response = modem_e_system_get_version(NULL, &version);
     if (response != MODEM_E_RESPONSE_CODE_OK)

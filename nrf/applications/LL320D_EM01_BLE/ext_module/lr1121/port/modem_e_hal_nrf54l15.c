@@ -5,17 +5,29 @@
 #include <zephyr/logging/log.h>
 
 #include "modem_e_hal.h"
+#include "modem_e_modem.h"
 #include "modem_e_modem_hal.h"
 
 LOG_MODULE_REGISTER(lr1121_hal, LOG_LEVEL_INF);
 
+/* 等待 BUSY 变为目标电平的通用软件超时上限。 */
 #define LR1121_BUSY_TIMEOUT_MS         1000U
-#define LR1121_BOOT_BUSY_TIMEOUT_MS    5000U
+/* 唤醒前等待 BUSY 进入高电平的超时上限。 */
+#define LR1121_BUSY_HIGH_TIMEOUT_MS    5000U
+/* 数据手册要求 NRESET 低电平超过 100 us，这里使用 1 ms 裕量。 */
 #define LR1121_RESET_PULSE_US          1000U
-#define LR1121_RESET_SETTLE_MS         100U
+/* 板级实测复位释放后约 300 ms 才能唤醒，这里保留 500 ms 启动裕量。 */
+#define LR1121_RESET_SETTLE_MS         500U
+/* 数据手册规定 NSS 唤醒低电平保持 100 us。 */
+#define LR1121_WAKEUP_PULSE_US         100U
+/* 等待 LR1121 上报复位事件的总超时上限。 */
+#define LR1121_RESET_EVENT_TIMEOUT_MS  5000U
+/* 复位事件轮询间隔。 */
+#define LR1121_RESET_EVENT_POLL_MS     10U
+/* NOP 读取缓冲区最大长度，防止响应帧超过静态缓冲区。 */
 #define LR1121_NOP_BUFFER_SIZE          255U
 
-/* BUSY and RESET belong to LR1121; CS is owned by the SPI controller. */
+/* BUSY 和 RESET 由 LR1121 管理；常规 CS 由 SPI 控制器管理。 */
 #define LR1121_NODE                    DT_NODELABEL(lr1121)
 
 static const struct spi_dt_spec lr1121_spi =
@@ -25,7 +37,14 @@ static const struct gpio_dt_spec lr1121_reset = GPIO_DT_SPEC_GET(LR1121_NODE, re
 static const struct gpio_dt_spec lr1121_nss =
     GPIO_DT_SPEC_GET_BY_IDX(DT_PARENT(LR1121_NODE), cs_gpios, 0);
 
-int lr1121_ready(void)
+/*********************************************************************
+**函数名称:  lr1121_ready
+**入口参数:  无
+**出口参数:  无
+**函数功能:  检查并初始化 LR1121 使用的 SPI、BUSY、RESET 和 NSS 引脚
+**返 回 值:  0 表示成功，负值表示初始化失败
+*********************************************************************/
+static int lr1121_ready(void)
 {
     int err;
 
@@ -59,13 +78,33 @@ int lr1121_ready(void)
     return err;
 }
 
+/*********************************************************************
+**函数名称:  lr1121_wait_busy
+**入口参数:  level      -- 期望的 BUSY 电平
+**           timeout_ms -- 最大等待时间，单位为毫秒
+**出口参数:  无
+**函数功能:  等待 LR1121 BUSY 引脚达到指定电平
+**返 回 值:  0 表示成功，负值表示 GPIO 读取失败或等待超时
+*********************************************************************/
 static int lr1121_wait_busy(int level, uint32_t timeout_ms)
 {
     int64_t deadline = k_uptime_get() + timeout_ms;
+    int busy;
 
     /* BUSY is active-high; compare the physical pin level directly. */
-    while (gpio_pin_get_raw(lr1121_busy.port, lr1121_busy.pin) != level)
+    while (true)
     {
+        busy = gpio_pin_get_raw(lr1121_busy.port, lr1121_busy.pin);
+        if (busy < 0)
+        {
+            return busy;
+        }
+
+        if (busy == level)
+        {
+            return 0;
+        }
+
         if (k_uptime_get() >= deadline)
         {
             return -ETIMEDOUT;
@@ -74,63 +113,67 @@ static int lr1121_wait_busy(int level, uint32_t timeout_ms)
         k_busy_wait(50);
     }
 
-    return 0;
 }
 
+/*********************************************************************
+**函数名称:  lr1121_transfer
+**入口参数:  tx -- SPI 发送缓冲区
+**           rx -- SPI 接收缓冲区
+**出口参数:  无
+**函数功能:  执行一次 LR1121 SPI 传输
+**返 回 值:  0 表示成功，负值表示 SPI 传输失败
+*********************************************************************/
 static int lr1121_transfer(const struct spi_buf_set *tx, const struct spi_buf_set *rx)
 {
     return spi_transceive_dt(&lr1121_spi, tx, rx);
 }
 
+/*********************************************************************
+**函数名称:  lr1121_wakeup
+**入口参数:  无
+**出口参数:  无
+**函数功能:  通过单次 NSS 唤醒脉冲唤醒 LR1121，并等待 BUSY 拉低
+**返 回 值:  0 表示成功，负值表示唤醒失败或 BUSY 等待超时
+*********************************************************************/
 static int lr1121_wakeup(void)
 {
     int err;
-    int busy;
 
-    busy = gpio_pin_get_raw(lr1121_busy.port, lr1121_busy.pin);
-    if (busy < 0)
-    {
-        LOG_ERR("LR1121 BUSY GPIO read failed: %d", busy);
-        return busy;
-    }
-
-    /* BUSY 为低表示 Modem-E 已可接收命令。 */
-    if (busy == 0)
-    {
-        return 0;
-    }
-
-    err = lr1121_wait_busy(1, LR1121_BOOT_BUSY_TIMEOUT_MS);
+    /* Modem-E SPI 命令必须从 BUSY 高的休眠态开始唤醒。 */
+    err = lr1121_wait_busy(1, LR1121_BUSY_HIGH_TIMEOUT_MS);
     if (err != 0)
     {
         LOG_ERR("LR1121 wakeup BUSY-high wait failed: %d", err);
         return err;
     }
 
-    err = gpio_pin_set_dt(&lr1121_nss, 1);
-    if (err != 0)
-    {
-        LOG_ERR("LR1121 wakeup NSS assert failed: %d", err);
-        return err;
-    }
+    (void)gpio_pin_set_dt(&lr1121_nss, 1);
 
-    k_busy_wait(100);
-    err = gpio_pin_set_dt(&lr1121_nss, 0);
-    if (err != 0)
-    {
-        LOG_ERR("LR1121 wakeup NSS deassert failed: %d", err);
-        return err;
-    }
+    k_busy_wait(LR1121_WAKEUP_PULSE_US);
+
+    (void)gpio_pin_set_dt(&lr1121_nss, 0);
 
     err = lr1121_wait_busy(0, LR1121_BUSY_TIMEOUT_MS);
+
     if (err != 0)
     {
-        LOG_ERR("LR1121 wakeup BUSY-low wait failed: %d", err);
+        LOG_ERR("LR1121 wakeup BUSY-low wait failed: %d, BUSY=%d", err,
+                gpio_pin_get_raw(lr1121_busy.port, lr1121_busy.pin));
     }
 
     return err;
 }
 
+/*********************************************************************
+**函数名称:  lr1121_write_frame
+**入口参数:  command        -- SPI 命令数据
+**           command_length -- 命令长度
+**           data           -- SPI 参数数据
+**           data_length    -- 参数长度
+**出口参数:  无
+**函数功能:  组帧并发送带 CRC 的 LR1121 SPI 写命令
+**返 回 值:  0 表示成功，负值表示 SPI 传输失败
+*********************************************************************/
 static int lr1121_write_frame(const uint8_t *command, uint16_t command_length, const uint8_t *data,
                               uint16_t data_length)
 {
@@ -149,6 +192,14 @@ static int lr1121_write_frame(const uint8_t *command, uint16_t command_length, c
     return lr1121_transfer(&tx, NULL);
 }
 
+/*********************************************************************
+**函数名称:  lr1121_read_response
+**入口参数:  data        -- 接收响应数据的缓冲区
+**           data_length -- 期望读取的数据长度
+**出口参数:  data -- 写入 Modem-E 响应数据
+**函数功能:  读取 LR1121 响应帧并校验状态和 CRC
+**返 回 值:  Modem-E HAL 状态码
+*********************************************************************/
 static modem_e_modem_hal_status_t lr1121_read_response(uint8_t *data, uint16_t data_length)
 {
     static const uint8_t s_nop_buffer[LR1121_NOP_BUFFER_SIZE];
@@ -202,6 +253,17 @@ static modem_e_modem_hal_status_t lr1121_read_response(uint8_t *data, uint16_t d
                                MODEM_E_MODEM_HAL_STATUS_BAD_FRAME;
 }
 
+/*********************************************************************
+**函数名称:  modem_e_modem_hal_write
+**入口参数:  context        -- HAL 上下文
+**           command        -- SPI 命令数据
+**           command_length -- 命令长度
+**           data           -- SPI 参数数据
+**           data_length    -- 参数长度
+**出口参数:  无
+**函数功能:  唤醒 LR1121，发送命令并等待完整响应
+**返 回 值:  Modem-E HAL 状态码
+*********************************************************************/
 modem_e_modem_hal_status_t modem_e_modem_hal_write(const void *context, const uint8_t *command,
                                                     uint16_t command_length, const uint8_t *data,
                                                     uint16_t data_length)
@@ -218,6 +280,17 @@ modem_e_modem_hal_status_t modem_e_modem_hal_write(const void *context, const ui
     return lr1121_read_response(NULL, 0);
 }
 
+/*********************************************************************
+**函数名称:  modem_e_modem_hal_read
+**入口参数:  context        -- HAL 上下文
+**           command        -- SPI 命令数据
+**           command_length -- 命令长度
+**           data           -- 接收数据的缓冲区
+**           data_length    -- 接收数据长度
+**出口参数:  data -- 写入 Modem-E 响应数据
+**函数功能:  发送读取命令并读取 LR1121 响应
+**返 回 值:  Modem-E HAL 状态码
+*********************************************************************/
 modem_e_modem_hal_status_t modem_e_modem_hal_read(const void *context, const uint8_t *command,
                                                    uint16_t command_length, uint8_t *data,
                                                    uint16_t data_length)
@@ -251,6 +324,16 @@ modem_e_modem_hal_status_t modem_e_modem_hal_read(const void *context, const uin
     return lr1121_read_response(data, data_length);
 }
 
+/*********************************************************************
+**函数名称:  modem_e_modem_hal_write_read
+**入口参数:  context        -- HAL 上下文
+**           command        -- SPI 发送数据
+**           data           -- SPI 接收数据缓冲区
+**           data_length    -- 传输长度
+**出口参数:  data -- 写入接收数据
+**函数功能:  执行一次唤醒后的全双工 SPI 传输
+**返 回 值:  Modem-E HAL 状态码
+*********************************************************************/
 modem_e_modem_hal_status_t modem_e_modem_hal_write_read(const void *context, const uint8_t *command,
                                                          uint8_t *data, uint16_t data_length)
 {
@@ -270,6 +353,17 @@ modem_e_modem_hal_status_t modem_e_modem_hal_write_read(const void *context, con
     return MODEM_E_MODEM_HAL_STATUS_OK;
 }
 
+/*********************************************************************
+**函数名称:  modem_e_modem_hal_write_without_rc
+**入口参数:  context        -- HAL 上下文
+**           command        -- SPI 命令数据
+**           command_length -- 命令长度
+**           data           -- SPI 参数数据
+**           data_length    -- 参数长度
+**出口参数:  无
+**函数功能:  发送命令帧但不等待 Modem-E 响应
+**返 回 值:  Modem-E HAL 状态码
+*********************************************************************/
 modem_e_modem_hal_status_t modem_e_modem_hal_write_without_rc(const void *context,
                                                                const uint8_t *command,
                                                                uint16_t command_length,
@@ -283,9 +377,19 @@ modem_e_modem_hal_status_t modem_e_modem_hal_write_without_rc(const void *contex
             MODEM_E_MODEM_HAL_STATUS_OK : MODEM_E_MODEM_HAL_STATUS_ERROR;
 }
 
+/*********************************************************************
+**函数名称:  modem_e_modem_hal_reset
+**入口参数:  context -- HAL 上下文
+**出口参数:  无
+**函数功能:  硬件复位 LR1121，等待启动完成并确认复位事件
+**返 回 值:  Modem-E HAL 状态码
+*********************************************************************/
 modem_e_modem_hal_status_t modem_e_modem_hal_reset(const void *context)
 {
+    modem_e_event_fields_t event;
+    modem_e_response_code_t response;
     int err;
+    int64_t deadline;
 
     ARG_UNUSED(context);
 
@@ -297,32 +401,58 @@ modem_e_modem_hal_status_t modem_e_modem_hal_reset(const void *context)
     }
 
     /* reset-gpios is GPIO_ACTIVE_LOW: logical 1 asserts reset. */
-    err = gpio_pin_set_dt(&lr1121_reset, 1);
-    if (err != 0)
-    {
-        LOG_ERR("LR1121 reset assert failed: %d", err);
-        return MODEM_E_MODEM_HAL_STATUS_ERROR;
-    }
+    (void)gpio_pin_set_dt(&lr1121_reset, 1);
 
     k_busy_wait(LR1121_RESET_PULSE_US);
 
-    err = gpio_pin_set_dt(&lr1121_reset, 0);
-    if (err != 0)
-    {
-        LOG_ERR("LR1121 reset release failed: %d", err);
-        return MODEM_E_MODEM_HAL_STATUS_ERROR;
-    }
+    (void)gpio_pin_set_dt(&lr1121_reset, 0);
 
+    /* 芯片复位释放后需要等待内部固件和校准完成，再进行首次 NSS 唤醒。 */
     k_sleep(K_MSEC(LR1121_RESET_SETTLE_MS));
 
-    return MODEM_E_MODEM_HAL_STATUS_OK;
+    /*
+     * 复位释放并不等于内部固件已经完成启动；先等待板级实测的启动窗口，
+     * 再通过标准 GET_EVENT 命令确认 LR1121 已经产生复位事件。
+     */
+    deadline = k_uptime_get() + LR1121_RESET_EVENT_TIMEOUT_MS;
+    do
+    {
+        /* modem_e_get_event() 内部会执行一次单次 NSS 唤醒和 SPI 事务。 */
+        response = modem_e_get_event(context, &event);
+        if ((response == MODEM_E_RESPONSE_CODE_OK) &&
+            (event.event_type == MODEM_E_LORAWAN_EVENT_RESET))
+        {
+            /* 只有收到明确的复位事件，才允许上层继续配置 Modem-E。 */
+            return MODEM_E_MODEM_HAL_STATUS_OK;
+        }
+
+        /* 启动期间暂未收到复位事件时，按固定间隔重新轮询，避免忙等。 */
+        k_sleep(K_MSEC(LR1121_RESET_EVENT_POLL_MS));
+    } while (k_uptime_get() < deadline);
+
+    LOG_ERR("LR1121 reset event timeout: response=0x%02x BUSY=%d", response,
+            gpio_pin_get_raw(lr1121_busy.port, lr1121_busy.pin));
+    return MODEM_E_MODEM_HAL_STATUS_BUSY_TIMEOUT;
 }
 
+/*********************************************************************
+**函数名称:  modem_e_modem_hal_enter_dfu
+**入口参数:  context -- HAL 上下文
+**出口参数:  无
+**函数功能:  进入 Modem-E DFU 模式（当前平台未实现）
+*********************************************************************/
 void modem_e_modem_hal_enter_dfu(const void *context)
 {
     ARG_UNUSED(context);
 }
 
+/*********************************************************************
+**函数名称:  modem_e_modem_hal_wakeup
+**入口参数:  context -- HAL 上下文
+**出口参数:  无
+**函数功能:  对外提供 Modem-E 唤醒接口
+**返 回 值:  Modem-E HAL 状态码
+*********************************************************************/
 modem_e_modem_hal_status_t modem_e_modem_hal_wakeup(const void *context)
 {
     ARG_UNUSED(context);
@@ -331,6 +461,17 @@ modem_e_modem_hal_status_t modem_e_modem_hal_wakeup(const void *context)
                                     MODEM_E_MODEM_HAL_STATUS_BUSY_TIMEOUT;
 }
 
+/*********************************************************************
+**函数名称:  modem_e_hal_write
+**入口参数:  context        -- HAL 上下文
+**           command        -- SPI 命令数据
+**           command_length -- 命令长度
+**           data           -- SPI 参数数据
+**           data_length    -- 参数长度
+**出口参数:  无
+**函数功能:  提供通用 HAL 写接口，不等待命令响应
+**返 回 值:  HAL 状态码
+*********************************************************************/
 modem_e_hal_status_t modem_e_hal_write(const void *context, const uint8_t *command,
                                        uint16_t command_length, const uint8_t *data,
                                        uint16_t data_length)
@@ -340,6 +481,17 @@ modem_e_hal_status_t modem_e_hal_write(const void *context, const uint8_t *comma
                MODEM_E_HAL_STATUS_OK : MODEM_E_HAL_STATUS_ERROR;
 }
 
+/*********************************************************************
+**函数名称:  modem_e_hal_read
+**入口参数:  context        -- HAL 上下文
+**           command        -- SPI 命令数据
+**           command_length -- 命令长度
+**           data           -- 接收数据缓冲区
+**           data_length    -- 接收数据长度
+**出口参数:  data -- 写入响应数据
+**函数功能:  提供通用 HAL 读接口
+**返 回 值:  HAL 状态码
+*********************************************************************/
 modem_e_hal_status_t modem_e_hal_read(const void *context, const uint8_t *command,
                                       uint16_t command_length, uint8_t *data, uint16_t data_length)
 {
@@ -347,6 +499,16 @@ modem_e_hal_status_t modem_e_hal_read(const void *context, const uint8_t *comman
             MODEM_E_MODEM_HAL_STATUS_OK) ? MODEM_E_HAL_STATUS_OK : MODEM_E_HAL_STATUS_ERROR;
 }
 
+/*********************************************************************
+**函数名称:  modem_e_hal_write_read
+**入口参数:  context     -- HAL 上下文
+**           command     -- SPI 发送数据
+**           data        -- SPI 接收数据缓冲区
+**           data_length -- 传输长度
+**出口参数:  data -- 写入接收数据
+**函数功能:  提供通用 HAL 全双工 SPI 接口
+**返 回 值:  HAL 状态码
+*********************************************************************/
 modem_e_hal_status_t modem_e_hal_write_read(const void *context, const uint8_t *command,
                                             uint8_t *data, uint16_t data_length)
 {
@@ -354,6 +516,15 @@ modem_e_hal_status_t modem_e_hal_write_read(const void *context, const uint8_t *
             MODEM_E_MODEM_HAL_STATUS_OK) ? MODEM_E_HAL_STATUS_OK : MODEM_E_HAL_STATUS_ERROR;
 }
 
+/*********************************************************************
+**函数名称:  modem_e_hal_direct_read
+**入口参数:  context     -- HAL 上下文
+**           data        -- 接收数据缓冲区
+**           data_length -- 接收数据长度
+**出口参数:  data -- 写入 SPI 接收数据
+**函数功能:  直接执行一次 SPI 读取，不附加 Modem-E 唤醒和协议处理
+**返 回 值:  HAL 状态码
+*********************************************************************/
 modem_e_hal_status_t modem_e_hal_direct_read(const void *context, uint8_t *data, uint16_t data_length)
 {
     struct spi_buf tx_buf = {.buf = NULL, .len = data_length};
@@ -366,12 +537,26 @@ modem_e_hal_status_t modem_e_hal_direct_read(const void *context, uint8_t *data,
     return (lr1121_transfer(&tx, &rx) == 0) ? MODEM_E_HAL_STATUS_OK : MODEM_E_HAL_STATUS_ERROR;
 }
 
+/*********************************************************************
+**函数名称:  modem_e_hal_reset
+**入口参数:  context -- HAL 上下文
+**出口参数:  无
+**函数功能:  提供通用 HAL 硬件复位接口
+**返 回 值:  HAL 状态码
+*********************************************************************/
 modem_e_hal_status_t modem_e_hal_reset(const void *context)
 {
     return (modem_e_modem_hal_reset(context) == MODEM_E_MODEM_HAL_STATUS_OK) ?
                MODEM_E_HAL_STATUS_OK : MODEM_E_HAL_STATUS_ERROR;
 }
 
+/*********************************************************************
+**函数名称:  modem_e_hal_wakeup
+**入口参数:  context -- HAL 上下文
+**出口参数:  无
+**函数功能:  提供通用 HAL 唤醒接口
+**返 回 值:  HAL 状态码
+*********************************************************************/
 modem_e_hal_status_t modem_e_hal_wakeup(const void *context)
 {
     return (modem_e_modem_hal_wakeup(context) == MODEM_E_MODEM_HAL_STATUS_OK) ?
