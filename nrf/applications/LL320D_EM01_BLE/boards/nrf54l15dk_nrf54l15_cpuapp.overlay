@@ -264,7 +264,7 @@
 		};
 	};
 
-	spi20_default: spi20_default {
+	lr1121_spi_default: lr1121_spi_default {
 		group1 {
 			psels = <NRF_PSEL(SPIM_SCK, 2, 1)>,
 				<NRF_PSEL(SPIM_MOSI, 2, 2)>,
@@ -274,7 +274,7 @@
 		};
 	};
 
-	spi20_sleep: spi20_sleep {
+	lr1121_spi_sleep: lr1121_spi_sleep {
 		group1 {
 			psels = <NRF_PSEL(SPIM_SCK, 2, 1)>,
 				<NRF_PSEL(SPIM_MOSI, 2, 2)>,
@@ -345,13 +345,18 @@
 	status = "disabled";
 };
 
+/* Disable MX25R64 SPI NOR Flash */
+&mx25r64 {
+    status = "disabled";
+};
+
+/* LR1121 使用 SPIM20 (spi20) */
 &spi20 {
-	compatible = "nordic,nrf-spim";
 	status = "okay";
-	pinctrl-0 = <&spi20_default>;
-	pinctrl-1 = <&spi20_sleep>;
+	pinctrl-0 = <&lr1121_spi_default>;
+	pinctrl-1 = <&lr1121_spi_sleep>;
 	pinctrl-names = "default", "sleep";
-	cs-gpios = <&gpio2 5 GPIO_ACTIVE_LOW>;
+	cs-gpios = <&gpio2 5 (GPIO_ACTIVE_LOW)>;
 	lr1121: lr1121@0 {
 		compatible = "semtech,lr1121-modem-e";
 		reg = <0>;
@@ -359,11 +364,6 @@
 		busy-gpios = <&gpio2 0 GPIO_ACTIVE_HIGH>;
 		reset-gpios = <&gpio2 3 GPIO_ACTIVE_LOW>;
 	};
-};
-
-/* Disable MX25R64 SPI NOR Flash */
-&mx25r64 {
-    status = "disabled";
 };
 
 /* P0.4用于唤醒 */

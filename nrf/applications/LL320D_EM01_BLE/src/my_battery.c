@@ -20,6 +20,9 @@ LOG_MODULE_REGISTER(my_battery, LOG_LEVEL_INF);
 /* zephyr,user 里有两个 io-channels：index 0 = 通道0(电池)，index 1 = 通道1(NTC) */
 #define ZEPHYR_USER_NODE DT_PATH(zephyr_user)
 
+/* LR1121 validation uses P2.03 as active-low reset, so battery power control must not drive it. */
+#define BATT_PWR_PIN_SHARED_WITH_LR1121    1
+
 // 电池电压-百分比映射表（3.0V-4.2V锂电）
 // 格式：{电压(mV), 百分比(%)}
 // TODO: 现在是根据网上找到的电池电压-百分比映射表，等拿到电池规格书后需要根据实际情况调整
@@ -69,7 +72,9 @@ static int8_t s_show_percent = 0;        // 显示的电池电量百分比
 /* 通道 0：电池电压 */
 static const struct adc_dt_spec batt_adc = ADC_DT_SPEC_GET_BY_IDX(ZEPHYR_USER_NODE, 0);
 
+#if !BATT_PWR_PIN_SHARED_WITH_LR1121
 static const struct gpio_dt_spec batt_pwr_en = GPIO_DT_SPEC_GET(DT_ALIAS(batt_pwr_ctrl), gpios);
+#endif
 static const struct gpio_dt_spec charge_det = GPIO_DT_SPEC_GET(DT_ALIAS(charge_detect), gpios);
 
 static struct gpio_callback s_batt_gpio_cb;
@@ -218,7 +223,11 @@ int batt_adc_init(void)
 /* 充电使能：true=打开，false=关闭 */
 void batt_enable(bool on)
 {
+#if !BATT_PWR_PIN_SHARED_WITH_LR1121
     gpio_pin_set_dt(&batt_pwr_en, on ? 1 : 0);
+#else
+    ARG_UNUSED(on);
+#endif
 }
 
 /*********************************************************************
@@ -496,17 +505,18 @@ int batt_gpio_init(void)
 {
     int ret;
 
-    if (!device_is_ready(batt_pwr_en.port) ||
-        !device_is_ready(charge_det.port))
+    if (!device_is_ready(charge_det.port))
     {
         return -ENODEV;
     }
 
+#if !BATT_PWR_PIN_SHARED_WITH_LR1121
     /* 使能口：输出，默认打开 */
     ret = gpio_pin_configure_dt(&batt_pwr_en, GPIO_OUTPUT_ACTIVE);
     if (ret) return ret;
 
     gpio_pin_set_dt(&batt_pwr_en, 0);
+#endif
 
     /* 充电检测：输入（上拉在 DTS 里已经配置） */
     ret = gpio_pin_configure_dt(&charge_det, GPIO_INPUT);

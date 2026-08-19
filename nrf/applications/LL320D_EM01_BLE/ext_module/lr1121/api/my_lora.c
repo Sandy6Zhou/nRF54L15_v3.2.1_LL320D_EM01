@@ -1,5 +1,3 @@
-#include <string.h>
-
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/byteorder.h>
@@ -14,6 +12,7 @@
 LOG_MODULE_REGISTER(my_lora, LOG_LEVEL_INF);
 
 #define MY_LORA_TRACKER_PAYLOAD_V1_LENGTH    17U
+#define MY_LORA_HARDWARE_RESET_ENABLE        0
 
 typedef struct
 {
@@ -38,8 +37,8 @@ static const my_lora_config_t s_lora_config =
     .confirmed_uplink = false,
 };
 
-static bool s_lora_joined;
-static bool s_lora_modem_detected;
+static bool s_lora_joined = false;
+static bool s_lora_modem_detected = false;
 static int64_t s_next_uplink_ms;
 static modem_e_system_version_t s_lora_version;
 
@@ -115,16 +114,19 @@ int my_lora_init(void)
     modem_e_system_version_t version = {0};
     modem_e_response_code_t response;
 
-    s_lora_modem_detected = false;
-    s_lora_joined = false;
-
-    if (modem_e_modem_hal_reset(NULL) != MODEM_E_MODEM_HAL_STATUS_OK)
+    if (lr1121_ready() != 0)
     {
-        LOG_ERR("LR1121 reset failed");
+        LOG_ERR("LR1121 hardware initialization failed");
         return -EIO;
     }
 
-    k_sleep(K_MSEC(10));
+#if MY_LORA_HARDWARE_RESET_ENABLE
+    if (modem_e_modem_hal_reset(NULL) != MODEM_E_MODEM_HAL_STATUS_OK)
+    {
+        LOG_ERR("LR1121 hardware reset failed");
+        return -EIO;
+    }
+#endif
 
     response = modem_e_system_get_version(NULL, &version);
     if (response != MODEM_E_RESPONSE_CODE_OK)
@@ -132,6 +134,9 @@ int my_lora_init(void)
         LOG_ERR("LR1121 Modem-E version query failed: 0x%02x", response);
         return -EIO;
     }
+
+    LOG_INF("Modem-E version response: hardware 0x%02x, type 0x%02x, firmware %u.%u",
+            version.hw, version.type, version.fw >> 8, version.fw & 0xFF);
 
     if (version.type != MODEM_E_SYSTEM_VERSION_TYPE_LR1121)
     {
