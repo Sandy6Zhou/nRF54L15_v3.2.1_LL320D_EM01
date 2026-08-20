@@ -13,6 +13,16 @@ LOG_MODULE_REGISTER(my_lora, LOG_LEVEL_INF);
 
 #define MY_LORA_TRACKER_PAYLOAD_V1_LENGTH    17U
 
+#ifndef MY_LORA_SIMULATED_TRACKER_DATA_ENABLE
+#define MY_LORA_SIMULATED_TRACKER_DATA_ENABLE    0
+#endif
+
+#define MY_LORA_SIMULATED_LATITUDE_E6          22543100
+#define MY_LORA_SIMULATED_LONGITUDE_E6         114057900
+#define MY_LORA_SIMULATED_SPEED_CMS            1234
+#define MY_LORA_SIMULATED_BATTERY_PERCENT      86
+#define MY_LORA_SIMULATED_TIMESTAMP_S          1787133600U
+
 typedef struct
 {
     uint8_t dev_eui[8];
@@ -27,9 +37,10 @@ typedef struct
 /* Replace the zero credentials through the production provisioning path. */
 static const my_lora_config_t s_lora_config =
 {
-    .dev_eui = {0},
-    .join_eui = {0},
-    .app_key = {0},
+    .dev_eui = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10},
+    .join_eui = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x99},
+    .app_key = {0x41, 0x78, 0xD6, 0x9D, 0x85, 0x56, 0xF2, 0x00,
+                0x3F, 0x4D, 0xB5, 0x64, 0x1C, 0x48, 0x1B, 0x6D},
     .uplink_fport = 1,
     .downlink_fport = 1,
     .uplink_interval_s = 600,
@@ -55,23 +66,45 @@ static int my_lora_build_tracker_payload(uint8_t *payload, uint8_t max_length,
                                          uint8_t *payload_length)
 {
     int32_t speed_cms;
+    int32_t latitude_e6;
+    int32_t longitude_e6;
     int8_t battery_percent;
+    uint32_t timestamp_s;
+    bool gps_valid;
 
-    if ((max_length < MY_LORA_TRACKER_PAYLOAD_V1_LENGTH) || (g_location_point.timestamp_s <= 0))
+    if (max_length < MY_LORA_TRACKER_PAYLOAD_V1_LENGTH)
     {
         return -ENODATA;
     }
 
+#if MY_LORA_SIMULATED_TRACKER_DATA_ENABLE
+    latitude_e6 = MY_LORA_SIMULATED_LATITUDE_E6;
+    longitude_e6 = MY_LORA_SIMULATED_LONGITUDE_E6;
+    speed_cms = MY_LORA_SIMULATED_SPEED_CMS;
+    battery_percent = MY_LORA_SIMULATED_BATTERY_PERCENT;
+    timestamp_s = MY_LORA_SIMULATED_TIMESTAMP_S;
+    gps_valid = true;
+#else
+    if (g_location_point.timestamp_s <= 0)
+    {
+        return -ENODATA;
+    }
+
+    latitude_e6 = g_location_point.lat;
+    longitude_e6 = g_location_point.lon;
     speed_cms = (int32_t)(g_location_point.speed * 100.0f);
     battery_percent = get_show_percent();
+    timestamp_s = (uint32_t)g_location_point.timestamp_s;
+    gps_valid = (g_lte_gps_state == 2);
+#endif
 
     payload[0] = 1;
-    sys_put_be32((uint32_t)g_location_point.lat, &payload[1]);
-    sys_put_be32((uint32_t)g_location_point.lon, &payload[5]);
+    sys_put_be32((uint32_t)latitude_e6, &payload[1]);
+    sys_put_be32((uint32_t)longitude_e6, &payload[5]);
     sys_put_be16((uint16_t)CLAMP(speed_cms, 0, UINT16_MAX), &payload[9]);
     payload[11] = (uint8_t)CLAMP(battery_percent, 0, 100);
-    sys_put_be32((uint32_t)g_location_point.timestamp_s, &payload[12]);
-    payload[16] = (g_lte_gps_state == 2) ? BIT(0) : 0;
+    sys_put_be32(timestamp_s, &payload[12]);
+    payload[16] = gps_valid ? BIT(0) : 0;
     *payload_length = MY_LORA_TRACKER_PAYLOAD_V1_LENGTH;
 
     return 0;
@@ -111,13 +144,20 @@ static int my_lora_start_otaa(void)
 int my_lora_init(void)
 {
     modem_e_system_version_t version = {0};
+    modem_e_lorawan_version_t lorawan_version = {0};
     modem_e_response_code_t response;
+
+    /* 等待LR1121完全稳定 */
+    k_msleep(100);
 
     if (modem_e_modem_hal_reset(NULL) != MODEM_E_MODEM_HAL_STATUS_OK)
     {
         LOG_ERR("LR1121 hardware reset failed");
         return -EIO;
     }
+
+    /* 复位后等待芯片完全启动 */
+    k_msleep(50);
 
     response = modem_e_system_get_version(NULL, &version);
     if (response != MODEM_E_RESPONSE_CODE_OK)
@@ -129,17 +169,31 @@ int my_lora_init(void)
     LOG_INF("Modem-E version response: hardware 0x%02x, type 0x%02x, firmware %u.%u",
             version.hw, version.type, version.fw >> 8, version.fw & 0xFF);
 
-    if (version.type != MODEM_E_SYSTEM_VERSION_TYPE_LR1121)
+    response = modem_e_get_lorawan_version(NULL, &lorawan_version);
+    if (response != MODEM_E_RESPONSE_CODE_OK)
     {
-        LOG_ERR("Unexpected Modem-E device type: 0x%02x", version.type);
-        return -ENODEV;
+        LOG_ERR("LoRaWAN version query failed: 0x%02x", response);
+        return -EIO;
     }
+
+    LOG_INF("LoRaWAN version: %u.%u.%u.%u, RP002: %u.%u.%u.%u",
+            lorawan_version.lorawan_major,
+            lorawan_version.lorawan_minor,
+            lorawan_version.lorawan_patch,
+            lorawan_version.lorawan_revision,
+            lorawan_version.rp_major,
+            lorawan_version.rp_minor,
+            lorawan_version.rp_patch,
+            lorawan_version.rp_revision);
+
+    // if (version.type != MODEM_E_SYSTEM_VERSION_TYPE_LR1121)
+    // {
+    //     LOG_ERR("Unexpected Modem-E device type: 0x%02x", version.type);
+    //     return -ENODEV;
+    // }
 
     s_lora_version = version;
     s_lora_modem_detected = true;
-
-    LOG_INF("LR1121 Modem-E detected: hardware 0x%02x, firmware %u.%u",
-            version.hw, version.fw >> 8, version.fw & 0xFF);
 
     if (!my_lora_is_provisioned())
     {
@@ -176,6 +230,9 @@ static void my_lora_schedule_uplink(void)
         s_next_uplink_ms = k_uptime_get() +
                            ((int64_t)s_lora_config.uplink_interval_s * MSEC_PER_SEC);
         LOG_INF("LoRaWAN uplink queued: %u bytes", payload_length);
+#if MY_LORA_SIMULATED_TRACKER_DATA_ENABLE
+        LOG_HEXDUMP_INF(payload, payload_length, "LoRaWAN simulated tracker payload");
+#endif
     }
     else
     {
@@ -215,6 +272,12 @@ int my_lora_request_test_uplink(void)
     {
         return -EAGAIN;
     }
+
+    LOG_INF("LoRaWAN test TX request: port=%u, type=%u, length=%u",
+            s_lora_config.uplink_fport,
+            s_lora_config.confirmed_uplink ? MODEM_E_UPLINK_CONFIRMED : MODEM_E_UPLINK_UNCONFIRMED,
+            (uint8_t)sizeof(test_payload));
+    LOG_HEXDUMP_INF(test_payload, sizeof(test_payload), "LoRaWAN test TX payload");
 
     response = modem_e_request_tx(NULL, s_lora_config.uplink_fport,
                                   s_lora_config.confirmed_uplink ? MODEM_E_UPLINK_CONFIRMED :

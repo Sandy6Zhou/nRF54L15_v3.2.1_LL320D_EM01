@@ -188,69 +188,19 @@ static int lr1121_write_frame(const uint8_t *command, uint16_t command_length, c
         .count = ARRAY_SIZE(buffers),
     };
 
+    if ((command_length >= 3U) && (command[0] == 0x06U) && (command[1] == 0x02U) &&
+        (command[2] == 0x12U))
+    {
+        LOG_INF("LR1121 Request TX: command_len=%u, data_len=%u", command_length, data_length);
+        LOG_HEXDUMP_INF(command, command_length, "LR1121 Request TX command");
+        if ((data != NULL) && (data_length > 0U))
+        {
+            LOG_HEXDUMP_INF(data, data_length, "LR1121 Request TX data");
+        }
+    }
+
     crc = modem_e_modem_compute_crc(crc, data, data_length);
     return lr1121_transfer(&tx, NULL);
-}
-
-/*********************************************************************
-**函数名称:  lr1121_read_response
-**入口参数:  data        -- 接收响应数据的缓冲区
-**           data_length -- 期望读取的数据长度
-**出口参数:  data -- 写入 Modem-E 响应数据
-**函数功能:  读取 LR1121 响应帧并校验状态和 CRC
-**返 回 值:  Modem-E HAL 状态码
-*********************************************************************/
-static modem_e_modem_hal_status_t lr1121_read_response(uint8_t *data, uint16_t data_length)
-{
-    static const uint8_t s_nop_buffer[LR1121_NOP_BUFFER_SIZE];
-    uint8_t status = 0;
-    uint8_t crc = 0;
-    uint8_t expected;
-    struct spi_buf tx_bufs[3] = {
-        {.buf = (void *)s_nop_buffer, .len = 1},
-        {.buf = (void *)s_nop_buffer, .len = data_length},
-        {.buf = (void *)s_nop_buffer, .len = 1},
-    };
-    struct spi_buf rx_bufs[3] = {
-        {.buf = &status, .len = 1},
-        {.buf = data, .len = data_length},
-        {.buf = &crc, .len = 1},
-    };
-    struct spi_buf_set tx = {
-        .buffers = tx_bufs,
-        .count = ARRAY_SIZE(tx_bufs),
-    };
-    struct spi_buf_set rx = {
-        .buffers = rx_bufs,
-        .count = ARRAY_SIZE(rx_bufs),
-    };
-
-    if (data_length > LR1121_NOP_BUFFER_SIZE)
-    {
-        return MODEM_E_MODEM_HAL_STATUS_ERROR;
-    }
-    if (lr1121_transfer(&tx, &rx) != 0)
-    {
-        return MODEM_E_MODEM_HAL_STATUS_ERROR;
-    }
-    if (lr1121_wait_busy(0, LR1121_BUSY_TIMEOUT_MS) != 0)
-    {
-        LOG_ERR("LR1121 response kept BUSY high: status=0x%02x crc=0x%02x", status, crc);
-        if ((data != NULL) && (data_length != 0U))
-        {
-            LOG_HEXDUMP_ERR(data, data_length, "LR1121 raw response");
-        }
-        return MODEM_E_MODEM_HAL_STATUS_BUSY_TIMEOUT;
-    }
-
-    expected = modem_e_modem_compute_crc(0xFF, &status, 1);
-    if (status == MODEM_E_MODEM_HAL_STATUS_OK)
-    {
-        expected = modem_e_modem_compute_crc(expected, data, data_length);
-    }
-
-    return (expected == crc) ? (modem_e_modem_hal_status_t)status :
-                               MODEM_E_MODEM_HAL_STATUS_BAD_FRAME;
 }
 
 /*********************************************************************
@@ -268,8 +218,13 @@ modem_e_modem_hal_status_t modem_e_modem_hal_write(const void *context, const ui
                                                     uint16_t command_length, const uint8_t *data,
                                                     uint16_t data_length)
 {
+    uint8_t status = 0;
+    uint8_t status_crc = 0;
+    uint8_t expected_status_crc;
+
     ARG_UNUSED(context);
 
+    /* Step 1: 唤醒 + 发送命令 + 等待 BUSY */
     if ((lr1121_wakeup() != 0) ||
         (lr1121_write_frame(command, command_length, data, data_length) != 0) ||
         (lr1121_wait_busy(1, LR1121_BUSY_TIMEOUT_MS) != 0))
@@ -277,7 +232,42 @@ modem_e_modem_hal_status_t modem_e_modem_hal_write(const void *context, const ui
         return MODEM_E_MODEM_HAL_STATUS_BUSY_TIMEOUT;
     }
 
-    return lr1121_read_response(NULL, 0);
+    /* Step 2: 读取 status + CRC（2字节） */
+    {
+        static const uint8_t nop[2] = {0};
+        uint8_t rx[2] = {0};
+        struct spi_buf tx_buf = {.buf = (void *)nop, .len = 2};
+        struct spi_buf rx_buf = {.buf = rx, .len = 2};
+        struct spi_buf_set tx = {.buffers = &tx_buf, .count = 1};
+        struct spi_buf_set rx_set = {.buffers = &rx_buf, .count = 1};
+
+        if (lr1121_transfer(&tx, &rx_set) != 0)
+        {
+            LOG_ERR("LR1121 SPI status read failed");
+            return MODEM_E_MODEM_HAL_STATUS_ERROR;
+        }
+
+        status = rx[0];
+        status_crc = rx[1];
+    }
+
+    /* Step 3: 验证 status 的 CRC */
+    expected_status_crc = modem_e_modem_compute_crc(0xFF, &status, 1);
+    if (expected_status_crc != status_crc)
+    {
+        LOG_ERR("LR1121 write status CRC mismatch: expected=0x%02x, got=0x%02x, status=0x%02x",
+                expected_status_crc, status_crc, status);
+        return MODEM_E_MODEM_HAL_STATUS_BAD_FRAME;
+    }
+
+    /* Step 4: 等待 BUSY 拉低 */
+    if (lr1121_wait_busy(0, LR1121_BUSY_TIMEOUT_MS) != 0)
+    {
+        LOG_ERR("LR1121 response kept BUSY high");
+        return MODEM_E_MODEM_HAL_STATUS_BUSY_TIMEOUT;
+    }
+
+    return (modem_e_modem_hal_status_t)status;
 }
 
 /*********************************************************************
@@ -296,16 +286,26 @@ modem_e_modem_hal_status_t modem_e_modem_hal_read(const void *context, const uin
                                                    uint16_t data_length)
 {
     int err;
+    uint8_t status = 0;
+    uint8_t response_crc = 0;
+    uint8_t expected_crc;
+    static const uint8_t s_nop_buffer[LR1121_NOP_BUFFER_SIZE];
+    struct spi_buf tx_bufs[3];
+    struct spi_buf rx_bufs[3];
+    struct spi_buf_set tx;
+    struct spi_buf_set rx;
 
     ARG_UNUSED(context);
 
+    /* Step 1: 唤醒 LR1121 */
     err = lr1121_wakeup();
     if (err != 0)
     {
-        LOG_ERR("LR1121 wakeup failed: %d, BUSY=%d", err, gpio_pin_get_dt(&lr1121_busy));
+        LOG_ERR("LR1121 wakeup failed: %d", err);
         return MODEM_E_MODEM_HAL_STATUS_BUSY_TIMEOUT;
     }
 
+    /* Step 2: 发送命令 */
     err = lr1121_write_frame(command, command_length, NULL, 0);
     if (err != 0)
     {
@@ -313,6 +313,7 @@ modem_e_modem_hal_status_t modem_e_modem_hal_read(const void *context, const uin
         return MODEM_E_MODEM_HAL_STATUS_BUSY_TIMEOUT;
     }
 
+    /* Step 3: 等待 BUSY 拉高 */
     err = lr1121_wait_busy(1, LR1121_BUSY_TIMEOUT_MS);
     if (err != 0)
     {
@@ -321,7 +322,57 @@ modem_e_modem_hal_status_t modem_e_modem_hal_read(const void *context, const uin
         return MODEM_E_MODEM_HAL_STATUS_BUSY_TIMEOUT;
     }
 
-    return lr1121_read_response(data, data_length);
+    /*
+     * 单次 SPI 事务必须保持完整响应帧连续：OK 为 status + data + CRC，
+     * 非 OK 为 status + CRC。先按最长帧读取，再依据 status 选择 CRC 位置。
+     */
+    if (data_length > (LR1121_NOP_BUFFER_SIZE - 2U))
+    {
+        LOG_ERR("LR1121 response length too large: %u", data_length);
+        return MODEM_E_MODEM_HAL_STATUS_ERROR;
+    }
+
+    tx_bufs[0] = (struct spi_buf){.buf = (void *)s_nop_buffer, .len = 1};
+    tx_bufs[1] = (struct spi_buf){.buf = (void *)s_nop_buffer, .len = data_length};
+    tx_bufs[2] = (struct spi_buf){.buf = (void *)s_nop_buffer, .len = 1};
+    rx_bufs[0] = (struct spi_buf){.buf = &status, .len = 1};
+    rx_bufs[1] = (struct spi_buf){.buf = data, .len = data_length};
+    rx_bufs[2] = (struct spi_buf){.buf = &response_crc, .len = 1};
+    tx = (struct spi_buf_set){.buffers = tx_bufs, .count = ARRAY_SIZE(tx_bufs)};
+    rx = (struct spi_buf_set){.buffers = rx_bufs, .count = ARRAY_SIZE(rx_bufs)};
+
+    if (lr1121_transfer(&tx, &rx) != 0)
+    {
+        LOG_ERR("LR1121 SPI response read failed");
+        return MODEM_E_MODEM_HAL_STATUS_ERROR;
+    }
+
+    expected_crc = modem_e_modem_compute_crc(0xFF, &status, 1);
+    if (status == MODEM_E_MODEM_HAL_STATUS_OK)
+    {
+        expected_crc = modem_e_modem_compute_crc(expected_crc, data, data_length);
+    }
+    else if (data_length > 0U)
+    {
+        /* 非 OK 响应的 CRC 紧跟 status，位于 data 缓冲区首字节。 */
+        response_crc = data[0];
+    }
+
+    if (expected_crc != response_crc)
+    {
+        LOG_ERR("LR1121 CRC mismatch: expected=0x%02x, got=0x%02x, status=0x%02x",
+                expected_crc, response_crc, status);
+        return MODEM_E_MODEM_HAL_STATUS_BAD_FRAME;
+    }
+
+    /* Step 5: 等待 BUSY 拉低 */
+    if (lr1121_wait_busy(0, LR1121_BUSY_TIMEOUT_MS) != 0)
+    {
+        LOG_ERR("LR1121 response kept BUSY high");
+        return MODEM_E_MODEM_HAL_STATUS_BUSY_TIMEOUT;
+    }
+
+    return (modem_e_modem_hal_status_t)status;
 }
 
 /*********************************************************************
