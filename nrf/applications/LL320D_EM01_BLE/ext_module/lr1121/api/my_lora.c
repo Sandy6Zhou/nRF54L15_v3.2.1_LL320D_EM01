@@ -1,6 +1,5 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
-#include <zephyr/sys/byteorder.h>
 
 #include "modem_e_lorawan.h"
 #include "modem_e_modem.h"
@@ -8,20 +7,25 @@
 #include "modem_e_system.h"
 #include "my_comm.h"
 #include "my_lora.h"
-
 LOG_MODULE_REGISTER(my_lora, LOG_LEVEL_INF);
 
-#define MY_LORA_TRACKER_PAYLOAD_V1_LENGTH    17U
+#define MY_LORA_A0_TEST_PAYLOAD_LENGTH    47U
+#define MY_LORA_STRESS_TEST_PAYLOAD_LENGTH    4U
 
-#ifndef MY_LORA_SIMULATED_TRACKER_DATA_ENABLE
-#define MY_LORA_SIMULATED_TRACKER_DATA_ENABLE    0
-#endif
+static const uint8_t s_stress_test_payload[MY_LORA_STRESS_TEST_PAYLOAD_LENGTH] =
+{
+    'T', 'E', 'S', 'T'
+};
 
-#define MY_LORA_SIMULATED_LATITUDE_E6          22543100
-#define MY_LORA_SIMULATED_LONGITUDE_E6         114057900
-#define MY_LORA_SIMULATED_SPEED_CMS            1234
-#define MY_LORA_SIMULATED_BATTERY_PERCENT      86
-#define MY_LORA_SIMULATED_TIMESTAMP_S          1787133600U
+static const uint8_t s_a0_test_payload[MY_LORA_A0_TEST_PAYLOAD_LENGTH] =
+{
+    0x78, 0x78, 0x2A, 0xA0, 0x1A, 0x08, 0x14, 0x05,
+    0x36, 0x21, 0xCF, 0x02, 0x6C, 0x15, 0x95, 0x0C,
+    0x39, 0x8A, 0x49, 0x00, 0x14, 0x95, 0x81, 0xCC,
+    0x00, 0x00, 0x00, 0x00, 0x24, 0x7F, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x90, 0xF8, 0x4F, 0x00, 0x00,
+    0x00, 0x00, 0x11, 0xDF, 0xCE, 0x0D, 0x0A
+};
 
 typedef struct
 {
@@ -50,7 +54,19 @@ static const my_lora_config_t s_lora_config =
 static bool s_lora_joined = false;
 static bool s_lora_modem_detected = false;
 static int64_t s_next_uplink_ms;
+static int64_t s_tx_request_ms;
 static modem_e_system_version_t s_lora_version;
+
+static const uint8_t *my_lora_get_test_payload(uint8_t *payload_length)
+{
+#if MY_LORA_A0_TEST_PAYLOAD_ENABLE
+    *payload_length = sizeof(s_a0_test_payload);
+    return s_a0_test_payload;
+#else
+    *payload_length = sizeof(s_stress_test_payload);
+    return s_stress_test_payload;
+#endif
+}
 
 static bool my_lora_is_provisioned(void)
 {
@@ -60,54 +76,6 @@ static bool my_lora_is_provisioned(void)
     return (memcmp(s_lora_config.dev_eui, empty_eui, sizeof(empty_eui)) != 0) &&
            (memcmp(s_lora_config.join_eui, empty_eui, sizeof(empty_eui)) != 0) &&
            (memcmp(s_lora_config.app_key, empty_key, sizeof(empty_key)) != 0);
-}
-
-static int my_lora_build_tracker_payload(uint8_t *payload, uint8_t max_length,
-                                         uint8_t *payload_length)
-{
-    int32_t speed_cms;
-    int32_t latitude_e6;
-    int32_t longitude_e6;
-    int8_t battery_percent;
-    uint32_t timestamp_s;
-    bool gps_valid;
-
-    if (max_length < MY_LORA_TRACKER_PAYLOAD_V1_LENGTH)
-    {
-        return -ENODATA;
-    }
-
-#if MY_LORA_SIMULATED_TRACKER_DATA_ENABLE
-    latitude_e6 = MY_LORA_SIMULATED_LATITUDE_E6;
-    longitude_e6 = MY_LORA_SIMULATED_LONGITUDE_E6;
-    speed_cms = MY_LORA_SIMULATED_SPEED_CMS;
-    battery_percent = MY_LORA_SIMULATED_BATTERY_PERCENT;
-    timestamp_s = MY_LORA_SIMULATED_TIMESTAMP_S;
-    gps_valid = true;
-#else
-    if (g_location_point.timestamp_s <= 0)
-    {
-        return -ENODATA;
-    }
-
-    latitude_e6 = g_location_point.lat;
-    longitude_e6 = g_location_point.lon;
-    speed_cms = (int32_t)(g_location_point.speed * 100.0f);
-    battery_percent = get_show_percent();
-    timestamp_s = (uint32_t)g_location_point.timestamp_s;
-    gps_valid = (g_lte_gps_state == 2);
-#endif
-
-    payload[0] = 1;
-    sys_put_be32((uint32_t)latitude_e6, &payload[1]);
-    sys_put_be32((uint32_t)longitude_e6, &payload[5]);
-    sys_put_be16((uint16_t)CLAMP(speed_cms, 0, UINT16_MAX), &payload[9]);
-    payload[11] = (uint8_t)CLAMP(battery_percent, 0, 100);
-    sys_put_be32(timestamp_s, &payload[12]);
-    payload[16] = gps_valid ? BIT(0) : 0;
-    *payload_length = MY_LORA_TRACKER_PAYLOAD_V1_LENGTH;
-
-    return 0;
 }
 
 static int my_lora_start_otaa(void)
@@ -206,38 +174,57 @@ int my_lora_init(void)
 
 static void my_lora_schedule_uplink(void)
 {
-    uint8_t payload[242];
-    uint8_t payload_length = 0;
-    modem_e_response_code_t response;
+    const uint8_t *payload;
+    uint8_t payload_length;
 
     if (!s_lora_joined || (k_uptime_get() < s_next_uplink_ms))
     {
         return;
     }
 
-    if ((my_lora_build_tracker_payload(payload, sizeof(payload), &payload_length) != 0) ||
-        (payload_length == 0) || (payload_length > sizeof(payload)))
+    payload = my_lora_get_test_payload(&payload_length);
+    (void)my_lora_send_payload(payload, payload_length);
+}
+
+int my_lora_send_payload(const uint8_t *payload, uint8_t payload_length)
+{
+    modem_e_response_code_t response;
+
+    if ((payload == NULL) || (payload_length == 0) ||
+        (payload_length > MY_LORA_MAX_PAYLOAD_LENGTH))
     {
-        return;
+        return -EINVAL;
+    }
+    if (!s_lora_modem_detected)
+    {
+        return -ENODEV;
+    }
+    if (!my_lora_is_provisioned())
+    {
+        return -EACCES;
+    }
+    if (!s_lora_joined)
+    {
+        return -EAGAIN;
     }
 
     response = modem_e_request_tx(NULL, s_lora_config.uplink_fport,
                                   s_lora_config.confirmed_uplink ? MODEM_E_UPLINK_CONFIRMED :
                                                                     MODEM_E_UPLINK_UNCONFIRMED,
                                   payload, payload_length);
-    if (response == MODEM_E_RESPONSE_CODE_OK)
+    if (response != MODEM_E_RESPONSE_CODE_OK)
     {
-        s_next_uplink_ms = k_uptime_get() +
-                           ((int64_t)s_lora_config.uplink_interval_s * MSEC_PER_SEC);
-        LOG_INF("LoRaWAN uplink queued: %u bytes", payload_length);
-#if MY_LORA_SIMULATED_TRACKER_DATA_ENABLE
-        LOG_HEXDUMP_INF(payload, payload_length, "LoRaWAN simulated tracker payload");
-#endif
+        LOG_WRN("LoRaWAN uplink request rejected: response=0x%02x, port=%u, length=%u",
+                response, s_lora_config.uplink_fport, payload_length);
+        return -EBUSY;
     }
-    else
-    {
-        LOG_WRN("LoRaWAN uplink request rejected: 0x%02x", response);
-    }
+
+    s_tx_request_ms = k_uptime_get();
+    s_next_uplink_ms = k_uptime_get() +
+                       ((int64_t)s_lora_config.uplink_interval_s * MSEC_PER_SEC);
+    LOG_INF("LoRaWAN raw uplink queued: %u bytes", payload_length);
+    LOG_HEXDUMP_INF(payload, payload_length, "LoRaWAN raw uplink payload");
+    return 0;
 }
 
 #if MY_LORA_SHELL_TEST_ENABLE
@@ -257,42 +244,11 @@ void my_lora_get_status(my_lora_status_t *status)
 
 int my_lora_request_test_uplink(void)
 {
-    static const uint8_t test_payload[] = {'T', 'E', 'S', 'T'};
-    modem_e_response_code_t response;
+    const uint8_t *payload;
+    uint8_t payload_length;
 
-    if (!s_lora_modem_detected)
-    {
-        return -ENODEV;
-    }
-    if (!my_lora_is_provisioned())
-    {
-        return -EACCES;
-    }
-    if (!s_lora_joined)
-    {
-        return -EAGAIN;
-    }
-
-    LOG_INF("LoRaWAN test TX request: port=%u, type=%u, length=%u",
-            s_lora_config.uplink_fport,
-            s_lora_config.confirmed_uplink ? MODEM_E_UPLINK_CONFIRMED : MODEM_E_UPLINK_UNCONFIRMED,
-            (uint8_t)sizeof(test_payload));
-    LOG_HEXDUMP_INF(test_payload, sizeof(test_payload), "LoRaWAN test TX payload");
-
-    response = modem_e_request_tx(NULL, s_lora_config.uplink_fport,
-                                  s_lora_config.confirmed_uplink ? MODEM_E_UPLINK_CONFIRMED :
-                                                                    MODEM_E_UPLINK_UNCONFIRMED,
-                                  test_payload, sizeof(test_payload));
-    if (response != MODEM_E_RESPONSE_CODE_OK)
-    {
-        LOG_WRN("LoRaWAN test uplink rejected: 0x%02x", response);
-        return -EBUSY;
-    }
-
-    s_next_uplink_ms = k_uptime_get() +
-                       ((int64_t)s_lora_config.uplink_interval_s * MSEC_PER_SEC);
-    LOG_INF("LoRaWAN test uplink queued: TEST");
-    return 0;
+    payload = my_lora_get_test_payload(&payload_length);
+    return my_lora_send_payload(payload, payload_length);
 }
 #endif
 
@@ -331,7 +287,21 @@ void my_lora_poll(void)
         break;
 
     case MODEM_E_LORAWAN_EVENT_TX_DONE:
-        LOG_INF("LoRaWAN uplink completed");
+        if (s_tx_request_ms > 0)
+        {
+            LOG_INF("LoRaWAN uplink completed, request-to-tx-done=%lld ms",
+                    k_uptime_get() - s_tx_request_ms);
+            s_tx_request_ms = 0;
+        }
+        else
+        {
+            LOG_INF("LoRaWAN uplink completed without tracked request");
+        }
+        break;
+
+    case MODEM_E_LORAWAN_EVENT_REGIONAL_DUTY_CYCLE:
+        LOG_WRN("LoRaWAN regional duty-cycle event: data=0x%04x, missed=%u",
+                modem_event.data, modem_event.missed_events_count);
         break;
 
     case MODEM_E_LORAWAN_EVENT_DOWN_DATA:
