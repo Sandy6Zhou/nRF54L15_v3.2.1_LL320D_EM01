@@ -1,19 +1,31 @@
-/* LoRaWAN 业务层：负责生命周期、入网重试、上行和下行处理策略。 */
+/********************************************************************
+**版权所有         深圳市几米物联有限公司
+**文件名称:        my_lora.c
+**文件描述:        LoRaWAN 业务模块实现文件
+**当前版本:        V1.0
+**作    者:        周森达 (zhousenda@jimiiot.com)
+**完成日期:        2026.08.24
+*********************************************************************
+** 功能描述:       负责 LoRaWAN 生命周期、入网重试、上行和下行处理
+*********************************************************************/
+
 #include "my_comm.h"
 
 LOG_MODULE_REGISTER(my_lora, LOG_LEVEL_INF);
 
-#define MY_LORA_A0_TEST_PAYLOAD_LENGTH 47U
-#define MY_LORA_STRESS_TEST_PAYLOAD_LENGTH 4U
 #define MY_LORA_MAX_DOWNLINK_LENGTH 242U
 #define MY_LORA_POLL_INTERVAL_MS 100U
 #define MY_LORA_JOIN_RETRY_INTERVAL_MS 30000U
+
+/* 研发测试配置开关：1 使用下方测试配置，0 使用量产占位配置。 */
+#define MY_LORA_USE_TEST_CONFIG 1
 
 /* LoRaWAN 服务状态，只有 LoRa 所有者线程可以修改。 */
 typedef enum
 {
     MY_LORA_STATE_OFF = 0,
     MY_LORA_STATE_STARTING,
+    MY_LORA_STATE_READY,
     MY_LORA_STATE_JOINING,
     MY_LORA_STATE_JOINED,
 } my_lora_state_t;
@@ -21,15 +33,8 @@ typedef enum
 /* LTE 或 shell 请求通过该队列串行提交给 LoRa 所有者线程。 */
 K_MSGQ_DEFINE(my_lora_msgq, sizeof(msg_t), 10, 4);
 
-#if !MY_LORA_A0_TEST_PAYLOAD_ENABLE
-/* 未启用 A0 帧时用于 Modem 压力测试的短载荷。 */
-static const uint8_t s_stress_test_payload[MY_LORA_STRESS_TEST_PAYLOAD_LENGTH] =
-    {
-        'T', 'E', 'S', 'T'};
-#endif
-
-/* shell 测试命令使用的固定 A0 验证帧。 */
-static const uint8_t s_a0_test_payload[MY_LORA_A0_TEST_PAYLOAD_LENGTH] =
+/* LoRaWAN 周期上行使用的正式业务载荷。 */
+static const uint8_t s_lora_uplink_payload[] =
     {
         0x78, 0x78, 0x2A, 0xA0, 0x1A, 0x08, 0x14, 0x05,
         0x36, 0x21, 0xCF, 0x02, 0x6C, 0x15, 0x95, 0x0C,
@@ -38,7 +43,10 @@ static const uint8_t s_a0_test_payload[MY_LORA_A0_TEST_PAYLOAD_LENGTH] =
         0x00, 0x00, 0x00, 0x90, 0xF8, 0x4F, 0x00, 0x00,
         0x00, 0x00, 0x11, 0xDF, 0xCE, 0x0D, 0x0A};
 
-/* LoRa 所有者线程使用的运行参数和入网配置。 */
+/*
+ * 研发测试配置区：后续联调只修改本文件中的 s_lora_config，不要修改
+ * ext_module/lr1121/api 或 Semtech 驱动。量产版本应改为安全的配置注入流程。
+ */
 typedef struct
 {
     uint8_t dev_eui[8];
@@ -50,53 +58,87 @@ typedef struct
     bool confirmed_uplink;
 } my_lora_config_t;
 
-/* 已配置的 LoRaWAN 凭据和应用参数，量产时应替换为正式配置流程。 */
+/*
+ * LoRaWAN 测试数据：
+ * - MY_LORA_USE_TEST_CONFIG=1：使用下方已保存的研发测试 OTAA 参数；
+ * - 如测试网络更换，只需更新测试分支的 dev_eui/join_eui/app_key；
+ * - uplink_fport/downlink_fport：与网络服务器应用配置一致；
+ * - uplink_interval_s：周期上行间隔，测试时可适当缩短；
+ * - confirmed_uplink：是否使用确认上行。
+ *
+ * 全零凭证用于仅验证硬件和 Modem-E 版本，不会发起有效入网。
+ */
 static const my_lora_config_t s_lora_config =
-    {
-        /* 凭证必须通过量产配置注入，禁止把真实密钥提交到源码。 */
-        .dev_eui = {0},
-        .join_eui = {0},
-        .app_key = {0},
-        .uplink_fport = 1,
-        .downlink_fport = 1,
-        .uplink_interval_s = 600,
-        .confirmed_uplink = false,
+{
+#if MY_LORA_USE_TEST_CONFIG
+    /* LoRaWAN 测试网络参数，仅用于研发联调。 */
+    .dev_eui = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10},
+    .join_eui = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x99},
+    .app_key = {0x41, 0x78, 0xD6, 0x9D, 0x85, 0x56, 0xF2, 0x00,
+                0x3F, 0x4D, 0xB5, 0x64, 0x1C, 0x48, 0x1B, 0x6D},
+    .uplink_fport = 1,
+    .downlink_fport = 1,
+    .uplink_interval_s = 600,
+    .confirmed_uplink = false,
+#else
+    /* 量产版本禁止在源码中放置真实凭证。 */
+    .dev_eui = {0},
+    .join_eui = {0},
+    .app_key = {0},
+    .uplink_fport = 1,
+    .downlink_fport = 1,
+    .uplink_interval_s = 600,
+    .confirmed_uplink = false,
+#endif
 };
 
 /* 仅由 LoRa 线程访问的运行状态。 */
-static my_lora_state_t s_lora_state = MY_LORA_STATE_OFF;
-static bool s_lora_enabled = false;
-static bool s_lora_initialized = false;
-static int64_t s_next_uplink_ms;
-static int64_t s_tx_request_ms;
-static int64_t s_next_join_retry_ms;
-/* 线程控制块，由 my_lora_init() 创建一次。 */
-static struct k_thread s_lora_thread;
+typedef struct
+{
+    my_lora_state_t state;
+    bool enabled;
+    bool initialized;
+    int64_t next_uplink_ms;
+    int64_t tx_request_ms;
+    int64_t next_join_retry_ms;
+} my_lora_context_t;
+
+static my_lora_context_t s_lora_context = {
+    .state = MY_LORA_STATE_OFF,
+};
 /* LoRa 所有者线程的专用栈。 */
-K_THREAD_STACK_DEFINE(s_lora_thread_stack, MY_LORA_TASK_STACK_SIZE);
+K_THREAD_STACK_DEFINE(my_lora_task_stack, MY_LORA_TASK_STACK_SIZE);
+static struct k_thread s_my_lora_task_data;
 
 static void my_lora_thread(void* arg1, void* arg2, void* arg3);
 int my_lora_send_payload(const uint8_t* payload, uint8_t payload_length);
-static const uint8_t* my_lora_get_test_payload(uint8_t* payload_length);
 
-/** 在 LoRa 所有者线程中执行一条控制请求。 */
+/*********************************************************************
+**函数名称:  my_lora_handle_message
+**入口参数:  message_id -- LoRa 控制消息 ID
+**出口参数:  无
+**函数功能:  在 LoRa 所有者线程中执行一条控制请求
+**返 回 值:  无
+*********************************************************************/
 static void my_lora_handle_message(uint32_t message_id)
 {
     switch (message_id)
     {
         case MY_MSG_LORA_ENABLE:
-            if (!s_lora_enabled)
+            if (!s_lora_context.enabled)
             {
-                s_lora_enabled = true;
-                s_lora_initialized = false;
-                s_lora_state = MY_LORA_STATE_STARTING;
-                s_next_join_retry_ms = k_uptime_get();
+                s_lora_context.enabled = true;
+                s_lora_context.initialized = false;
+                s_lora_context.state = MY_LORA_STATE_STARTING;
+                s_lora_context.next_join_retry_ms = k_uptime_get();
                 LOG_INF("LoRaWAN service enabled; starting modem");
             }
             break;
 
         case MY_MSG_LORA_DISABLE:
-            if (s_lora_initialized)
+            if (s_lora_context.initialized &&
+                ((s_lora_context.state == MY_LORA_STATE_JOINING) ||
+                 (s_lora_context.state == MY_LORA_STATE_JOINED)))
             {
                 modem_e_response_code_t response = lr1121_lora_leave_network();
 
@@ -105,47 +147,40 @@ static void my_lora_handle_message(uint32_t message_id)
                     LOG_WRN("LoRaWAN leave network failed: 0x%02x", response);
                 }
             }
-            s_lora_enabled = false;
-            s_lora_initialized = false;
-            s_lora_state = MY_LORA_STATE_OFF;
-            s_next_uplink_ms = 0;
-            s_next_join_retry_ms = 0;
-            s_tx_request_ms = 0;
+            s_lora_context.enabled = false;
+            s_lora_context.initialized = false;
+            s_lora_context.state = MY_LORA_STATE_OFF;
+            s_lora_context.next_uplink_ms = 0;
+            s_lora_context.next_join_retry_ms = 0;
+            s_lora_context.tx_request_ms = 0;
             LOG_INF("LoRaWAN service disabled");
             break;
-
-        case MY_MSG_LORA_TEST_UPLINK:
-#if MY_LORA_SHELL_TEST_ENABLE
-        {
-            const uint8_t* payload;
-            uint8_t payload_length;
-
-            payload = my_lora_get_test_payload(&payload_length);
-            (void)my_lora_send_payload(payload, payload_length);
-            break;
-        }
-#else
-            break;
-#endif
 
         default:
             break;
     }
 }
 
-/** 选择已配置的测试载荷，不执行数据拷贝。 */
-static const uint8_t* my_lora_get_test_payload(uint8_t* payload_length)
+/*********************************************************************
+**函数名称:  my_lora_get_uplink_payload
+**入口参数:  payload_length -- 用于保存载荷长度的指针
+**出口参数:  payload_length -- 返回正式业务载荷长度
+**函数功能:  获取正式业务上行载荷，不执行数据拷贝
+**返 回 值:  正式业务载荷指针
+*********************************************************************/
+static const uint8_t* my_lora_get_uplink_payload(uint8_t* payload_length)
 {
-#if MY_LORA_A0_TEST_PAYLOAD_ENABLE
-    *payload_length = sizeof(s_a0_test_payload);
-    return s_a0_test_payload;
-#else
-    *payload_length = sizeof(s_stress_test_payload);
-    return s_stress_test_payload;
-#endif
+    *payload_length = sizeof(s_lora_uplink_payload);
+    return s_lora_uplink_payload;
 }
 
-/** 检查 OTAA 凭据是否已完成配置。 */
+/*********************************************************************
+**函数名称:  my_lora_is_provisioned
+**入口参数:  无
+**出口参数:  无
+**函数功能:  检查 OTAA 凭据是否已完成配置
+**返 回 值:  true 表示已配置，false 表示未配置
+*********************************************************************/
 static bool my_lora_is_provisioned(void)
 {
     static const uint8_t empty_eui[8];
@@ -156,16 +191,22 @@ static bool my_lora_is_provisioned(void)
            (memcmp(s_lora_config.app_key, empty_key, sizeof(empty_key)) != 0);
 }
 
-/** 配置 OTAA 参数并发起一次入网尝试。 */
+/*********************************************************************
+**函数名称:  my_lora_start_otaa
+**入口参数:  无
+**出口参数:  无
+**函数功能:  配置 OTAA 参数并发起一次入网尝试
+**返 回 值:  0 表示成功，负值表示 Modem-E 操作失败
+*********************************************************************/
 static int my_lora_start_otaa(void)
 {
     modem_e_response_code_t response = lr1121_lora_configure_otaa(s_lora_config.dev_eui,
-        s_lora_config.join_eui,
-        s_lora_config.app_key);
+        s_lora_config.join_eui, s_lora_config.app_key);
     if (response == MODEM_E_RESPONSE_CODE_OK)
     {
         response = lr1121_lora_join();
     }
+
     if (response != MODEM_E_RESPONSE_CODE_OK)
     {
         LOG_ERR("LoRaWAN OTAA setup failed: 0x%02x", response);
@@ -176,7 +217,13 @@ static int my_lora_start_otaa(void)
     return 0;
 }
 
-/** 入网前复位、识别并配置 Modem-E。 */
+/*********************************************************************
+**函数名称:  my_lora_initialize_modem
+**入口参数:  无
+**出口参数:  无
+**函数功能:  入网前复位、识别并配置 Modem-E
+**返 回 值:  0 表示成功，负值表示初始化失败
+*********************************************************************/
 static int my_lora_initialize_modem(void)
 {
     modem_e_system_version_t version = {0};
@@ -221,14 +268,19 @@ static int my_lora_initialize_modem(void)
         lorawan_version.rp_minor,
         lorawan_version.rp_patch,
         lorawan_version.rp_revision);
-#if 0 // TODO 暂时获取的type不是LR1121(供应商反馈是时序问题,待排查,影响不大)
     if (version.type != MODEM_E_SYSTEM_VERSION_TYPE_LR1121)
     {
         LOG_ERR("Unexpected Modem-E device type: 0x%02x", version.type);
         return -ENODEV;
     }
-#endif
-    s_lora_initialized = true;
+    s_lora_context.initialized = true;
+
+    if (!my_lora_is_provisioned())
+    {
+        s_lora_context.state = MY_LORA_STATE_READY;
+        LOG_WRN("LR1121 detected; OTAA credentials are not configured");
+        return 0;
+    }
 
     response = my_lora_start_otaa();
     if (response != 0)
@@ -236,60 +288,54 @@ static int my_lora_initialize_modem(void)
         return response;
     }
 
-    s_lora_state = MY_LORA_STATE_JOINING;
-    s_next_join_retry_ms = k_uptime_get() + MY_LORA_JOIN_RETRY_INTERVAL_MS;
+    s_lora_context.state = MY_LORA_STATE_JOINING;
+    s_lora_context.next_join_retry_ms = k_uptime_get() + MY_LORA_JOIN_RETRY_INTERVAL_MS;
     return 0;
 }
 
 /** 初始化消息端点并创建唯一的 LoRa 所有者线程。 */
-int my_lora_init(void)
+int my_lora_init(k_tid_t *tid)
 {
     k_tid_t lora_thread_id;
 
-    s_lora_state = MY_LORA_STATE_OFF;
-    s_lora_enabled = false;
-    s_lora_initialized = false;
+    if (tid == NULL)
+    {
+        return -EINVAL;
+    }
+
+    s_lora_context.state = MY_LORA_STATE_OFF;
+    s_lora_context.enabled = false;
+    s_lora_context.initialized = false;
     my_init_msg_handler(MOD_LORA, &my_lora_msgq);
-    lora_thread_id = k_thread_create(&s_lora_thread, s_lora_thread_stack,
-        K_THREAD_STACK_SIZEOF(s_lora_thread_stack),
+    lora_thread_id = k_thread_create(&s_my_lora_task_data, my_lora_task_stack,
+        K_THREAD_STACK_SIZEOF(my_lora_task_stack),
         my_lora_thread, NULL, NULL, NULL,
         MY_LORA_TASK_PRIORITY, 0, K_NO_WAIT);
+    *tid = lora_thread_id;
     k_thread_name_set(lora_thread_id, "MY_LORA");
     LOG_INF("LoRaWAN service initialized and disabled");
     return 0;
 }
 
-/** 异步提交 LoRa 开启请求。 */
-int my_lora_enable(void)
-{
-    if (!my_lora_is_provisioned())
-    {
-        return -EACCES;
-    }
-    my_send_msg(MOD_MAIN, MOD_LORA, MY_MSG_LORA_ENABLE);
-    return 0;
-}
-
-/** 异步提交 LoRa 关闭请求。 */
-int my_lora_disable(void)
-{
-    my_send_msg(MOD_MAIN, MOD_LORA, MY_MSG_LORA_DISABLE);
-    return 0;
-}
-
-/** 入网成功且定时器到期时发送周期上行数据。 */
+/*********************************************************************
+**函数名称:  my_lora_schedule_uplink
+**入口参数:  无
+**出口参数:  无
+**函数功能:  入网成功且定时器到期时发送周期上行数据
+**返 回 值:  无
+*********************************************************************/
 static void my_lora_schedule_uplink(void)
 {
     const uint8_t* payload;
     uint8_t payload_length;
 
-    if ((s_lora_state != MY_LORA_STATE_JOINED) ||
-        (k_uptime_get() < s_next_uplink_ms))
+    if ((s_lora_context.state != MY_LORA_STATE_JOINED) ||
+        (k_uptime_get() < s_lora_context.next_uplink_ms))
     {
         return;
     }
 
-    payload = my_lora_get_test_payload(&payload_length);
+    payload = my_lora_get_uplink_payload(&payload_length);
     (void)my_lora_send_payload(payload, payload_length);
 }
 
@@ -303,15 +349,16 @@ int my_lora_send_payload(const uint8_t* payload, uint8_t payload_length)
     {
         return -EINVAL;
     }
-    if (!s_lora_initialized)
+    if (!s_lora_context.initialized)
     {
         return -ENODEV;
     }
+
     if (!my_lora_is_provisioned())
     {
         return -EACCES;
     }
-    if (s_lora_state != MY_LORA_STATE_JOINED)
+    if (s_lora_context.state != MY_LORA_STATE_JOINED)
     {
         return -EAGAIN;
     }
@@ -326,26 +373,24 @@ int my_lora_send_payload(const uint8_t* payload, uint8_t payload_length)
         return -EBUSY;
     }
 
-    s_tx_request_ms = k_uptime_get();
-    s_next_uplink_ms = k_uptime_get() +
+    s_lora_context.tx_request_ms = k_uptime_get();
+    s_lora_context.next_uplink_ms = k_uptime_get() +
                        ((int64_t)s_lora_config.uplink_interval_s * MSEC_PER_SEC);
     LOG_INF("LoRaWAN raw uplink queued: %u bytes", payload_length);
     LOG_HEXDUMP_INF(payload, payload_length, "LoRaWAN raw uplink payload");
     return 0;
 }
 
-#if MY_LORA_SHELL_TEST_ENABLE
-int my_lora_request_test_uplink(void)
-{
-    my_send_msg(MOD_MAIN, MOD_LORA, MY_MSG_LORA_TEST_UPLINK);
-    return 0;
-}
-#endif
-
-/** 读取并记录一次下行事件，仅处理配置的 FPort。 */
+/*********************************************************************
+**函数名称:  my_lora_handle_down_data
+**入口参数:  无
+**出口参数:  无
+**函数功能:  读取并记录一次下行事件，仅处理配置的 FPort
+**返 回 值:  无
+*********************************************************************/
 static void my_lora_handle_down_data(void)
 {
-    uint8_t payload[MY_LORA_MAX_DOWNLINK_LENGTH];
+    static uint8_t payload[MY_LORA_MAX_DOWNLINK_LENGTH];
     uint8_t payload_size = 0U;
     uint8_t remaining;
     modem_e_downlink_metadata_t metadata;
@@ -382,39 +427,57 @@ static void my_lora_handle_down_data(void)
     ARG_UNUSED(remaining);
 }
 
-/** 推进一次入网、事件和上行状态，仅由 my_lora_thread() 调用。 */
+/*********************************************************************
+**函数名称:  my_lora_poll
+**入口参数:  无
+**出口参数:  无
+**函数功能:  推进一次入网、事件和上行状态
+**返 回 值:  无
+*********************************************************************/
 static void my_lora_poll(void)
 {
     modem_e_event_fields_t modem_event;
     modem_e_response_code_t response;
 
-    if (!s_lora_enabled || !my_lora_is_provisioned())
+    if (!s_lora_context.enabled || !my_lora_is_provisioned())
     {
         return;
     }
 
-    if ((s_lora_state == MY_LORA_STATE_STARTING) &&
-        (k_uptime_get() >= s_next_join_retry_ms))
+    switch (s_lora_context.state)
     {
-        if (my_lora_initialize_modem() != 0)
-        {
-            s_lora_initialized = false;
-            s_next_join_retry_ms = k_uptime_get() + MY_LORA_JOIN_RETRY_INTERVAL_MS;
-        }
-        return;
-    }
+        case MY_LORA_STATE_STARTING:
+            if (k_uptime_get() >= s_lora_context.next_join_retry_ms)
+            {
+                if (my_lora_initialize_modem() != 0)
+                {
+                    s_lora_context.initialized = false;
+                    s_lora_context.next_join_retry_ms =
+                        k_uptime_get() + MY_LORA_JOIN_RETRY_INTERVAL_MS;
+                }
+            }
+            /* Modem 初始化前不能查询事件。 */
+            return;
 
-    if ((s_lora_state == MY_LORA_STATE_JOINING) &&
-        (k_uptime_get() >= s_next_join_retry_ms))
-    {
-        if (my_lora_start_otaa() == 0)
-        {
-            s_next_join_retry_ms = k_uptime_get() + MY_LORA_JOIN_RETRY_INTERVAL_MS;
-        }
-        else
-        {
-            s_next_join_retry_ms = k_uptime_get() + MY_LORA_JOIN_RETRY_INTERVAL_MS;
-        }
+        case MY_LORA_STATE_READY:
+            /* 已识别但未配置凭证，不执行事件轮询。 */
+            return;
+
+        case MY_LORA_STATE_JOINING:
+            if (k_uptime_get() >= s_lora_context.next_join_retry_ms)
+            {
+                (void)my_lora_start_otaa();
+                s_lora_context.next_join_retry_ms =
+                    k_uptime_get() + MY_LORA_JOIN_RETRY_INTERVAL_MS;
+            }
+            break;
+
+        case MY_LORA_STATE_JOINED:
+            break;
+
+        case MY_LORA_STATE_OFF:
+        default:
+            return;
     }
 
     response = lr1121_lora_get_event(&modem_event);
@@ -430,23 +493,23 @@ static void my_lora_poll(void)
         switch (modem_event.event_type)
         {
             case MODEM_E_LORAWAN_EVENT_JOINED:
-                s_lora_state = MY_LORA_STATE_JOINED;
-                s_next_uplink_ms = k_uptime_get();
+                s_lora_context.state = MY_LORA_STATE_JOINED;
+                s_lora_context.next_uplink_ms = k_uptime_get();
                 LOG_INF("LoRaWAN joined");
                 break;
 
             case MODEM_E_LORAWAN_EVENT_JOIN_FAIL:
-                s_lora_state = MY_LORA_STATE_JOINING;
-                s_next_join_retry_ms = k_uptime_get() + MY_LORA_JOIN_RETRY_INTERVAL_MS;
+                s_lora_context.state = MY_LORA_STATE_JOINING;
+                s_lora_context.next_join_retry_ms = k_uptime_get() + MY_LORA_JOIN_RETRY_INTERVAL_MS;
                 LOG_WRN("LoRaWAN join attempt failed; retry scheduled");
                 break;
 
             case MODEM_E_LORAWAN_EVENT_TX_DONE:
-                if (s_tx_request_ms > 0)
+                if (s_lora_context.tx_request_ms > 0)
                 {
                     LOG_INF("LoRaWAN uplink completed, request-to-tx-done=%lld ms",
-                        k_uptime_get() - s_tx_request_ms);
-                    s_tx_request_ms = 0;
+                        k_uptime_get() - s_lora_context.tx_request_ms);
+                    s_lora_context.tx_request_ms = 0;
                 }
                 else
                 {
@@ -464,28 +527,45 @@ static void my_lora_poll(void)
                 break;
 
             default:
-                LOG_DBG("LoRaWAN event %u", modem_event.event_type);
+                LOG_INF("LoRaWAN event %u", modem_event.event_type);
                 break;
         }
     }
 
-    if (s_lora_state == MY_LORA_STATE_JOINED)
+    if (s_lora_context.state == MY_LORA_STATE_JOINED)
     {
         my_lora_schedule_uplink();
     }
 }
 
-/** 独占 LoRa 消息队列并执行全部 Modem-E 事务。 */
+/*********************************************************************
+**函数名称:  my_lora_thread
+**入口参数:  arg1 -- 线程参数一
+**           arg2 -- 线程参数二
+**           arg3 -- 线程参数三
+**出口参数:  无
+**函数功能:  独占 LoRa 消息队列并执行全部 Modem-E 事务
+**返 回 值:  无
+*********************************************************************/
 static void my_lora_thread(void* arg1, void* arg2, void* arg3)
 {
+    msg_t message;
+    int err = 0;
+
     ARG_UNUSED(arg1);
     ARG_UNUSED(arg2);
     ARG_UNUSED(arg3);
 
-    while (true)
+    /* SPIM20 跨域使用 P2 引脚前必须启用 Constant Latency */
+    // TODO 在传输结束不需要时应该调用 nrf_sys_event_release_global_constlat() 释放，以兼顾稳定性和功耗。目前还没调用
+    err = nrf_sys_event_request_global_constlat();
+    if (err != 0)
     {
-        msg_t message;
+        MY_LOG_ERR("Failed to request global constlat: %d", err);
+    }
 
+    for (;;)
+    {
         if (my_recv_msg(&my_lora_msgq, &message, sizeof(message),
                 K_MSEC(MY_LORA_POLL_INTERVAL_MS)) == 0)
         {

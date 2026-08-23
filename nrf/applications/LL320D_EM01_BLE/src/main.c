@@ -2,9 +2,6 @@
 #define BLE_LOG_MODULE_ID BLE_LOG_MOD_MAIN
 
 #include "my_comm.h"
-#include "my_lora.h"
-
-#include <nrf_sys_event.h>
 
 #define LOG_MODULE_NAME my_main
 LOG_MODULE_REGISTER(LOG_MODULE_NAME);
@@ -16,6 +13,7 @@ static k_tid_t s_my_ctrl_task_id = NULL;
 static k_tid_t s_my_lte_task_id = NULL;
 static k_tid_t s_my_magnetic_uart_task_id = NULL;
 static k_tid_t s_my_gsensor_task_id = NULL;
+static k_tid_t s_my_lora_task_id = NULL;
 
 static k_tid_t s_my_task_info[MAX_MY_MOD_TYPE] = {NULL};
 
@@ -81,6 +79,7 @@ void custom_task_info_init(void)
     s_my_task_info[MOD_LTE] = s_my_lte_task_id;
     s_my_task_info[MOD_MAGNETIC_UART] = s_my_magnetic_uart_task_id;
     s_my_task_info[MOD_GSENSOR] = s_my_gsensor_task_id;
+    s_my_task_info[MOD_LORA] = s_my_lora_task_id;
 }
 
 /*********************************************************************
@@ -937,15 +936,7 @@ int main(void)
     /* 打印应用信息 */
     print_app_info();
 
-    /* SPIM20 跨域使用 P2 引脚前必须启用 Constant Latency */
-    // TODO 在传输结束不需要时调用 nrf_sys_event_release_global_constlat() 释放，以兼顾稳定性和功耗
-    err = nrf_sys_event_request_global_constlat();
-    if (err != 0)
-    {
-        MY_LOG_ERR("Failed to request global constlat: %d", err);
-    }
-
-    err = my_lora_init();
+    err = my_lora_init(&s_my_lora_task_id);
     if (err)
     {
         MY_LOG_ERR("LoRaWAN service initialization failed (err %d)", err);
@@ -953,6 +944,7 @@ int main(void)
 
     /* 获取当前线程 ID 并保存 */
     s_my_main_task_id = k_current_get();
+
     /* 初始化电源管理子系统（必须在其他模块之前） */
     my_pm_init();
 
@@ -1000,14 +992,13 @@ int main(void)
         /* LTE 初始化失败可以选择不进入 error() 阻塞，视具体需求而定 */
     }
 
-    /* UART20 is temporarily reserved for LR1121 SPI20 validation. */
-
     /* 初始化 G-Sensor 模块 */
     err = my_gsensor_init(&s_my_gsensor_task_id);
     if (err)
     {
         MY_LOG_ERR("Failed to initialize G-Sensor (err %d)", err);
     }
+
     /* 初始化自定义任务信息 */
     custom_task_info_init();
 
@@ -1032,7 +1023,7 @@ int main(void)
     {
         memset(&msg, 0, sizeof(msg_t));
 
-        my_recv_msg(&my_main_msgq, (void *)&msg, sizeof(msg_t), K_MSEC(100));
+        my_recv_msg(&my_main_msgq, (void *)&msg, sizeof(msg_t), K_FOREVER);
 
         switch (msg.msgID)
         {

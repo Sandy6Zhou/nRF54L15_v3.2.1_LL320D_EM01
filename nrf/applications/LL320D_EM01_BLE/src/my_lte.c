@@ -2333,32 +2333,15 @@ static int my_lte_handle_power_off(char *data)
 *********************************************************************/
 static int my_lte_handle_lora(char *data)
 {
-    int ret;
-
     if (strcmp(data, "1") == 0)
     {
-        ret = my_lora_enable();
-
-        if (ret != 0)
-        {
-            my_lte_send_msg("LTE+LORA=FAIL,NOT_CONFIGURED\r\n",
-                strlen("LTE+LORA=FAIL,NOT_CONFIGURED\r\n"));
-            return ret;
-        }
+        my_send_msg(MOD_LTE, MOD_LORA, MY_MSG_LORA_ENABLE);
         my_lte_send_msg("LTE+LORA=OK,1\r\n", strlen("LTE+LORA=OK,1\r\n"));
         return 0;
     }
-
-    if (strcmp(data, "0") == 0)
+    else if (strcmp(data, "0") == 0)
     {
-        ret = my_lora_disable();
-
-        if (ret != 0)
-        {
-            my_lte_send_msg("LTE+LORA=FAIL,SERVICE\r\n",
-                strlen("LTE+LORA=FAIL,SERVICE\r\n"));
-            return ret;
-        }
+        my_send_msg(MOD_LTE, MOD_LORA, MY_MSG_LORA_DISABLE);
         my_lte_send_msg("LTE+LORA=OK,0\r\n", strlen("LTE+LORA=OK,0\r\n"));
         return 0;
     }

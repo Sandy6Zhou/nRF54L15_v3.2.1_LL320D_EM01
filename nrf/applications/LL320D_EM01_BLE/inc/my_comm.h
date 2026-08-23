@@ -84,6 +84,7 @@
 #include <bluetooth/services/nus.h>
 #include <soc.h>
 #include <uart_async_adapter.h>
+#include <nrf_sys_event.h>
 
 /* ========== 通用宏定义 ========== */
 #define JM_SLEEP(timeout) k_sleep(timeout)
@@ -229,7 +230,6 @@ typedef enum
     MY_MSG_LTE_REV,
     MY_MSG_LORA_ENABLE,
     MY_MSG_LORA_DISABLE,
-    MY_MSG_LORA_TEST_UPLINK,
     MY_MSG_RETRANS_CHECK,
     MY_MSG_ADD_RETRANS_QUEUE,
     MY_MSG_MAGNETIC_UART_REV,

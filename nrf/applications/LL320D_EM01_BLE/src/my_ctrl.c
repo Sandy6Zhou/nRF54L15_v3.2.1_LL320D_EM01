@@ -1992,7 +1992,7 @@ int my_ctrl_init(k_tid_t *tid)
         return ret;
     }
 
-    /* LoRa validation owns P2.05 as LR1121 NSS, so sensor power remains disabled. */
+    /* LoRa 验证占用 P2.05 作为 LR1121 NSS，环境传感器保持断电。 */
     /* sensor_module_init(); */
 
     /* 启动时响一声提示音 */

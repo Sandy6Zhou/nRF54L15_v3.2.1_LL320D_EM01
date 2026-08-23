@@ -30,7 +30,7 @@ LOG_MODULE_REGISTER(my_magnetic_uart, LOG_LEVEL_INF);
 #define MAGNETIC_UART_DEBUG_ENABLE           1
 
 #define MAGNETIC_UART_NODE DT_ALIAS(magnetic_uart)
-static const struct device *s_magnetic_uart_dev = DEVICE_DT_GET_OR_NULL(MAGNETIC_UART_NODE);
+static const struct device *s_magnetic_uart_dev = DEVICE_DT_GET_OR_NULL(MAGNETIC_UART_NODE);//TODO 不使用
 
 typedef struct
 {

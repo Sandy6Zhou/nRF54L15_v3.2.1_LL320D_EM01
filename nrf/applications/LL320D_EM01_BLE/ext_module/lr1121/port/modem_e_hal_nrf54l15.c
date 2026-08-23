@@ -1,3 +1,14 @@
+/********************************************************************
+**版权所有         深圳市几米物联有限公司
+**文件名称:        modem_e_hal_nrf54l15.c
+**文件描述:        LR1121 Modem-E NRF54L15 硬件抽象层实现文件
+**当前版本:        V1.0
+**作    者:        周森达 (zhousenda@jimiiot.com)
+**完成日期:        2026.08.24
+*********************************************************************
+** 功能描述:       提供 LR1121 SPI、BUSY、NSS 和复位的板级适配
+*********************************************************************/
+
 #include <zephyr/device.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/spi.h>
@@ -181,16 +192,31 @@ static int lr1121_wakeup(void)
 static int lr1121_write_frame(const uint8_t* command, uint16_t command_length, const uint8_t* data,
     uint16_t data_length)
 {
-    uint8_t crc = modem_e_modem_compute_crc(0xFF, command, command_length);
-    struct spi_buf buffers[3] = {
-        {.buf = (void*)command, .len = command_length},
-        {.buf = (void*)data, .len = data_length},
-        {.buf = &crc, .len = 1},
-    };
+    uint8_t crc;
+    uint8_t buffer_count = 0U;
+    struct spi_buf buffers[3];
     struct spi_buf_set tx = {
         .buffers = buffers,
-        .count = ARRAY_SIZE(buffers),
+        .count = 0U,
     };
+
+    if ((command == NULL) || (command_length == 0U) ||
+        ((data == NULL) && (data_length != 0U)))
+    {
+        return -EINVAL;
+    }
+
+    crc = modem_e_modem_compute_crc(0xFF, command, command_length);
+    buffers[buffer_count++] = (struct spi_buf){.buf = (void*)command, .len = command_length};
+
+    if (data_length != 0U)
+    {
+        buffers[buffer_count++] = (struct spi_buf){.buf = (void*)data, .len = data_length};
+    }
+
+    crc = modem_e_modem_compute_crc(crc, data, data_length);
+    buffers[buffer_count++] = (struct spi_buf){.buf = &crc, .len = 1U};
+    tx.count = buffer_count;
 
 #if LR1121_HAL_DEBUG_ENABLE
     if ((command_length >= 3U) && (command[0] == 0x06U) && (command[1] == 0x02U) &&
@@ -205,7 +231,6 @@ static int lr1121_write_frame(const uint8_t* command, uint16_t command_length, c
     }
 #endif
 
-    crc = modem_e_modem_compute_crc(crc, data, data_length);
     return lr1121_transfer(&tx, NULL);
 }
 
@@ -221,8 +246,7 @@ static int lr1121_write_frame(const uint8_t* command, uint16_t command_length, c
 **返 回 值:  Modem-E HAL 状态码
 *********************************************************************/
 modem_e_modem_hal_status_t modem_e_modem_hal_write(const void* context, const uint8_t* command,
-    uint16_t command_length, const uint8_t* data,
-    uint16_t data_length)
+    uint16_t command_length, const uint8_t* data, uint16_t data_length)
 {
     uint8_t status = 0;
     uint8_t status_crc = 0;
@@ -288,8 +312,7 @@ modem_e_modem_hal_status_t modem_e_modem_hal_write(const void* context, const ui
 **返 回 值:  Modem-E HAL 状态码
 *********************************************************************/
 modem_e_modem_hal_status_t modem_e_modem_hal_read(const void* context, const uint8_t* command,
-    uint16_t command_length, uint8_t* data,
-    uint16_t data_length)
+    uint16_t command_length, uint8_t* data, uint16_t data_length)
 {
     int err;
     uint8_t status = 0;
@@ -401,8 +424,10 @@ modem_e_modem_hal_status_t modem_e_modem_hal_write_read(const void* context, con
 
     ARG_UNUSED(context);
 
-    if ((lr1121_wakeup() != 0) || (lr1121_transfer(&tx, &rx) != 0) ||
-        (lr1121_wait_busy(1, LR1121_BUSY_TIMEOUT_MS) != 0))
+    if ((command == NULL) || ((data == NULL) && (data_length != 0U)) ||
+        (lr1121_wakeup() != 0) || (lr1121_transfer(&tx, &rx) != 0) ||
+        (lr1121_wait_busy(1, LR1121_BUSY_TIMEOUT_MS) != 0) ||
+        (lr1121_wait_busy(0, LR1121_BUSY_TIMEOUT_MS) != 0))
     {
         return MODEM_E_MODEM_HAL_STATUS_BUSY_TIMEOUT;
     }
@@ -591,12 +616,18 @@ modem_e_hal_status_t modem_e_hal_write_read(const void* context, const uint8_t* 
 *********************************************************************/
 modem_e_hal_status_t modem_e_hal_direct_read(const void* context, uint8_t* data, uint16_t data_length)
 {
-    struct spi_buf tx_buf = {.buf = NULL, .len = data_length};
+    static const uint8_t nop[LR1121_NOP_BUFFER_SIZE];
+    struct spi_buf tx_buf = {.buf = (void*)nop, .len = data_length};
     struct spi_buf rx_buf = {.buf = data, .len = data_length};
     struct spi_buf_set tx = {.buffers = &tx_buf, .count = 1};
     struct spi_buf_set rx = {.buffers = &rx_buf, .count = 1};
 
     ARG_UNUSED(context);
+
+    if (((data == NULL) && (data_length != 0U)) || (data_length > sizeof(nop)))
+    {
+        return MODEM_E_HAL_STATUS_ERROR;
+    }
 
     return (lr1121_transfer(&tx, &rx) == 0) ? MODEM_E_HAL_STATUS_OK : MODEM_E_HAL_STATUS_ERROR;
 }

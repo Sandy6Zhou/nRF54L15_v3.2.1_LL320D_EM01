@@ -160,7 +160,7 @@
 		};
 	};
 
-	/* LoRa validation owns P2.05 as LR1121 NSS; sensors remain powered off. */
+	/* LoRa 验证占用 P2.05 作为 LR1121 NSS，环境传感器保持断电。 */
 	env_sensor_pwr_en: env-sensor-pwr-en {
 		compatible = "nordic,gpio-pins";
 		gpios = <&gpio2 5 GPIO_ACTIVE_LOW>;
