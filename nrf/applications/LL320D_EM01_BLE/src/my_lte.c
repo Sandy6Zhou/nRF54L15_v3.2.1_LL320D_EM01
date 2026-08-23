@@ -50,6 +50,7 @@ char LTE_SN[] = "LTE+SN=";
 char LTE_GETMOT[] = "LTE+GETMOT=";
 char LTE_GETTIME[] = "LTE+GETTIME=";
 char LTE_GPSSTATE[] = "LTE+GPSSTATE=";
+char LTE_LORA[] = "LTE+LORA=";
 char BLE_CMD[] = "BLE+CMD=";
 char BLE[] = "BLE+";
 
@@ -2324,6 +2325,48 @@ static int my_lte_handle_power_off(char *data)
     return 0;
 }
 
+/********************************************************************
+**函数名称:  my_lte_handle_lora
+**入口参数:  data -- LoRa 开关参数，仅支持 "1" 或 "0"
+**函数功能:  处理 LTE+LORA=<0|1>，控制 LoRaWAN 服务开关
+**返 回 值:  0 表示命令执行成功，负值表示参数或服务错误
+*********************************************************************/
+static int my_lte_handle_lora(char *data)
+{
+    int ret;
+
+    if (strcmp(data, "1") == 0)
+    {
+        ret = my_lora_enable();
+
+        if (ret != 0)
+        {
+            my_lte_send_msg("LTE+LORA=FAIL,NOT_CONFIGURED\r\n",
+                strlen("LTE+LORA=FAIL,NOT_CONFIGURED\r\n"));
+            return ret;
+        }
+        my_lte_send_msg("LTE+LORA=OK,1\r\n", strlen("LTE+LORA=OK,1\r\n"));
+        return 0;
+    }
+
+    if (strcmp(data, "0") == 0)
+    {
+        ret = my_lora_disable();
+
+        if (ret != 0)
+        {
+            my_lte_send_msg("LTE+LORA=FAIL,SERVICE\r\n",
+                strlen("LTE+LORA=FAIL,SERVICE\r\n"));
+            return ret;
+        }
+        my_lte_send_msg("LTE+LORA=OK,0\r\n", strlen("LTE+LORA=OK,0\r\n"));
+        return 0;
+    }
+
+    my_lte_send_msg("LTE+LORA=FAIL,PARAM\r\n", strlen("LTE+LORA=FAIL,PARAM\r\n"));
+    return -EINVAL;
+}
+
 /*
 LTE+BTSET=ADVINT,<TC>,<TA>,< TF >
 LTE+BTSET=ADVNME,<广播名称>
@@ -3128,6 +3171,11 @@ int my_lte_parse_cmd(char *cmd, int cmd_len)
     else if (CMD_MATCHED(cmd, LTE_PWROFF))
     {
         ret = my_lte_handle_power_off(p + strlen(LTE_PWROFF));
+        goto END;
+    }
+    else if (CMD_MATCHED(cmd, LTE_LORA))
+    {
+        ret = my_lte_handle_lora(p + strlen(LTE_LORA));
         goto END;
     }
     else if (CMD_MATCHED(cmd, LTE_BTSET))

@@ -63,7 +63,8 @@ target_sources(app PRIVATE
   # ext_module/accelerometer/api/accelerometer_api.c
   # ext_module/accelerometer/drivers/DA213/src/da213_driver.c
   src/my_flash_store.c
-  ext_module/lr1121/api/my_lora.c
+  src/my_lora.c
+  ext_module/lr1121/api/lr1121_lora_api.c
   ext_module/lr1121/port/modem_e_hal_nrf54l15.c
   ext_module/lr1121/modemE_driver/src/modem_e_modem.c
   ext_module/lr1121/modemE_driver/src/modem_e_lorawan.c

@@ -930,12 +930,12 @@ int main(void)
     log_custom_timestamp_set(custom_timestamp_formatter);
     print_reset_reason();
 
-    // my_param_load_config();
+    my_param_load_config();
 
     psa_crypto_init();  // PSA库初始化
 
     /* 打印应用信息 */
-    // print_app_info();
+    print_app_info();
 
     /* SPIM20 跨域使用 P2 引脚前必须启用 Constant Latency */
     // TODO 在传输结束不需要时调用 nrf_sys_event_release_global_constlat() 释放，以兼顾稳定性和功耗
@@ -948,12 +948,11 @@ int main(void)
     err = my_lora_init();
     if (err)
     {
-        MY_LOG_ERR("LR1121 Modem-E validation failed (err %d)", err);
+        MY_LOG_ERR("LoRaWAN service initialization failed (err %d)", err);
     }
 
     /* 获取当前线程 ID 并保存 */
     s_my_main_task_id = k_current_get();
-#if 0
     /* 初始化电源管理子系统（必须在其他模块之前） */
     my_pm_init();
 
@@ -1009,7 +1008,6 @@ int main(void)
     {
         MY_LOG_ERR("Failed to initialize G-Sensor (err %d)", err);
     }
-#endif
     /* 初始化自定义任务信息 */
     custom_task_info_init();
 
@@ -1034,7 +1032,6 @@ int main(void)
     {
         memset(&msg, 0, sizeof(msg_t));
 
-        my_lora_poll();
         my_recv_msg(&my_main_msgq, (void *)&msg, sizeof(msg_t), K_MSEC(100));
 
         switch (msg.msgID)

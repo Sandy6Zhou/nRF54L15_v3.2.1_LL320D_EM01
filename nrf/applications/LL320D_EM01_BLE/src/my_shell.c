@@ -2049,31 +2049,12 @@ void cmd_read_gsensor_data(const struct shell *sh, size_t argc, char **argv)
 #if MY_LORA_SHELL_TEST_ENABLE
 static int cmd_lora_test(const struct shell *sh, size_t argc, char **argv)
 {
-    my_lora_status_t status;
     int ret;
 
     if (argc != 2)
     {
-        shell_print(sh, "Usage: app lora <status|init|tx>");
+        shell_print(sh, "Usage: app lora tx");
         return -EINVAL;
-    }
-
-    if (strcmp(argv[1], "status") == 0)
-    {
-        my_lora_get_status(&status);
-        shell_print(sh, "LR1121 detected: %s", status.modem_detected ? "yes" : "no");
-        shell_print(sh, "Hardware: 0x%02x, firmware: %u.%u", status.hardware_version,
-                    status.firmware_version >> 8, status.firmware_version & 0xFF);
-        shell_print(sh, "Credentials: %s", status.credentials_provisioned ? "configured" : "not configured");
-        shell_print(sh, "LoRaWAN joined: %s", status.joined ? "yes" : "no");
-        return 0;
-    }
-
-    if (strcmp(argv[1], "init") == 0)
-    {
-        ret = my_lora_init();
-        shell_print(sh, "LR1121 init ret=%d", ret);
-        return ret;
     }
 
     if (strcmp(argv[1], "tx") == 0)
@@ -2083,7 +2064,7 @@ static int cmd_lora_test(const struct shell *sh, size_t argc, char **argv)
         return ret;
     }
 
-    shell_print(sh, "Usage: app lora <status|init|tx> (tx sends configured test payload)");
+    shell_print(sh, "Usage: app lora tx (sends configured test payload)");
     return -EINVAL;
 }
 #endif
@@ -2112,7 +2093,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_app,
     SHELL_CMD(read_gsensor_data, NULL, "Read G-Sensor data", cmd_read_gsensor_data),
     SHELL_CMD(param_log, NULL, "Print param log config", my_param_log_config),
 #if MY_LORA_SHELL_TEST_ENABLE
-    SHELL_CMD(lora, NULL, "LR1121 test payload: app lora <status|init|tx>", cmd_lora_test),
+    SHELL_CMD(lora, NULL, "LR1121 test payload: app lora tx", cmd_lora_test),
 #endif
 #if FS_STORE_TEST_ENABLE
     SHELL_CMD(fs, NULL, "Flash store test: app fs <init|info|count|push|fill|begin|read|commit|rewind|clear|sorttest|covertest|partialtest|busytest>", cmd_fs_test),

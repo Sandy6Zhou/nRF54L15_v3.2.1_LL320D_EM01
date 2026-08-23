@@ -110,6 +110,7 @@ typedef enum
     MOD_MAGNETIC_UART, // 磁吸串口处理程序
     MOD_GSENSOR,     // G-Sensor处理程序
     MOD_FOTA,        // FOTA处理程序
+    MOD_LORA,        // LoRa处理程序
     MAX_MY_MOD_TYPE, // 最大模块类型
 } module_type;
 
@@ -226,6 +227,9 @@ typedef enum
     MY_MSG_LTE_PWRON,
     MY_MSG_LTE_PWROFF,
     MY_MSG_LTE_REV,
+    MY_MSG_LORA_ENABLE,
+    MY_MSG_LORA_DISABLE,
+    MY_MSG_LORA_TEST_UPLINK,
     MY_MSG_RETRANS_CHECK,
     MY_MSG_ADD_RETRANS_QUEUE,
     MY_MSG_MAGNETIC_UART_REV,
@@ -329,6 +333,8 @@ typedef enum
 #include "my_ble_scan.h"
 #include "barometer_api.h"
 #include "temp_humi_api.h"
+#include "lr1121_lora_api.h"
+#include "my_lora.h"
 #include "my_flash_store.h"
 #include "my_ctrl.h"
 #include "my_zms_param.h"

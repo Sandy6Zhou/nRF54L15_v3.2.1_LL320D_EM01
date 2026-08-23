@@ -100,9 +100,14 @@
 
 新增文件：
 
-- `inc/my_lora.h`、`src/my_lora.c`：初始化、OTAA、事件轮询、上行调度、下行读取；`my_lora.c` 顶部集中保留 Region、DevEUI、JoinEUI、AppKey、FPort、发送周期和临时 Tracker Payload 定义。
+- `inc/my_lora.h`、`src/my_lora.c`：上层初始化、LoRa 开关状态、OTAA 业务、Join 重试、事件处理、上行调度、下行处理和 poll 线程；`my_lora.c` 顶部集中保留 Region、DevEUI、JoinEUI、AppKey、FPort、发送周期和临时 Tracker Payload 定义。
+- `ext_module/lr1121/api/lr1121_lora_api.h/.c`：LR1121 Modem-E 底层适配接口，封装复位、版本、OTAA 配置、事件、上下行等驱动调用。
 
-启动时，`my_lora_init()` 的顺序为：RESET -> 等待 10 ms -> 读取 Modem-E 版本 -> 校验 LR1121 类型 -> 配置 Region 和 OTAA 参数 -> 发起 Join。主循环每 100 ms 调用 `my_lora_poll()`，通过 `modem_e_get_event()` 处理 `JOINED`、`JOIN_FAIL`、`TX_DONE`、`DOWN_DATA` 事件。
+启动时，`my_lora_init()` 只创建常驻 LoRa 线程并将状态置为 `OFF`，不复位 Modem-E、不发起 Join。预留的 4G 开关消息分别调用 `my_lora_enable()`/`my_lora_disable()`；启用后线程执行 RESET -> 等待 50 ms -> 读取 Modem-E 版本 -> 配置 Region 和 OTAA 参数 -> 发起 Join。LoRa 线程每 100 ms 调用内部 `my_lora_poll()`，在 `JOINING` 状态按 30 秒间隔重试，在 `JOINED` 状态处理 `TX_DONE`、`DOWN_DATA` 和周期上行。
+
+4G 开关协议为 `LTE+LORA=1` 和 `LTE+LORA=0`：`1` 调用 `my_lora_enable()` 并回复 `LTE+LORA=OK,1`，`0` 调用 `my_lora_disable()` 并回复 `LTE+LORA=OK,0`；参数非法时回复 `LTE+LORA=FAIL,PARAM`。
+
+Modem-E 的唯一线程所有者是 LoRa poll 线程。LoRa 注册为公共模块 `MOD_LORA`，使用 `MY_MSG_LORA_ENABLE`、`MY_MSG_LORA_DISABLE` 和 `MY_MSG_LORA_TEST_UPLINK` 消息 ID；LTE、Shell 等调用方只通过 `my_send_msg()` 投递请求，LoRa 线程通过 `my_recv_msg()` 串行处理，不直接在业务调用方使用 RTOS 队列 API。
 
 入网成功后，框架按配置周期调用 `modem_e_request_tx()` 发送上行；下行数据按 FPort 过滤后输出，业务命令解析待 Orange/KKS 协议明确后补充。
 
@@ -122,7 +127,7 @@
 
 原因：`my_lora.c` 只包含 HAL 和 LoRaWAN 头文件，遗漏了声明事件 API 和事件类型的 `modem_e_modem.h`。
 
-修复：在 `src/my_lora.c` 增加 `#include "modem_e_modem.h"`。
+修复：在 `ext_module/lr1121/api/lr1121_lora_api.c` 集中包含并调用 Modem-E 驱动接口，`src/my_lora.c` 只依赖 `lr1121_lora_api.h`。
 
 同时，`my_lte.h` 单独包含时依赖 `my_comm.h` 中先定义的 `lte_boot_reason_t`。`my_lora.c` 改为包含 `my_comm.h`，使用工程既有的头文件依赖顺序。
 
@@ -161,12 +166,12 @@ $env:Path = 'D:\ncs\toolchains\66cdf9b75e\opt\bin;' + $env:Path
 
 ## 7. Shell 测试命令
 
-测试命令由 `ext_module/lr1121/api/my_lora.h` 中的 `MY_LORA_SHELL_TEST_ENABLE` 控制。默认值为 `1`；后续量产时设为 `0`，测试 Shell 命令和仅用于测试的接口不会参与编译。
+测试命令由 `inc/my_lora.h` 中的 `MY_LORA_SHELL_TEST_ENABLE` 控制。默认值为 `1`；后续量产时设为 `0`，测试 Shell 命令和仅用于测试的接口不会参与编译。初始化和事件轮询业务位于 `src/my_lora.c`。
 
 | 命令 | 用途 | 预期结果 |
 | --- | --- | --- |
 | `app lora status` | 读取当前 LR1121、凭证和 Join 状态 | 初次上电且未填凭证时，`detected=yes`、`not configured`、`joined=no` |
-| `app lora init` | RESET 后读取 Modem-E 版本，并在凭证有效时重新发起 OTAA Join | 返回 `0`，日志显示 LR1121 版本；有效凭证时随后出现 Join 事件 |
+| `LTE+LORA=1` | 异步启动 LoRa 服务，RESET 后读取 Modem-E 版本并发起 OTAA Join | 返回 `LTE+LORA=OK,1`；有效凭证时随后出现 Join 事件 |
 | `app lora tx` | 已入网后立即发送固定 Payload `TEST` | 返回 `0`，网络服务器在配置的上行 FPort 收到 4 字节 ASCII `TEST` |
 
-`app lora tx` 的错误码：`-ENODEV` 表示尚未识别 LR1121，`-EACCES` 表示 OTAA 凭证仍为全零，`-EAGAIN` 表示尚未 Join，`-EBUSY` 表示 Modem-E 当前不接受发送请求。
+`app lora tx` 的错误码：`-ENODEV` 表示尚未识别 LR1121，`-EACCES` 表示 OTAA 凭证仍为全零，`-EAGAIN` 表示尚未 Join，`-EBUSY` 表示 Modem-E 当前不接受发送请求。LoRa 服务关闭时会先请求 Modem-E 离网，再停止轮询。
